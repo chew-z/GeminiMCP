@@ -1,0 +1,8 @@
+bin/**
+.env
+go.sum
+*.log
+.aider*
+run_*
+codemcp.toml
+Conventions.md
