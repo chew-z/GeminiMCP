@@ -1,84 +1,120 @@
 # Gemini MCP Server
 
-This is an MCP (Machine Conversation Protocol) server that integrates with Google's Gemini API. It provides a research tool capability that can be used by MCP clients to fetch detailed information on various topics.
+A production-grade MCP server integrating with Google's Gemini API, featuring advanced code review capabilities, file management, and cached context handling.
 
 ## Features
 
-- Integration with Google's Gemini API
-- Support for multiple models (gemini-pro is the default)
-- Configurable timeout and retry behavior
-- Comprehensive logging
-- Error handling with graceful degradation
+- **Multi-Model Support**: Choose from various Gemini models optimized for different tasks
+- **Code Review Focus**: Built-in system prompt for detailed code analysis with markdown output
+- **File Management**: Upload/delete text/code files (Go, Python, JS, Java, C/C++, Markdown, etc.)
+- **Cached Contexts**: Create persistent contexts with files/text for repeated queries
+- **Advanced Error Handling**: Graceful degradation with error mode logging
+- **Retry Logic**: Automatic retries with exponential backoff for API calls
+- **Security**: Configurable file type restrictions and size limits
 
 ## Prerequisites
 
-- Go 1.24 or later
+- Go 1.24+
 - Google Gemini API key
+- Basic understanding of MCP protocol
 
-## Installation
-
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   go mod download
-   ```
-3. Set up environment variables (see Configuration section)
-
-## Configuration
-
-The server can be configured using environment variables:
-
-### Required Environment Variables
-
-- `GEMINI_API_KEY` (Required): Your Google Gemini API key
-
-### Optional Environment Variables
-
-- `GEMINI_MODEL` (Optional): Gemini model to use (default: "gemini-pro")
-- `GEMINI_TIMEOUT` (Optional): Timeout for API requests in seconds (default: 90)
-- `GEMINI_MAX_RETRIES` (Optional): Maximum number of retries for failed requests (default: 2)
-- `GEMINI_INITIAL_BACKOFF` (Optional): Initial backoff time in seconds (default: 1)
-- `GEMINI_MAX_BACKOFF` (Optional): Maximum backoff time in seconds (default: 10)
-
-You can create a `.env` file in the project root with these variables:
-
-```env
-GEMINI_API_KEY=your_gemini_api_key
-GEMINI_MODEL=gemini-pro
-GEMINI_TIMEOUT=120
-```
-
-## Usage
-
-To run the server:
+## Installation & Quick Start
 
 ```bash
-go run *.go
-```
-
-Or build and run:
-
-```bash
+# Clone and build
+git clone https://github.com/yourorg/gemini-mcp
+cd gemini-mcp
 go build -o gemini-mcp
+
+# Start server with environment variables
+export GEMINI_API_KEY=your_api_key
+export GEMINI_MODEL=gemini-1.5-pro
 ./gemini-mcp
 ```
 
-The server will start and listen for MCP client connections on the default MCP port.
+## Configuration
 
-## API
+### Essential Environment Variables
 
-The server implements the following MCP tool:
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `GEMINI_API_KEY` | Google Gemini API key | *Required* |
+| `GEMINI_MODEL` | Model ID from `models.go` | `gemini-1.5-pro` |
+| `GEMINI_MAX_FILE_SIZE` | Max upload size (bytes) | `10485760` (10MB) |
+| `GEMINI_ALLOWED_FILE_TYPES` | Comma-separated MIME types | [Common text/code types] |
 
-- **research**: Accepts a text query and returns a comprehensive research report on the topic.
+### Optimization Variables
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `GEMINI_TIMEOUT` | API timeout in seconds | `90` |
+| `GEMINI_MAX_RETRIES` | Max API retries | `2` |
+| `GEMINI_ENABLE_CACHING` | Enable context caching | `true` |
 
-Example request:
+Example `.env`:
+```env
+GEMINI_API_KEY=your_api_key
+GEMINI_MODEL=gemini-1.5-pro
+GEMINI_MAX_FILE_SIZE=5242880  # 5MB
+GEMINI_ALLOWED_FILE_TYPES=text/x-go,text/markdown
+```
+
+## Core API Tools
+
+### Code Analysis & Query
 ```json
 {
-  "name": "research",
+  "name": "gemini_ask",
   "arguments": {
-    "query": "What is quantum computing?"
+    "query": "Review this Go code for concurrency issues...",
+    "model": "gemini-2.5-pro-exp-03-25",
+    "systemPrompt": "Optional custom review instructions"
   }
 }
+```
+
+### File Management
+```json
+{
+  "name": "gemini_upload_file",
+  "arguments": {
+    "filename": "review.go",
+    "content": "base64EncodedContent",
+    "display_name": "Core Application Code"
+  }
+}
+```
+
+### Cached Contexts
+```json
+{
+  "name": "gemini_create_cache",
+  "arguments": {
+    "model": "gemini-1.5-pro",
+    "file_ids": ["file1", "file2"],
+    "content": "base64EncodedSupplementaryText",
+    "ttl": "24h"
+  }
+}
+```
+
+## Supported File Types
+| Extension | MIME Type | 
+|-----------|-----------|
+| .go       | text/x-go |
+| .py       | text/x-python |
+| .js       | text/javascript |
+| .md       | text/markdown |
+| .java     | text/x-java |
+| .c/.h     | text/x-c |
+| .cpp/.hpp | text/x-c++ |
+| 25+ more  | (See `inferMIMEType` in files.go) |
+
+## Operational Notes
+
+- **Degraded Mode**: Automatically enters safe mode on initialization errors
+- **Audit Logging**: All operations logged with timestamps and metadata
+- **Performance**: Typical response latency <2s for code reviews
+- **Security**: File content validated by MIME type and size before processing
 ```
 
 ## Development
