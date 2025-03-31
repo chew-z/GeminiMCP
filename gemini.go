@@ -529,7 +529,7 @@ func (s *GeminiServer) handleCreateCache(ctx context.Context, req *protocol.Call
 	}
 
 	// Validate that either content or file IDs are provided
-	if content == "" && len(fileIDs) == 0 {
+	if len(content) == 0 && len(fileIDs) == 0 {
 		return createErrorResponse("either content or file_ids must be provided"), nil
 	}
 
@@ -538,7 +538,7 @@ func (s *GeminiServer) handleCreateCache(ctx context.Context, req *protocol.Call
 		Model:        model,
 		SystemPrompt: systemPrompt,
 		FileIDs:      fileIDs,
-		Content:      content,
+		Content:      string(content), // Convert []byte to string
 		TTL:          ttl,
 		DisplayName:  displayName,
 	}
