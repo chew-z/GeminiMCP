@@ -17,7 +17,7 @@ import (
 type FileUploadRequest struct {
 	FileName    string `json:"filename"`
 	MimeType    string `json:"mime_type"`
-	Content     []byte `json:"content"` 
+	Content     []byte `json:"content"`
 	DisplayName string `json:"display_name,omitempty"`
 }
 
@@ -44,7 +44,7 @@ type FileInfo struct {
 	MimeType    string    `json:"mime_type"`
 	Size        int64     `json:"size"`
 	UploadedAt  time.Time `json:"uploaded_at"`
-	ExpiresAt   time.Time `json:"expires_at,omitempty"`
+	ExpiresAt   time.Time `json:"expires_at"`
 }
 
 // FileStore manages file metadata
@@ -68,7 +68,7 @@ func NewFileStore(client *genai.Client, config *Config) *FileStore {
 func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*FileInfo, error) {
 	// Get logger from context
 	logger := getLoggerFromContext(ctx)
-	
+
 	// Input validation
 	if req.FileName == "" {
 		return nil, errors.New("filename is required")
@@ -79,12 +79,12 @@ func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*F
 	if len(req.Content) == 0 {
 		return nil, errors.New("content is required")
 	}
-	
+
 	// Validate file size
 	if int64(len(req.Content)) > fs.config.MaxFileSize {
 		return nil, fmt.Errorf("file size exceeds maximum allowed (%d bytes)", fs.config.MaxFileSize)
 	}
-	
+
 	// Validate mime type
 	mimeTypeAllowed := false
 	for _, allowedType := range fs.config.AllowedFileTypes {
@@ -96,14 +96,14 @@ func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*F
 	if !mimeTypeAllowed {
 		return nil, fmt.Errorf("mime type %s is not allowed", req.MimeType)
 	}
-	
+
 	// Create options with display name if provided
 	opts := &genai.UploadFileOptions{}
 	if req.DisplayName != "" {
 		opts.DisplayName = req.DisplayName
 	}
 	opts.MIMEType = req.MimeType
-	
+
 	// Upload file to Gemini API
 	logger.Info("Uploading file %s with MIME type %s", req.FileName, req.MimeType)
 	file, err := fs.client.UploadFile(ctx, req.FileName, bytes.NewReader(req.Content), opts)
@@ -111,13 +111,13 @@ func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*F
 		logger.Error("Failed to upload file: %v", err)
 		return nil, fmt.Errorf("failed to upload file: %w", err)
 	}
-	
+
 	// Extract ID from name (format: "files/abc123")
 	id := file.Name
 	if strings.HasPrefix(file.Name, "files/") {
 		id = strings.TrimPrefix(file.Name, "files/")
 	}
-	
+
 	// Create file info
 	fileInfo := &FileInfo{
 		ID:          id,
@@ -128,17 +128,17 @@ func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*F
 		Size:        file.SizeBytes,
 		UploadedAt:  file.CreateTime,
 	}
-	
+
 	// Set expiration if provided
 	if !file.ExpirationTime.IsZero() {
 		fileInfo.ExpiresAt = file.ExpirationTime
 	}
-	
+
 	// Store file info
 	fs.mu.Lock()
 	fs.fileInfo[id] = fileInfo
 	fs.mu.Unlock()
-	
+
 	logger.Info("File uploaded successfully with ID: %s", id)
 	return fileInfo, nil
 }
@@ -146,36 +146,36 @@ func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*F
 // GetFile gets file information by ID
 func (fs *FileStore) GetFile(ctx context.Context, id string) (*FileInfo, error) {
 	logger := getLoggerFromContext(ctx)
-	
+
 	// Check cache first
 	fs.mu.RLock()
 	info, ok := fs.fileInfo[id]
 	fs.mu.RUnlock()
-	
+
 	if ok {
 		logger.Debug("File info for %s found in cache", id)
 		return info, nil
 	}
-	
+
 	// If not in cache, try to get from API
 	name := id
 	if !strings.HasPrefix(id, "files/") {
 		name = "files/" + id
 	}
-	
+
 	logger.Info("Fetching file info for %s from API", name)
 	file, err := fs.client.GetFile(ctx, name)
 	if err != nil {
 		logger.Error("Failed to get file from API: %v", err)
 		return nil, fmt.Errorf("failed to get file: %w", err)
 	}
-	
+
 	// Extract ID from name
 	fileID := file.Name
 	if strings.HasPrefix(file.Name, "files/") {
 		fileID = strings.TrimPrefix(file.Name, "files/")
 	}
-	
+
 	// Create file info
 	fileInfo := &FileInfo{
 		ID:          fileID,
@@ -186,17 +186,17 @@ func (fs *FileStore) GetFile(ctx context.Context, id string) (*FileInfo, error) 
 		Size:        file.SizeBytes,
 		UploadedAt:  file.CreateTime,
 	}
-	
+
 	// Set expiration if provided
 	if !file.ExpirationTime.IsZero() {
 		fileInfo.ExpiresAt = file.ExpirationTime
 	}
-	
+
 	// Store in cache
 	fs.mu.Lock()
 	fs.fileInfo[fileID] = fileInfo
 	fs.mu.Unlock()
-	
+
 	logger.Debug("Added file info for %s to cache", fileID)
 	return fileInfo, nil
 }
@@ -204,25 +204,25 @@ func (fs *FileStore) GetFile(ctx context.Context, id string) (*FileInfo, error) 
 // DeleteFile deletes a file by ID
 func (fs *FileStore) DeleteFile(ctx context.Context, id string) error {
 	logger := getLoggerFromContext(ctx)
-	
+
 	// Get the file info first to get the full name
 	fileInfo, err := fs.GetFile(ctx, id)
 	if err != nil {
 		return err
 	}
-	
+
 	// Delete from API
 	logger.Info("Deleting file %s", fileInfo.Name)
 	if err := fs.client.DeleteFile(ctx, fileInfo.Name); err != nil {
 		logger.Error("Failed to delete file: %v", err)
 		return fmt.Errorf("failed to delete file: %w", err)
 	}
-	
+
 	// Remove from cache
 	fs.mu.Lock()
 	delete(fs.fileInfo, id)
 	fs.mu.Unlock()
-	
+
 	logger.Info("File deleted successfully: %s", id)
 	return nil
 }
@@ -231,13 +231,13 @@ func (fs *FileStore) DeleteFile(ctx context.Context, id string) error {
 func (fs *FileStore) ListFiles(ctx context.Context) ([]*FileInfo, error) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Listing all files")
-	
+
 	// Get files from API
 	iter := fs.client.ListFiles(ctx)
-	
+
 	files := []*FileInfo{}
 	fileMap := make(map[string]*FileInfo)
-	
+
 	// Iterate through all files
 	for {
 		file, err := iter.Next()
@@ -248,13 +248,13 @@ func (fs *FileStore) ListFiles(ctx context.Context) ([]*FileInfo, error) {
 			logger.Error("Failed to list files: %v", err)
 			return nil, fmt.Errorf("failed to list files: %w", err)
 		}
-		
+
 		// Extract ID from name
 		id := file.Name
 		if strings.HasPrefix(file.Name, "files/") {
 			id = strings.TrimPrefix(file.Name, "files/")
 		}
-		
+
 		// Create file info
 		fileInfo := &FileInfo{
 			ID:          id,
@@ -265,23 +265,23 @@ func (fs *FileStore) ListFiles(ctx context.Context) ([]*FileInfo, error) {
 			Size:        file.SizeBytes,
 			UploadedAt:  file.CreateTime,
 		}
-		
+
 		// Set expiration if provided
 		if !file.ExpirationTime.IsZero() {
 			fileInfo.ExpiresAt = file.ExpirationTime
 		}
-		
+
 		files = append(files, fileInfo)
 		fileMap[id] = fileInfo
 	}
-	
+
 	// Update cache
 	fs.mu.Lock()
 	for id, info := range fileMap {
 		fs.fileInfo[id] = info
 	}
 	fs.mu.Unlock()
-	
+
 	logger.Info("Found %d files", len(files))
 	return files, nil
 }
@@ -292,12 +292,12 @@ func humanReadableSize(bytes int64) string {
 	if bytes < unit {
 		return fmt.Sprintf("%d B", bytes)
 	}
-	
+
 	div, exp := int64(unit), 0
 	for n := bytes / unit; n >= unit; n /= unit {
 		div *= unit
 		exp++
 	}
-	
+
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
