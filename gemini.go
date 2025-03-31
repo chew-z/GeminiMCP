@@ -501,9 +501,20 @@ func (s *GeminiServer) handleCreateCache(ctx context.Context, req *protocol.Call
 
 	// Extract optional parameters
 	systemPrompt, _ := req.Arguments["system_prompt"].(string)
-	content, _ := req.Arguments["content"].(string)
+	contentBase64, _ := req.Arguments["content"].(string)
 	ttl, _ := req.Arguments["ttl"].(string)
 	displayName, _ := req.Arguments["display_name"].(string)
+
+	// Decode base64 content if provided
+	var content []byte
+	var err error
+	if contentBase64 != "" {
+		content, err = base64.StdEncoding.DecodeString(contentBase64)
+		if err != nil {
+			logger.Error("Failed to decode base64 content: %v", err)
+			return createErrorResponse("invalid base64 encoding for content"), nil
+		}
+	}
 
 	// Extract file IDs if provided
 	var fileIDs []string

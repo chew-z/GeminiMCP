@@ -17,8 +17,22 @@ import (
 type FileUploadRequest struct {
 	FileName    string `json:"filename"`
 	MimeType    string `json:"mime_type"`
-	Content     []byte `json:"content"` // Base64 encoded content will be decoded before this
+	Content     []byte `json:"content"` 
 	DisplayName string `json:"display_name,omitempty"`
+}
+
+// Validate ensures the file upload request contains valid data
+func (r *FileUploadRequest) Validate() error {
+	if r.FileName == "" {
+		return errors.New("filename is required")
+	}
+	if r.MimeType == "" {
+		return errors.New("mime type is required")
+	}
+	if len(r.Content) == 0 {
+		return errors.New("content is required")
+	}
+	return nil
 }
 
 // FileInfo represents information about a stored file
