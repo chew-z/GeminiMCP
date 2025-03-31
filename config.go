@@ -139,7 +139,11 @@ func NewConfig() (*Config, error) {
 		}
 	}
 	
-	allowedFileTypes := []string{"text/plain", "text/markdown", "application/pdf", "image/png", "image/jpeg"}
+	allowedFileTypes := []string{
+		"text/x-go", "text/x-python", "text/javascript", "text/typescript",
+		"text/x-java", "text/x-c", "text/x-c++", "text/markdown", "text/html",
+		"text/css", "application/json", "text/yaml", "text/plain",
+	}
 	if typesStr := os.Getenv("GEMINI_ALLOWED_FILE_TYPES"); typesStr != "" {
 		allowedFileTypes = strings.Split(typesStr, ",")
 	}
