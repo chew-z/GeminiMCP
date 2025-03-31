@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -20,6 +21,12 @@ Include line numbers, and contextual info.
 Your code review will be passed to another teammate, so be thorough.
 Think deeply  before writing the code review. Review every part, and don't hallucinate.
 `
+	// File handling defaults
+	defaultMaxFileSize = int64(10 * 1024 * 1024) // 10MB explicitly as int64
+	
+	// Cache settings defaults
+	defaultEnableCaching   = true
+	defaultDefaultCacheTTL = 1 * time.Hour
 )
 
 // Config holds all configuration parameters for the application
@@ -37,6 +44,14 @@ type Config struct {
 	MaxRetries     int
 	InitialBackoff time.Duration
 	MaxBackoff     time.Duration
+
+	// File handling settings
+	MaxFileSize      int64    // Max file size in bytes
+	AllowedFileTypes []string // Allowed MIME types
+	
+	// Cache settings
+	EnableCaching   bool          // Enable/disable caching
+	DefaultCacheTTL time.Duration // Default TTL if not specified
 }
 
 // NewConfig creates a new configuration from environment variables
@@ -116,6 +131,32 @@ func NewConfig() (*Config, error) {
 		}
 	}
 
+	// File handling settings
+	maxFileSize := defaultMaxFileSize
+	if sizeStr := os.Getenv("GEMINI_MAX_FILE_SIZE"); sizeStr != "" {
+		if size, err := strconv.ParseInt(sizeStr, 10, 64); err == nil && size > 0 {
+			maxFileSize = size
+		}
+	}
+	
+	allowedFileTypes := []string{"text/plain", "text/markdown", "application/pdf", "image/png", "image/jpeg"}
+	if typesStr := os.Getenv("GEMINI_ALLOWED_FILE_TYPES"); typesStr != "" {
+		allowedFileTypes = strings.Split(typesStr, ",")
+	}
+	
+	// Cache settings
+	enableCaching := defaultEnableCaching
+	if cacheStr := os.Getenv("GEMINI_ENABLE_CACHING"); cacheStr != "" {
+		enableCaching = strings.ToLower(cacheStr) == "true"
+	}
+	
+	defaultCacheTTL := defaultDefaultCacheTTL
+	if ttlStr := os.Getenv("GEMINI_DEFAULT_CACHE_TTL"); ttlStr != "" {
+		if ttl, err := time.ParseDuration(ttlStr); err == nil && ttl > 0 {
+			defaultCacheTTL = ttl
+		}
+	}
+
 	return &Config{
 		GeminiAPIKey:       geminiAPIKey,
 		GeminiModel:        geminiModel,
@@ -125,5 +166,9 @@ func NewConfig() (*Config, error) {
 		MaxRetries:         maxRetries,
 		InitialBackoff:     initialBackoff,
 		MaxBackoff:         maxBackoff,
+		MaxFileSize:        maxFileSize,
+		AllowedFileTypes:   allowedFileTypes,
+		EnableCaching:      enableCaching,
+		DefaultCacheTTL:    defaultCacheTTL,
 	}, nil
 }

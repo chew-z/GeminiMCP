@@ -18,6 +18,7 @@ func main() {
 	geminiModelFlag := flag.String("gemini-model", "", "Gemini model name (overrides env var)")
 	geminiSystemPromptFlag := flag.String("gemini-system-prompt", "", "System prompt (overrides env var)")
 	geminiTemperatureFlag := flag.Float64("gemini-temperature", -1, "Temperature setting (0.0-1.0, overrides env var)")
+	enableCachingFlag := flag.Bool("enable-caching", true, "Enable caching feature (overrides env var)")
 	flag.Parse()
 
 	// Create application context with logger
@@ -58,6 +59,13 @@ func main() {
 		logger.Info("Overriding Gemini temperature with flag value: %v", *geminiTemperatureFlag)
 		config.GeminiTemperature = *geminiTemperatureFlag
 	}
+	
+	// Override enable caching if flag is provided
+	config.EnableCaching = *enableCachingFlag
+	logger.Info("Caching feature is %s", getCachingStatusStr(config.EnableCaching))
+	
+	// Store config in context for error handler to access
+	ctx = context.WithValue(ctx, configKey, config)
 
 	// Set up handler registry
 	// NewHandlerRegistry is a constructor that doesn't return an error
@@ -83,6 +91,14 @@ func main() {
 	}
 }
 
+// Helper function to get caching status as a string
+func getCachingStatusStr(enabled bool) string {
+	if enabled {
+		return "enabled"
+	}
+	return "disabled"
+}
+
 // setupGeminiServer creates and registers a Gemini server
 func setupGeminiServer(ctx context.Context, registry *handler.HandlerRegistry, config *Config) error {
 	loggerValue := ctx.Value(loggerKey)
@@ -103,6 +119,16 @@ func setupGeminiServer(ctx context.Context, registry *handler.HandlerRegistry, c
 	// Register the wrapped server
 	registry.RegisterToolHandler(handlerWithLogger)
 	logger.Info("Registered Gemini server in normal mode with model: %s", config.GeminiModel)
+	
+	// Log file handling configuration
+	logger.Info("File handling: max size %s, allowed types: %v", 
+		humanReadableSize(config.MaxFileSize), 
+		config.AllowedFileTypes)
+	
+	// Log cache configuration if enabled
+	if config.EnableCaching {
+		logger.Info("Cache settings: default TTL %v", config.DefaultCacheTTL)
+	}
 	
 	// Log a truncated version of the system prompt for security/brevity
 	promptPreview := config.GeminiSystemPrompt
@@ -135,9 +161,19 @@ func handleStartupError(ctx context.Context, err error) {
 
 	logger.Error("Initialization error: %v", err)
 
+	// Get config for EnableCaching status (if available)
+	var config *Config
+	configValue := ctx.Value(configKey)
+	if configValue != nil {
+		if cfg, ok := configValue.(Config); ok {
+			config = &cfg
+		}
+	}
+
 	// Create error server
 	errorServer := &ErrorGeminiServer{
 		errorMessage: errorMsg,
+		config:       config,
 	}
 
 	// Set up registry with error server

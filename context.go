@@ -7,4 +7,6 @@ type contextKey string
 const (
 	// loggerKey is the context key for the logger
 	loggerKey contextKey = "logger"
+	// configKey is the context key for the configuration
+	configKey contextKey = "config"
 )
