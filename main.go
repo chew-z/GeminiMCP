@@ -17,6 +17,7 @@ func main() {
 	// Define command-line flags for configuration override
 	geminiModelFlag := flag.String("gemini-model", "", "Gemini model name (overrides env var)")
 	geminiSystemPromptFlag := flag.String("gemini-system-prompt", "", "System prompt (overrides env var)")
+	geminiTemperatureFlag := flag.Float64("gemini-temperature", -1, "Temperature setting (0.0-1.0, overrides env var)")
 	flag.Parse()
 
 	// Create application context with logger
@@ -46,7 +47,20 @@ func main() {
 		config.GeminiSystemPrompt = *geminiSystemPromptFlag
 	}
 
+	// Override temperature if provided and valid
+	if *geminiTemperatureFlag >= 0 {
+		// Validate temperature is within range
+		if *geminiTemperatureFlag > 1.0 {
+			logger.Error("Invalid temperature value: %v. Must be between 0.0 and 1.0", *geminiTemperatureFlag)
+			handleStartupError(ctx, fmt.Errorf("invalid temperature: %v", *geminiTemperatureFlag))
+			return
+		}
+		logger.Info("Overriding Gemini temperature with flag value: %v", *geminiTemperatureFlag)
+		config.GeminiTemperature = *geminiTemperatureFlag
+	}
+
 	// Set up handler registry
+	// NewHandlerRegistry is a constructor that doesn't return an error
 	registry := handler.NewHandlerRegistry()
 
 	// Create and register the Gemini server
@@ -93,7 +107,15 @@ func setupGeminiServer(ctx context.Context, registry *handler.HandlerRegistry, c
 	// Log a truncated version of the system prompt for security/brevity
 	promptPreview := config.GeminiSystemPrompt
 	if len(promptPreview) > 50 {
-		promptPreview = promptPreview[:50] + "..."
+		// Use proper UTF-8 safe truncation
+		runeCount := 0
+		for i := range promptPreview {
+			runeCount++
+			if runeCount > 50 {
+				promptPreview = promptPreview[:i] + "..."
+				break
+			}
+		}
 	}
 	logger.Info("Using system prompt: %s", promptPreview)
 
@@ -119,6 +141,7 @@ func handleStartupError(ctx context.Context, err error) {
 	}
 
 	// Set up registry with error server
+	// NewHandlerRegistry is a constructor that doesn't return an error
 	registry := handler.NewHandlerRegistry()
 	errorServerWithLogger := NewLoggerMiddleware(errorServer, logger)
 	registry.RegisterToolHandler(errorServerWithLogger)

@@ -156,7 +156,10 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 	// Create Gemini model with configuration
 	model := s.client.GenerativeModel(modelName)
 	model.SystemInstruction = genai.NewUserContent(genai.Text(systemPrompt))
-	model.SetTemperature(0.4) // Setting a moderate temperature for research queries
+
+	// Use the configured temperature
+	model.SetTemperature(float32(s.config.GeminiTemperature))
+	logger.Debug("Using temperature: %v for model %s", s.config.GeminiTemperature, modelName)
 
 	// Send request to Gemini API
 	response, err := s.executeGeminiRequest(ctx, model, query)
@@ -176,20 +179,54 @@ func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallTo
 	// Get available models
 	models := GetAvailableGeminiModels()
 
-	// Create a formatted response
+	// Create a formatted response using strings.Builder with error handling
 	var formattedContent strings.Builder
-	formattedContent.WriteString("# Available Gemini Models\n\n")
-	
-	for _, model := range models {
-		formattedContent.WriteString(fmt.Sprintf("## %s\n", model.Name))
-		formattedContent.WriteString(fmt.Sprintf("- ID: `%s`\n", model.ID))
-		formattedContent.WriteString(fmt.Sprintf("- Description: %s\n\n", model.Description))
+
+	// Define a helper function to write with error checking
+	writeStringf := func(format string, args ...interface{}) error {
+		_, err := formattedContent.WriteString(fmt.Sprintf(format, args...))
+		return err
 	}
-	
+
+	// Write the header
+	if err := writeStringf("# Available Gemini Models\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+
+	// Write each model's information
+	for _, model := range models {
+		if err := writeStringf("## %s\n", model.Name); err != nil {
+			logger.Error("Error writing to response: %v", err)
+			return createErrorResponse("Error generating model list"), nil
+		}
+
+		if err := writeStringf("- ID: `%s`\n", model.ID); err != nil {
+			logger.Error("Error writing to response: %v", err)
+			return createErrorResponse("Error generating model list"), nil
+		}
+
+		if err := writeStringf("- Description: %s\n\n", model.Description); err != nil {
+			logger.Error("Error writing to response: %v", err)
+			return createErrorResponse("Error generating model list"), nil
+		}
+	}
+
 	// Add usage hint
-	formattedContent.WriteString("## Usage\n")
-	formattedContent.WriteString("You can specify a model ID in the `model` parameter when using the `ask_gemini` tool:\n")
-	formattedContent.WriteString("```json\n{\n  \"query\": \"Your question here\",\n  \"model\": \"gemini-2.5-pro-exp-03-25\"\n}\n```\n")
+	if err := writeStringf("## Usage\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+
+	if err := writeStringf("You can specify a model ID in the `model` parameter when using the `ask_gemini` tool:\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+
+	if err := writeStringf("```json\n{\n  \"query\": \"Your question here\",\n  \"model\": \"gemini-2.5-pro-exp-03-25\"\n}\n```\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
 
 	return &protocol.CallToolResponse{
 		Content: []protocol.ToolContent{
@@ -216,10 +253,12 @@ func (s *GeminiServer) executeGeminiRequest(ctx context.Context, model *genai.Ge
 
 		response, err = model.GenerateContent(timeoutCtx, genai.Text(query))
 		if err != nil {
-			// Check if it's a timeout error
-			if strings.Contains(err.Error(), "deadline exceeded") || strings.Contains(err.Error(), "timeout") {
+			// Check specifically for timeout errors
+			if errors.Is(err, context.DeadlineExceeded) {
 				return fmt.Errorf("request timed out after %v: consider increasing GEMINI_TIMEOUT: %w", s.config.HTTPTimeout, err)
 			}
+
+			// Handle other types of errors
 			return fmt.Errorf("failed to generate content: %w", err)
 		}
 
@@ -263,6 +302,11 @@ func (s *GeminiServer) formatResponse(resp *genai.GenerateContentResponse) *prot
 				}
 			}
 		}
+	}
+
+	// Check for empty content and provide a fallback message
+	if content == "" {
+		content = "The Gemini model returned an empty response. This might indicate that the model couldn't generate an appropriate response for your query. Please try rephrasing your question or providing more context."
 	}
 
 	return &protocol.CallToolResponse{

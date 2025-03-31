@@ -52,18 +52,30 @@ The codebase is well-structured with clear separation of concerns. It follows ma
 
 **Issues:**
 
-1. **Lines 169-172**: The `model.SetTemperature(0.4)` has a hard-coded value. This should be configurable:
-   ```go
-   // Hard-coded temperature value
-   model.SetTemperature(0.4) // Setting a moderate temperature for research queries
-   ```
-   Consider adding this to the configuration structure.
+1. ✅ **FIXED: Lines 169-172**: The `model.SetTemperature(0.4)` had a hard-coded value.
+   
+   Added `GeminiTemperature` to the configuration structure with:
+   - Default value in constants
+   - Environment variable support with validation
+   - Command-line flag override with validation
+   - Logging of temperature values
 
-2. **Lines 186-208**: The model listing in `handleGeminiModels` builds a string using `strings.Builder`, but doesn't handle potential write errors. While unlikely in this case, it's a good practice to check for errors.
+2. ✅ **FIXED: Lines 186-208**: The model listing in `handleGeminiModels` now properly handles potential write errors by:
+   - Adding a helper function `writeStringf` that captures error returns
+   - Adding proper error checking after each write operation
+   - Including appropriate error logging
+   - Returning user-friendly error responses when writes fail
 
-3. **Lines 228-241**: The error handling in `executeGeminiRequest` could be improved. The timeout error message is constructed using string contains checks, which is fragile. Consider using Go's `errors.Is` or `errors.As` mechanisms for more robust error type checking.
+3. ✅ **FIXED: Lines 228-241**: The error handling in `executeGeminiRequest` now uses robust error checking:
+   - Updated `IsTimeoutError` to use `errors.Is(err, context.DeadlineExceeded)` as the primary check
+   - Improved the timeout detection in the request operation
+   - Added clearer error handling with separate paths for timeout vs. other errors
+   - Kept string checking as a fallback for third-party errors that don't implement standard interfaces
 
-4. **Lines 267-278**: In `formatResponse`, there's no handling for empty content. The method should check if the extracted content is empty and provide a meaningful fallback response.
+4. ✅ **FIXED: Lines 267-278**: In `formatResponse`, added proper handling for empty content:
+   - Added explicit check for empty content string
+   - Implemented a user-friendly fallback message explaining the empty response
+   - Suggested action for users to take when receiving an empty response
 
 ### Retry Logic (`retry.go`)
 
@@ -109,27 +121,35 @@ The codebase is well-structured with clear separation of concerns. It follows ma
 
 **Issues:**
 
-1. **Lines 41-48**: The command-line flag overriding logic doesn't validate the model name against available models:
-   ```go
-   if *geminiModelFlag != "" {
-       logger.Info("Overriding Gemini model with flag value: %s", *geminiModelFlag)
-       config.GeminiModel = *geminiModelFlag
-   }
-   ```
-   Consider adding validation to ensure the provided model name is valid.
+1. ✅ **FIXED: Lines 41-48**: The command-line flag overriding logic doesn't validate the model name against available models.
+   
+   Added validation function `ValidateModelID` in models.go and implemented comprehensive model validation in:
+   - main.go: When using command-line flag
+   - config.go: For environment variables and default model
+   - gemini.go: When using custom model in API requests
 
-2. **Lines 85-92**: The system prompt truncation for logging might break multibyte characters. Use proper string truncation that respects UTF-8 encoding:
+2. ✅ **FIXED: Lines 85-92**: The system prompt truncation for logging has been updated to properly respect UTF-8 encoding by iterating through runes rather than bytes:
    ```go
    if len(promptPreview) > 50 {
-       promptPreview = promptPreview[:50] + "..."
+       // Use proper UTF-8 safe truncation
+       runeCount := 0
+       for i := range promptPreview {
+           runeCount++
+           if runeCount > 50 {
+               promptPreview = promptPreview[:i] + "..."
+               break
+           }
+       }
    }
    ```
 
-3. **Line 50**: There's a missing error check after creating a new handler registry:
+3. ✅ **FIXED: Line 50**: Added clarifying comment about `NewHandlerRegistry` not returning an error:
    ```go
+   // Set up handler registry
+   // NewHandlerRegistry is a constructor that doesn't return an error
    registry := handler.NewHandlerRegistry()
    ```
-   If `NewHandlerRegistry` can return an error, it should be checked.
+   Based on the usage pattern throughout the codebase, it's clear that this function is a simple constructor that doesn't return errors, so no error checking is needed.
 
 ### Middleware Implementation (`middleware.go`)
 
@@ -187,6 +207,155 @@ The codebase is well-structured with clear separation of concerns. It follows ma
 4. Consider implementing a caching layer for frequent queries to reduce API calls.
 5. Add structured logging to make log aggregation and analysis easier.
 6. Consider implementing rate limiting to prevent abuse and manage API quotas better.
+
+## Future Enhancements
+
+1. **Streaming Support**: The Gemini API supports streaming responses via `GenerateContentStream()`, which could provide a better user experience for long responses:
+   ```go
+   iter := model.GenerateContentStream(ctx, genai.Text(query))
+   for {
+     resp, err := iter.Next()
+     if err == iterator.Done {
+       break
+     }
+     // Process chunk
+   }
+   ```
+   However, implementing this would require significant changes to the MCP protocol which currently doesn't support streaming. Options include:
+   - Internal streaming with buffered response (simpler but less efficient)
+   - Protocol extensions to support true streaming (more complex)
+   - Chunked responses through multiple requests (middle ground)
+
+2. **File Handling and Context Caching**: Gemini API supports file processing and context caching which could significantly enhance the capabilities of this service:
+
+   a. **File Processing Implementation**:
+   ```go
+   // FileUploadRequest represents a file upload request
+   type FileUploadRequest struct {
+       FileName string
+       MimeType string
+       Content  []byte
+   }
+   
+   // FileUploadResponse represents the response to a file upload
+   type FileUploadResponse struct {
+       FileID  string
+       FileURI string
+   }
+   
+   // Add to Config struct
+   type Config struct {
+       // ...existing fields
+       
+       // File handling settings
+       MaxFileSize      int64
+       AllowedFileTypes []string
+       FileCachePath    string
+   }
+   ```
+
+   b. **Context Caching Implementation**:
+   ```go
+   // CacheRequest represents a request to create a cached context
+   type CacheRequest struct {
+       Model       string
+       SystemPrompt string
+       FileURIs    []string
+       Content     string
+       TTL         time.Duration
+   }
+   
+   // CacheResponse represents a cached context
+   type CacheResponse struct {
+       CacheID     string
+       ExpiresAt   time.Time
+   }
+   
+   // Add to Config struct
+   type Config struct {
+       // ...existing fields
+       
+       // Cache settings
+       EnableCaching         bool
+       DefaultCacheTTL       time.Duration
+       MaxCacheEntries       int
+       CacheCleanupInterval  time.Duration
+   }
+   ```
+
+   c. **MCP Protocol Extensions**:
+   ```go
+   // In ListTools method, add new tools
+   {
+       Name:        "upload_file",
+       Description: "Upload a file to Gemini for processing",
+       InputSchema: json.RawMessage(`{
+           "type": "object",
+           "properties": {
+               "filename": {"type": "string"},
+               "mimetype": {"type": "string"},
+               "content": {"type": "string", "format": "base64"}
+           },
+           "required": ["filename", "mimetype", "content"]
+       }`),
+   },
+   {
+       Name:        "create_cache",
+       Description: "Create a cached context for repeated queries",
+       InputSchema: json.RawMessage(`{
+           "type": "object",
+           "properties": {
+               "model": {"type": "string"},
+               "system_prompt": {"type": "string"},
+               "file_uris": {"type": "array", "items": {"type": "string"}},
+               "content": {"type": "string"},
+               "ttl_hours": {"type": "number"}
+           },
+           "required": ["model"]
+       }`),
+   },
+   {
+       Name:        "query_with_cache",
+       Description: "Query Gemini using a cached context",
+       InputSchema: json.RawMessage(`{
+           "type": "object",
+           "properties": {
+               "cache_id": {"type": "string"},
+               "query": {"type": "string"}
+           },
+           "required": ["cache_id", "query"]
+       }`),
+   }
+   ```
+
+   d. **Implementation Notes**:
+   - File lifecycle management is critical to prevent orphaned files
+   - Context caching only works with specific model versions (e.g., gemini-1.5-pro-001)
+   - Cache expiration should be managed automatically
+   - Security validation for file types and sizes is essential
+   - Example usage:
+   ```go
+   // Upload a file
+   file, err := client.UploadFile(ctx, "transcript.txt", "text/plain")
+   
+   // Create a cached context
+   argcc := &genai.CachedContent{
+     Model:             "gemini-1.5-flash-001",
+     SystemInstruction: genai.NewUserContent(genai.Text("System prompt")),
+     Contents:          []*genai.Content{genai.NewUserContent(genai.FileData{URI: file.URI})},
+   }
+   cc, err := client.CreateCachedContent(ctx, argcc)
+   
+   // Query using cached context
+   modelWithCache := client.GenerativeModelFromCachedContent(cc)
+   resp, err := modelWithCache.GenerateContent(ctx, genai.Text("Query"))
+   ```
+
+   e. **Benefits**:
+   - Improved performance for repeated queries on the same content
+   - Support for document analysis, code review, and other file-based operations
+   - Reduced API costs through effective caching
+   - Enhanced user experience for complex document processing workflows
 
 ## Conclusion
 

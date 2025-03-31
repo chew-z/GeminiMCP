@@ -12,6 +12,7 @@ import (
 const (
 	// Note: if this value changes, make sure to update the models.go list
 	defaultGeminiModel        = "gemini-1.5-pro"
+	defaultGeminiTemperature  = 0.4
 	defaultGeminiSystemPrompt = `
 You are a senior developer. Your job is to do a thorough code review of this code.
 You should write it up and output markdown.
@@ -27,6 +28,7 @@ type Config struct {
 	GeminiAPIKey       string
 	GeminiModel        string
 	GeminiSystemPrompt string
+	GeminiTemperature  float64
 
 	// HTTP client settings
 	HTTPTimeout time.Duration
@@ -100,10 +102,25 @@ func NewConfig() (*Config, error) {
 		}
 	}
 
+	// Set default temperature or override with environment variable
+	geminiTemperature := defaultGeminiTemperature
+	if tempStr := os.Getenv("GEMINI_TEMPERATURE"); tempStr != "" {
+		if tempVal, err := strconv.ParseFloat(tempStr, 64); err == nil {
+			// Validate that temperature is within valid range (0.0 to 1.0)
+			if tempVal < 0.0 || tempVal > 1.0 {
+				return nil, fmt.Errorf("GEMINI_TEMPERATURE must be between 0.0 and 1.0, got %v", tempVal)
+			}
+			geminiTemperature = tempVal
+		} else {
+			return nil, fmt.Errorf("invalid GEMINI_TEMPERATURE value: %v", err)
+		}
+	}
+
 	return &Config{
 		GeminiAPIKey:       geminiAPIKey,
 		GeminiModel:        geminiModel,
 		GeminiSystemPrompt: geminiSystemPrompt,
+		GeminiTemperature:  geminiTemperature,
 		HTTPTimeout:        timeout,
 		MaxRetries:         maxRetries,
 		InitialBackoff:     initialBackoff,

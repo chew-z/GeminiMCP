@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 )
@@ -62,6 +63,13 @@ func IsTimeoutError(err error) bool {
 		return false
 	}
 
+	// Check for context deadline exceeded
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	// For errors that don't use standard Go error wrapping,
+	// fall back to string checking
 	errMsg := err.Error()
 	return strings.Contains(errMsg, "timeout") ||
 		strings.Contains(errMsg, "deadline exceeded") ||
