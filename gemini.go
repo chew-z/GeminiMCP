@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -444,149 +443,6 @@ func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallTo
 	}, nil
 }
 
-// handleUploadFile is kept for backward compatibility
-func (s *GeminiServer) handleUploadFile(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling file upload request")
-
-	// Extract and validate required parameters
-	filename, ok := req.Arguments["filename"].(string)
-	if !ok || filename == "" {
-		return createErrorResponse("filename must be a non-empty string"), nil
-	}
-
-	mimeType, ok := req.Arguments["mime_type"].(string)
-	if !ok || mimeType == "" {
-		return createErrorResponse("mime_type must be a non-empty string"), nil
-	}
-
-	contentBase64, ok := req.Arguments["content"].(string)
-	if !ok || contentBase64 == "" {
-		return createErrorResponse("content must be a non-empty base64-encoded string"), nil
-	}
-
-	// Get optional display name
-	displayName, _ := req.Arguments["display_name"].(string)
-
-	// Decode base64 content
-	content, err := base64.StdEncoding.DecodeString(contentBase64)
-	if err != nil {
-		logger.Error("Failed to decode base64 content: %v", err)
-		return createErrorResponse("invalid base64 encoding for content"), nil
-	}
-
-	// Create upload request
-	uploadReq := &FileUploadRequest{
-		FileName:    filename,
-		MimeType:    mimeType,
-		Content:     content,
-		DisplayName: displayName,
-	}
-
-	// Upload the file
-	fileInfo, err := s.fileStore.UploadFile(ctx, uploadReq)
-	if err != nil {
-		logger.Error("Failed to upload file: %v", err)
-		return createErrorResponse(fmt.Sprintf("failed to upload file: %v", err)), nil
-	}
-
-	// Format the response
-	return &protocol.CallToolResponse{
-		Content: []protocol.ToolContent{
-			{
-				Type: "text",
-				Text: fmt.Sprintf("File uploaded successfully:\n\n- File ID: `%s`\n- Name: %s\n- Size: %s\n- MIME Type: %s\n\nUse this File ID when creating a cache context.",
-					fileInfo.ID, fileInfo.DisplayName, humanReadableSize(fileInfo.Size), fileInfo.MimeType),
-			},
-		},
-	}, nil
-}
-
-// handleListFiles is kept for backward compatibility
-func (s *GeminiServer) handleListFiles(ctx context.Context) (*protocol.CallToolResponse, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info("This API is deprecated. Use file_paths in gemini_ask instead.")
-
-	// Get files
-	files, err := s.fileStore.ListFiles(ctx)
-	if err != nil {
-		logger.Error("Failed to list files: %v", err)
-		return createErrorResponse(fmt.Sprintf("failed to list files: %v", err)), nil
-	}
-
-	// Format the response
-	var sb strings.Builder
-	sb.WriteString("# Uploaded Files\n\n")
-	sb.WriteString("**Note:** The file upload API is deprecated. Use `file_paths` parameter in `gemini_ask` instead.\n\n")
-
-	if len(files) == 0 {
-		sb.WriteString("No files found.")
-	} else {
-		sb.WriteString("| ID | Name | MIME Type | Size | Upload Time |\n")
-		sb.WriteString("|-----|-------|-----------|------|-------------|\n")
-
-		for _, file := range files {
-			displayName := file.DisplayName
-			if displayName == "" {
-				displayName = file.Name
-			}
-
-			sb.WriteString(fmt.Sprintf("| `%s` | %s | %s | %s | %s |\n",
-				file.ID,
-				displayName,
-				file.MimeType,
-				humanReadableSize(file.Size),
-				file.UploadedAt.Format(time.RFC3339),
-			))
-		}
-	}
-
-	return &protocol.CallToolResponse{
-		Content: []protocol.ToolContent{
-			{
-				Type: "text",
-				Text: sb.String(),
-			},
-		},
-	}, nil
-}
-
-// handleDeleteFile is kept for backward compatibility
-func (s *GeminiServer) handleDeleteFile(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info("This API is deprecated. Files are now managed automatically.")
-
-	// Extract and validate required parameters
-	fileID, ok := req.Arguments["file_id"].(string)
-	if !ok || fileID == "" {
-		return createErrorResponse("file_id must be a non-empty string"), nil
-	}
-
-	// Delete the file
-	if err := s.fileStore.DeleteFile(ctx, fileID); err != nil {
-		logger.Error("Failed to delete file: %v", err)
-		return createErrorResponse(fmt.Sprintf("failed to delete file: %v", err)), nil
-	}
-
-	// Format the response
-	return &protocol.CallToolResponse{
-		Content: []protocol.ToolContent{
-			{
-				Type: "text",
-				Text: fmt.Sprintf("File with ID `%s` was successfully deleted.\n\nNote: This API is deprecated. Files are now managed automatically with the `file_paths` parameter in `gemini_ask`.", fileID),
-			},
-		},
-	}, nil
-}
-
-// handleCreateCache is kept for backward compatibility
-func (s *GeminiServer) handleCreateCache(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info("This API is deprecated. Use gemini_ask with use_cache=true instead.")
-
-	return createErrorResponse("This API is deprecated. Use the `gemini_ask` tool with `use_cache: true` and `file_paths` parameters instead."), nil
-}
-
 // handleQueryWithCache handles internal requests to query with a cached context
 func (s *GeminiServer) handleQueryWithCache(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
@@ -635,22 +491,6 @@ func (s *GeminiServer) handleQueryWithCache(ctx context.Context, req *protocol.C
 	}
 
 	return s.formatResponse(response), nil
-}
-
-// handleListCaches is kept for backward compatibility
-func (s *GeminiServer) handleListCaches(ctx context.Context) (*protocol.CallToolResponse, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info("This API is deprecated. Caches are now managed automatically.")
-
-	return createErrorResponse("This API is deprecated. Caches are now managed automatically with the `gemini_ask` tool with `use_cache: true` parameter."), nil
-}
-
-// handleDeleteCache is kept for backward compatibility
-func (s *GeminiServer) handleDeleteCache(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info("This API is deprecated. Caches are now managed automatically.")
-
-	return createErrorResponse("This API is deprecated. Caches are now managed automatically with the `gemini_ask` tool with `use_cache: true` parameter."), nil
 }
 
 // executeGeminiRequest makes the request to the Gemini API with retry capability
@@ -778,13 +618,13 @@ func getMimeTypeFromPath(path string) string {
 	case ".csv":
 		return "text/csv"
 	case ".go":
-		return "text/plain"
+		return "text/x-go"
 	case ".py":
-		return "text/plain"
+		return "text/x-python"
 	case ".java":
-		return "text/plain"
+		return "text/x-java"
 	case ".c", ".cpp", ".h", ".hpp":
-		return "text/plain"
+		return "text/x-c"
 	case ".rb":
 		return "text/plain"
 	case ".php":

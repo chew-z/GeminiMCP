@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
-	"time"
 )
 
 // GeminiModelInfo holds information about a Gemini model
@@ -39,26 +37,6 @@ func ValidateModelID(modelID string) error {
 	}
 	
 	return fmt.Errorf(errMsg)
-}
-
-// ValidateModelForCaching checks if a model supports caching
-// Returns nil if valid for caching, error otherwise
-func ValidateModelForCaching(modelID string) error {
-	model := GetModelByID(modelID)
-	if model == nil {
-		return fmt.Errorf("unknown model: %s", modelID)
-	}
-	
-	if !model.SupportsCaching {
-		return fmt.Errorf("model %s does not support caching; only specific models with version suffixes support caching", modelID)
-	}
-	
-	return nil
-}
-
-// GetDefaultCacheTTL returns the default TTL for cached contexts
-func GetDefaultCacheTTL() time.Duration {
-	return 10 * time.Minute // 10 minutes by default
 }
 
 // GetAvailableGeminiModels returns a list of available Gemini models
@@ -107,12 +85,4 @@ func GetAvailableGeminiModels() []GeminiModelInfo {
 			SupportsCaching: true, // Has version suffix
 		},
 	}
-}
-
-// DetermineIfModelSupportsCaching checks if a model ID supports caching based on its suffix
-func DetermineIfModelSupportsCaching(modelID string) bool {
-	// Only models with specific version suffixes (-001, -002, etc.) support caching
-	return strings.HasSuffix(modelID, "-001") || 
-	       strings.HasSuffix(modelID, "-002") || 
-	       strings.HasSuffix(modelID, "-003")
 }
