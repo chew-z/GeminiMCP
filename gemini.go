@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -77,6 +80,21 @@ func (s *GeminiServer) ListTools(ctx context.Context) (*protocol.ListToolsRespon
 					"systemPrompt": {
 						"type": "string",
 						"description": "Optional: Custom system prompt to use for this request (overrides default configuration)"
+					},
+					"file_paths": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "Optional: Paths to files to include in the request context"
+					},
+					"use_cache": {
+						"type": "boolean",
+						"description": "Optional: Whether to try using a cache for this request (only works with compatible models)"
+					},
+					"cache_ttl": {
+						"type": "string",
+						"description": "Optional: TTL for cache if created (e.g., '10m', '1h'). Default is 10 minutes"
 					}
 				},
 				"required": ["query"]
@@ -91,94 +109,6 @@ func (s *GeminiServer) ListTools(ctx context.Context) (*protocol.ListToolsRespon
 				"required": []
 			}`),
 		},
-		{
-			Name:        "gemini_upload_file",
-			Description: "Upload a file to Gemini for processing",
-			InputSchema: json.RawMessage(`{
-				"type": "object",
-				"properties": {
-					"filename": {"type": "string", "description": "Name of the file"},
-					"mime_type": {"type": "string", "description": "MIME type of the file"},
-					"content": {"type": "string", "description": "Base64-encoded file content"},
-					"display_name": {"type": "string", "description": "Optional human-readable name for the file"}
-				},
-				"required": ["filename", "mime_type", "content"]
-			}`),
-		},
-		{
-			Name:        "gemini_list_files",
-			Description: "List all uploaded files",
-			InputSchema: json.RawMessage(`{
-				"type": "object",
-				"properties": {},
-				"required": []
-			}`),
-		},
-		{
-			Name:        "gemini_delete_file",
-			Description: "Delete an uploaded file",
-			InputSchema: json.RawMessage(`{
-				"type": "object",
-				"properties": {
-					"file_id": {"type": "string", "description": "ID of the file to delete"}
-				},
-				"required": ["file_id"]
-			}`),
-		},
-	}
-
-	// Add cache tools if caching is enabled
-	if s.config.EnableCaching {
-		tools = append(tools, []protocol.Tool{
-			{
-				Name:        "gemini_create_cache",
-				Description: "Create a cached context for repeated queries",
-				InputSchema: json.RawMessage(`{
-					"type": "object",
-					"properties": {
-						"model": {"type": "string", "description": "Gemini model to use"},
-						"system_prompt": {"type": "string", "description": "Optional system prompt for the context"},
-						"file_ids": {"type": "array", "items": {"type": "string"}, "description": "Optional IDs of files to include in the context"},
-						"content": {"type": "string", "description": "Optional text content to include in the context"},
-						"ttl": {"type": "string", "description": "Optional time-to-live for the cache (e.g. '1h', '24h')"},
-						"display_name": {"type": "string", "description": "Optional human-readable name for the cache"}
-					},
-					"required": ["model"]
-				}`),
-			},
-			{
-				Name:        "gemini_query_with_cache",
-				Description: "Query Gemini using a cached context",
-				InputSchema: json.RawMessage(`{
-					"type": "object",
-					"properties": {
-						"cache_id": {"type": "string", "description": "ID of the cache to use"},
-						"query": {"type": "string", "description": "Query to send to Gemini"}
-					},
-					"required": ["cache_id", "query"]
-				}`),
-			},
-			{
-				Name:        "gemini_list_caches",
-				Description: "List all cached contexts",
-				InputSchema: json.RawMessage(`{
-					"type": "object",
-					"properties": {},
-					"required": []
-				}`),
-			},
-			{
-				Name:        "gemini_delete_cache",
-				Description: "Delete a cached context",
-				InputSchema: json.RawMessage(`{
-					"type": "object",
-					"properties": {
-						"cache_id": {"type": "string", "description": "ID of the cache to delete"}
-					},
-					"required": ["cache_id"]
-				}`),
-			},
-		}...)
 	}
 
 	return &protocol.ListToolsResponse{
@@ -213,26 +143,11 @@ func createErrorResponse(message string) *protocol.CallToolResponse {
 
 // CallTool implements the ToolHandler interface for GeminiServer
 func (s *GeminiServer) CallTool(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
-	// No need to get logger here as it's not used in this method
 	switch req.Name {
 	case "gemini_ask":
 		return s.handleAskGemini(ctx, req)
 	case "gemini_models":
 		return s.handleGeminiModels(ctx)
-	case "gemini_upload_file":
-		return s.handleUploadFile(ctx, req)
-	case "gemini_list_files":
-		return s.handleListFiles(ctx)
-	case "gemini_delete_file":
-		return s.handleDeleteFile(ctx, req)
-	case "gemini_create_cache":
-		return s.handleCreateCache(ctx, req)
-	case "gemini_query_with_cache":
-		return s.handleQueryWithCache(ctx, req)
-	case "gemini_list_caches":
-		return s.handleListCaches(ctx)
-	case "gemini_delete_cache":
-		return s.handleDeleteCache(ctx, req)
 	default:
 		return createErrorResponse(fmt.Sprintf("unknown tool: %s", req.Name)), nil
 	}
@@ -267,7 +182,107 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 		systemPrompt = customPrompt
 	}
 
-	// Create Gemini model with configuration
+	// Extract file paths if provided
+	var filePaths []string
+	if filePathsRaw, ok := req.Arguments["file_paths"].([]interface{}); ok {
+		for _, pathRaw := range filePathsRaw {
+			if path, ok := pathRaw.(string); ok {
+				filePaths = append(filePaths, path)
+			}
+		}
+	}
+
+	// Check if caching is requested
+	useCache := false
+	if useCacheRaw, ok := req.Arguments["use_cache"].(bool); ok {
+		useCache = useCacheRaw
+	}
+
+	// Extract cache TTL if provided
+	cacheTTL := ""
+	if ttl, ok := req.Arguments["cache_ttl"].(string); ok {
+		cacheTTL = ttl
+	}
+
+	// If caching is requested and the model supports it, use caching
+	var cacheID string
+	var cacheErr error
+	if useCache && s.config.EnableCaching {
+		// Check if model supports caching
+		model := GetModelByID(modelName)
+		if model != nil && model.SupportsCaching {
+			// Create a cache context from file paths
+			var fileIDs []string
+			
+			// Upload files if provided
+			for _, filePath := range filePaths {
+				// Read the file
+				content, err := os.ReadFile(filePath)
+				if err != nil {
+					logger.Error("Failed to read file %s: %v", filePath, err)
+					continue
+				}
+				
+				// Get mime type from file path
+				mimeType := getMimeTypeFromPath(filePath)
+				
+				// Get filename from path
+				fileName := filepath.Base(filePath)
+				
+				// Create upload request
+				uploadReq := &FileUploadRequest{
+					FileName:    fileName,
+					MimeType:    mimeType,
+					Content:     content,
+					DisplayName: fileName,
+				}
+				
+				// Upload the file
+				fileInfo, err := s.fileStore.UploadFile(ctx, uploadReq)
+				if err != nil {
+					logger.Error("Failed to upload file %s: %v", filePath, err)
+					continue
+				}
+				
+				// Add file ID to the list
+				fileIDs = append(fileIDs, fileInfo.ID)
+			}
+			
+			// Create cache request
+			cacheReq := &CacheRequest{
+				Model:        modelName,
+				SystemPrompt: systemPrompt,
+				FileIDs:      fileIDs,
+				TTL:          cacheTTL,
+			}
+			
+			// Create the cache
+			cacheInfo, err := s.cacheStore.CreateCache(ctx, cacheReq)
+			if err != nil {
+				// Log the error but continue without caching
+				logger.Warn("Failed to create cache, falling back to regular request: %v", err)
+				cacheErr = err
+			} else {
+				cacheID = cacheInfo.ID
+				logger.Info("Created cache with ID: %s", cacheID)
+			}
+		} else {
+			// Model doesn't support caching, log warning and continue
+			logger.Warn("Model %s does not support caching, falling back to regular request", modelName)
+		}
+	}
+
+	// If we successfully created a cache, use it
+	if cacheID != "" {
+		return s.handleQueryWithCache(ctx, &protocol.CallToolRequest{
+			Arguments: map[string]interface{}{
+				"cache_id": cacheID,
+				"query":    query,
+			},
+		})
+	}
+
+	// If caching failed or wasn't requested, use regular API
 	model := s.client.GenerativeModel(modelName)
 	model.SystemInstruction = genai.NewUserContent(genai.Text(systemPrompt))
 
@@ -275,14 +290,69 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 	model.SetTemperature(float32(s.config.GeminiTemperature))
 	logger.Debug("Using temperature: %v for model %s", s.config.GeminiTemperature, modelName)
 
-	// Send request to Gemini API
-	response, err := s.executeGeminiRequest(ctx, model, query)
-	if err != nil {
-		logger.Error("Gemini API error: %v", err)
-		return createErrorResponse(fmt.Sprintf("error from Gemini API: %v", err)), nil
+	// Add file contents if provided
+	if len(filePaths) > 0 {
+		parts := []genai.Part{}
+		
+		// Add the query as text
+		parts = append(parts, genai.Text(query))
+		
+		// Add each file
+		for _, filePath := range filePaths {
+			// Read the file
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				logger.Error("Failed to read file %s: %v", filePath, err)
+				continue
+			}
+			
+			// Get mime type from file path
+			mimeType := getMimeTypeFromPath(filePath)
+			
+			// Get filename from path
+			fileName := filepath.Base(filePath)
+			
+			// Upload to Gemini
+			logger.Info("Uploading file %s with mime type %s", fileName, mimeType)
+			file, err := s.client.UploadFile(ctx, fileName, bytes.NewReader(content), &genai.UploadFileOptions{
+				MIMEType: mimeType,
+			})
+			
+			if err != nil {
+				logger.Error("Failed to upload file %s: %v", filePath, err)
+				continue
+			}
+			
+			// Add file to parts
+			parts = append(parts, genai.FileData{URI: file.URI})
+		}
+		
+		// Generate content with multiple parts
+		response, err := model.GenerateContent(ctx, parts...)
+		if err != nil {
+			logger.Error("Gemini API error: %v", err)
+			if cacheErr != nil {
+				// Include cache error in response if it exists
+				return createErrorResponse(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
+			}
+			return createErrorResponse(fmt.Sprintf("Error from Gemini API: %v", err)), nil
+		}
+		
+		return s.formatResponse(response), nil
+	} else {
+		// No files, just send the query as text
+		response, err := model.GenerateContent(ctx, genai.Text(query))
+		if err != nil {
+			logger.Error("Gemini API error: %v", err)
+			if cacheErr != nil {
+				// Include cache error in response if it exists
+				return createErrorResponse(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
+			}
+			return createErrorResponse(fmt.Sprintf("Error from Gemini API: %v", err)), nil
+		}
+		
+		return s.formatResponse(response), nil
 	}
-
-	return s.formatResponse(response), nil
 }
 
 // handleGeminiModels handles requests to the gemini_models tool
@@ -320,7 +390,13 @@ func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallTo
 			return createErrorResponse("Error generating model list"), nil
 		}
 
-		if err := writeStringf("- Description: %s\n\n", model.Description); err != nil {
+		if err := writeStringf("- Description: %s\n", model.Description); err != nil {
+			logger.Error("Error writing to response: %v", err)
+			return createErrorResponse("Error generating model list"), nil
+		}
+		
+		// Add caching support info
+		if err := writeStringf("- Supports Caching: %v\n\n", model.SupportsCaching); err != nil {
 			logger.Error("Error writing to response: %v", err)
 			return createErrorResponse("Error generating model list"), nil
 		}
@@ -332,12 +408,28 @@ func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallTo
 		return createErrorResponse("Error generating model list"), nil
 	}
 
-	if err := writeStringf("You can specify a model ID in the `model` parameter when using the `ask_gemini` tool:\n"); err != nil {
+	if err := writeStringf("You can specify a model ID in the `model` parameter when using the `gemini_ask` tool:\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResponse("Error generating model list"), nil
 	}
 
-	if err := writeStringf("```json\n{\n  \"query\": \"Your question here\",\n  \"model\": \"gemini-2.5-pro-exp-03-25\"\n}\n```\n"); err != nil {
+	if err := writeStringf("```json\n{\n  \"query\": \"Your question here\",\n  \"model\": \"gemini-1.5-pro-001\",\n  \"use_cache\": true\n}\n```\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+	
+	// Add info about caching
+	if err := writeStringf("\n## Caching\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+	
+	if err := writeStringf("Only models with version suffixes (e.g., ending with `-001`) support caching.\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+	
+	if err := writeStringf("When using a cacheable model, you can enable caching with the `use_cache` parameter. This will create a temporary cache that automatically expires after 10 minutes by default. You can specify a custom TTL with the `cache_ttl` parameter.\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResponse("Error generating model list"), nil
 	}
@@ -352,7 +444,7 @@ func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallTo
 	}, nil
 }
 
-// handleUploadFile handles requests to the upload_file tool
+// handleUploadFile is kept for backward compatibility
 func (s *GeminiServer) handleUploadFile(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Handling file upload request")
@@ -410,9 +502,10 @@ func (s *GeminiServer) handleUploadFile(ctx context.Context, req *protocol.CallT
 	}, nil
 }
 
+// handleListFiles is kept for backward compatibility
 func (s *GeminiServer) handleListFiles(ctx context.Context) (*protocol.CallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling list files request")
+	logger.Info("This API is deprecated. Use file_paths in gemini_ask instead.")
 
 	// Get files
 	files, err := s.fileStore.ListFiles(ctx)
@@ -424,6 +517,7 @@ func (s *GeminiServer) handleListFiles(ctx context.Context) (*protocol.CallToolR
 	// Format the response
 	var sb strings.Builder
 	sb.WriteString("# Uploaded Files\n\n")
+	sb.WriteString("**Note:** The file upload API is deprecated. Use `file_paths` parameter in `gemini_ask` instead.\n\n")
 
 	if len(files) == 0 {
 		sb.WriteString("No files found.")
@@ -457,9 +551,10 @@ func (s *GeminiServer) handleListFiles(ctx context.Context) (*protocol.CallToolR
 	}, nil
 }
 
+// handleDeleteFile is kept for backward compatibility
 func (s *GeminiServer) handleDeleteFile(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling delete file request")
+	logger.Info("This API is deprecated. Files are now managed automatically.")
 
 	// Extract and validate required parameters
 	fileID, ok := req.Arguments["file_id"].(string)
@@ -478,113 +573,21 @@ func (s *GeminiServer) handleDeleteFile(ctx context.Context, req *protocol.CallT
 		Content: []protocol.ToolContent{
 			{
 				Type: "text",
-				Text: fmt.Sprintf("File with ID `%s` was successfully deleted.", fileID),
+				Text: fmt.Sprintf("File with ID `%s` was successfully deleted.\n\nNote: This API is deprecated. Files are now managed automatically with the `file_paths` parameter in `gemini_ask`.", fileID),
 			},
 		},
 	}, nil
 }
 
+// handleCreateCache is kept for backward compatibility
 func (s *GeminiServer) handleCreateCache(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling create cache request")
+	logger.Info("This API is deprecated. Use gemini_ask with use_cache=true instead.")
 
-	// Check if caching is enabled
-	if !s.config.EnableCaching {
-		return createErrorResponse("caching is disabled"), nil
-	}
-
-	// Extract and validate required parameters
-	model, ok := req.Arguments["model"].(string)
-	if !ok || model == "" {
-		return createErrorResponse("model must be a non-empty string"), nil
-	}
-
-	// Extract optional parameters
-	systemPrompt, _ := req.Arguments["system_prompt"].(string)
-	contentBase64, _ := req.Arguments["content"].(string)
-	ttl, _ := req.Arguments["ttl"].(string)
-	displayName, _ := req.Arguments["display_name"].(string)
-
-	// Decode base64 content if provided
-	var content []byte
-	var err error
-	if contentBase64 != "" {
-		content, err = base64.StdEncoding.DecodeString(contentBase64)
-		if err != nil {
-			logger.Error("Failed to decode base64 content: %v", err)
-			return createErrorResponse("invalid base64 encoding for content"), nil
-		}
-	}
-
-	// Extract file IDs if provided
-	var fileIDs []string
-	if fileIDsRaw, ok := req.Arguments["file_ids"]; ok {
-		if fileIDsList, ok := fileIDsRaw.([]interface{}); ok {
-			for _, fileIDRaw := range fileIDsList {
-				if fileID, ok := fileIDRaw.(string); ok {
-					fileIDs = append(fileIDs, fileID)
-				}
-			}
-		}
-	}
-
-	// Validate that either content or file IDs are provided
-	if len(content) == 0 && len(fileIDs) == 0 {
-		return createErrorResponse("either content or file_ids must be provided"), nil
-	}
-
-	// Create cache request
-	cacheReq := &CacheRequest{
-		Model:        model,
-		SystemPrompt: systemPrompt,
-		FileIDs:      fileIDs,
-		Content:      string(content), // Convert []byte to string
-		TTL:          ttl,
-		DisplayName:  displayName,
-	}
-
-	// Create the cache
-	cacheInfo, err := s.cacheStore.CreateCache(ctx, cacheReq)
-	if err != nil {
-		logger.Error("Failed to create cache: %v", err)
-		return createErrorResponse(fmt.Sprintf("failed to create cache: %v", err)), nil
-	}
-
-	// Format the response
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Cache created successfully:\n\n"))
-	sb.WriteString(fmt.Sprintf("- Cache ID: `%s`\n", cacheInfo.ID))
-
-	if cacheInfo.DisplayName != "" {
-		sb.WriteString(fmt.Sprintf("- Name: %s\n", cacheInfo.DisplayName))
-	}
-
-	sb.WriteString(fmt.Sprintf("- Model: %s\n", cacheInfo.Model))
-	sb.WriteString(fmt.Sprintf("- Created: %s\n", cacheInfo.CreatedAt.Format(time.RFC3339)))
-
-	if !cacheInfo.ExpiresAt.IsZero() {
-		sb.WriteString(fmt.Sprintf("- Expires: %s\n", cacheInfo.ExpiresAt.Format(time.RFC3339)))
-	}
-
-	if len(fileIDs) > 0 {
-		sb.WriteString("\nIncluded files:\n")
-		for _, fileID := range fileIDs {
-			sb.WriteString(fmt.Sprintf("- `%s`\n", fileID))
-		}
-	}
-
-	sb.WriteString("\nUse this Cache ID with the `query_with_cache` tool to perform queries using this cached context.")
-
-	return &protocol.CallToolResponse{
-		Content: []protocol.ToolContent{
-			{
-				Type: "text",
-				Text: sb.String(),
-			},
-		},
-	}, nil
+	return createErrorResponse("This API is deprecated. Use the `gemini_ask` tool with `use_cache: true` and `file_paths` parameters instead."), nil
 }
 
+// handleQueryWithCache handles internal requests to query with a cached context
 func (s *GeminiServer) handleQueryWithCache(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Handling query with cache request")
@@ -634,93 +637,20 @@ func (s *GeminiServer) handleQueryWithCache(ctx context.Context, req *protocol.C
 	return s.formatResponse(response), nil
 }
 
+// handleListCaches is kept for backward compatibility
 func (s *GeminiServer) handleListCaches(ctx context.Context) (*protocol.CallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling list caches request")
+	logger.Info("This API is deprecated. Caches are now managed automatically.")
 
-	// Check if caching is enabled
-	if !s.config.EnableCaching {
-		return createErrorResponse("caching is disabled"), nil
-	}
-
-	// Get caches
-	caches, err := s.cacheStore.ListCaches(ctx)
-	if err != nil {
-		logger.Error("Failed to list caches: %v", err)
-		return createErrorResponse(fmt.Sprintf("failed to list caches: %v", err)), nil
-	}
-
-	// Format the response
-	var sb strings.Builder
-	sb.WriteString("# Cached Contexts\n\n")
-
-	if len(caches) == 0 {
-		sb.WriteString("No cached contexts found.")
-	} else {
-		sb.WriteString("| ID | Name | Model | Created | Expires |\n")
-		sb.WriteString("|-----|------|-------|---------|----------|\n")
-
-		for _, cache := range caches {
-			displayName := cache.DisplayName
-			if displayName == "" {
-				displayName = cache.ID
-			}
-
-			expires := "Never"
-			if !cache.ExpiresAt.IsZero() {
-				expires = cache.ExpiresAt.Format(time.RFC3339)
-			}
-
-			sb.WriteString(fmt.Sprintf("| `%s` | %s | %s | %s | %s |\n",
-				cache.ID,
-				displayName,
-				cache.Model,
-				cache.CreatedAt.Format(time.RFC3339),
-				expires,
-			))
-		}
-	}
-
-	return &protocol.CallToolResponse{
-		Content: []protocol.ToolContent{
-			{
-				Type: "text",
-				Text: sb.String(),
-			},
-		},
-	}, nil
+	return createErrorResponse("This API is deprecated. Caches are now managed automatically with the `gemini_ask` tool with `use_cache: true` parameter."), nil
 }
 
+// handleDeleteCache is kept for backward compatibility
 func (s *GeminiServer) handleDeleteCache(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling delete cache request")
+	logger.Info("This API is deprecated. Caches are now managed automatically.")
 
-	// Check if caching is enabled
-	if !s.config.EnableCaching {
-		return createErrorResponse("caching is disabled"), nil
-	}
-
-	// Extract and validate required parameters
-	cacheID, ok := req.Arguments["cache_id"].(string)
-	if !ok || cacheID == "" {
-		return createErrorResponse("cache_id must be a non-empty string"), nil
-	}
-
-	// Delete the cache
-	if err := s.cacheStore.DeleteCache(ctx, cacheID); err != nil {
-		logger.Error("Failed to delete cache: %v", err)
-		return createErrorResponse(fmt.Sprintf("failed to delete cache: %v", err)), nil
-	}
-
-	// Format the response
-	return &protocol.CallToolResponse{
-		Content: []protocol.ToolContent{
-			{
-				Type: "text",
-				Text: fmt.Sprintf("Cache with ID `%s` was successfully deleted.", cacheID),
-			},
-		},
-	}, nil
+	return createErrorResponse("This API is deprecated. Caches are now managed automatically with the `gemini_ask` tool with `use_cache: true` parameter."), nil
 }
 
 // executeGeminiRequest makes the request to the Gemini API with retry capability
@@ -801,5 +731,67 @@ func (s *GeminiServer) formatResponse(resp *genai.GenerateContentResponse) *prot
 				Text: content,
 			},
 		},
+	}
+}
+
+// Helper function to get MIME type from file path
+func getMimeTypeFromPath(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	
+	switch ext {
+	case ".txt":
+		return "text/plain"
+	case ".html", ".htm":
+		return "text/html"
+	case ".css":
+		return "text/css"
+	case ".js":
+		return "application/javascript"
+	case ".json":
+		return "application/json"
+	case ".xml":
+		return "application/xml"
+	case ".pdf":
+		return "application/pdf"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".svg":
+		return "image/svg+xml"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".mp4":
+		return "video/mp4"
+	case ".wav":
+		return "audio/wav"
+	case ".doc", ".docx":
+		return "application/msword"
+	case ".xls", ".xlsx":
+		return "application/vnd.ms-excel"
+	case ".ppt", ".pptx":
+		return "application/vnd.ms-powerpoint"
+	case ".zip":
+		return "application/zip"
+	case ".csv":
+		return "text/csv"
+	case ".go":
+		return "text/plain"
+	case ".py":
+		return "text/plain"
+	case ".java":
+		return "text/plain"
+	case ".c", ".cpp", ".h", ".hpp":
+		return "text/plain"
+	case ".rb":
+		return "text/plain"
+	case ".php":
+		return "text/plain"
+	case ".md":
+		return "text/markdown"
+	default:
+		return "application/octet-stream"
 	}
 }
