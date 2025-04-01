@@ -1,6 +1,6 @@
 # Gemini MCP Server
 
-A production-grade MCP server integrating with Google's Gemini API, featuring advanced code review capabilities, file management, and cached context handling.
+A production-grade MCP server integrating with Google's Gemini API, featuring advanced code review capabilities, efficient file management, and sophisticated cached context handling.
 
 ## Features
 
@@ -11,6 +11,7 @@ A production-grade MCP server integrating with Google's Gemini API, featuring ad
 - **Advanced Error Handling**: Graceful degradation with structured error logging
 - **Improved Retry Logic**: Automatic retries with configurable exponential backoff for API calls
 - **Security**: Configurable file type restrictions and size limits
+- **Performance Monitoring**: Built-in metrics collection for request latency and throughput
 
 ## Prerequisites
 
@@ -198,3 +199,13 @@ go test -v
 ## License
 
 [MIT License](LICENSE)
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the project
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
