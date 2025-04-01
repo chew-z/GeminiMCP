@@ -59,11 +59,11 @@ func main() {
 		logger.Info("Overriding Gemini temperature with flag value: %v", *geminiTemperatureFlag)
 		config.GeminiTemperature = *geminiTemperatureFlag
 	}
-	
+
 	// Override enable caching if flag is provided
 	config.EnableCaching = *enableCachingFlag
 	logger.Info("Caching feature is %s", getCachingStatusStr(config.EnableCaching))
-	
+
 	// Store config in context for error handler to access
 	ctx = context.WithValue(ctx, configKey, config)
 
@@ -119,17 +119,17 @@ func setupGeminiServer(ctx context.Context, registry *handler.HandlerRegistry, c
 	// Register the wrapped server
 	registry.RegisterToolHandler(handlerWithLogger)
 	logger.Info("Registered Gemini server in normal mode with model: %s", config.GeminiModel)
-	
+
 	// Log file handling configuration
-	logger.Info("File handling: max size %s, allowed types: %v", 
-		humanReadableSize(config.MaxFileSize), 
+	logger.Info("File handling: max size %s, allowed types: %v",
+		humanReadableSize(config.MaxFileSize),
 		config.AllowedFileTypes)
-	
+
 	// Log cache configuration if enabled
 	if config.EnableCaching {
 		logger.Info("Cache settings: default TTL %v", config.DefaultCacheTTL)
 	}
-	
+
 	// Log a truncated version of the system prompt for security/brevity
 	promptPreview := config.GeminiSystemPrompt
 	if len(promptPreview) > 50 {

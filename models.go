@@ -29,13 +29,13 @@ func ValidateModelID(modelID string) error {
 	if GetModelByID(modelID) != nil {
 		return nil
 	}
-	
+
 	// Model not found, return error with available models
 	errMsg := fmt.Sprintf("Invalid model ID: %s. Available models are:", modelID)
 	for _, model := range GetAvailableGeminiModels() {
 		errMsg += fmt.Sprintf("\n- %s: %s", model.ID, model.Name)
 	}
-	
+
 	return fmt.Errorf(errMsg)
 }
 

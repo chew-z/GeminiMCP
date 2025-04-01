@@ -23,7 +23,7 @@ Think deeply  before writing the code review. Review every part, and don't hallu
 `
 	// File handling defaults
 	defaultMaxFileSize = int64(10 * 1024 * 1024) // 10MB explicitly as int64
-	
+
 	// Cache settings defaults
 	defaultEnableCaching   = true
 	defaultDefaultCacheTTL = 1 * time.Hour
@@ -48,7 +48,7 @@ type Config struct {
 	// File handling settings
 	MaxFileSize      int64    // Max file size in bytes
 	AllowedFileTypes []string // Allowed MIME types
-	
+
 	// Cache settings
 	EnableCaching   bool          // Enable/disable caching
 	DefaultCacheTTL time.Duration // Default TTL if not specified
@@ -65,7 +65,7 @@ func NewConfig() (*Config, error) {
 	if geminiAPIKey == "" {
 		return nil, errors.New("GEMINI_API_KEY environment variable is required")
 	}
-	
+
 	// Get Gemini model - optional with default
 	geminiModel := os.Getenv("GEMINI_MODEL")
 	if geminiModel == "" {
@@ -138,7 +138,7 @@ func NewConfig() (*Config, error) {
 			maxFileSize = size
 		}
 	}
-	
+
 	allowedFileTypes := []string{
 		"text/x-go", "text/x-python", "text/javascript", "text/typescript",
 		"text/x-java", "text/x-c", "text/x-c++", "text/markdown", "text/html",
@@ -147,13 +147,13 @@ func NewConfig() (*Config, error) {
 	if typesStr := os.Getenv("GEMINI_ALLOWED_FILE_TYPES"); typesStr != "" {
 		allowedFileTypes = strings.Split(typesStr, ",")
 	}
-	
+
 	// Cache settings
 	enableCaching := defaultEnableCaching
 	if cacheStr := os.Getenv("GEMINI_ENABLE_CACHING"); cacheStr != "" {
 		enableCaching = strings.ToLower(cacheStr) == "true"
 	}
-	
+
 	defaultCacheTTL := defaultDefaultCacheTTL
 	if ttlStr := os.Getenv("GEMINI_DEFAULT_CACHE_TTL"); ttlStr != "" {
 		if ttl, err := time.ParseDuration(ttlStr); err == nil && ttl > 0 {
