@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gomcpgo/mcp/pkg/protocol"
 	"github.com/google/generative-ai-go/genai"
@@ -212,7 +211,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 		if model != nil && model.SupportsCaching {
 			// Create a cache context from file paths
 			var fileIDs []string
-			
+
 			// Upload files if provided
 			for _, filePath := range filePaths {
 				// Read the file
@@ -221,13 +220,13 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 					logger.Error("Failed to read file %s: %v", filePath, err)
 					continue
 				}
-				
+
 				// Get mime type from file path
 				mimeType := getMimeTypeFromPath(filePath)
-				
+
 				// Get filename from path
 				fileName := filepath.Base(filePath)
-				
+
 				// Create upload request
 				uploadReq := &FileUploadRequest{
 					FileName:    fileName,
@@ -235,18 +234,18 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 					Content:     content,
 					DisplayName: fileName,
 				}
-				
+
 				// Upload the file
 				fileInfo, err := s.fileStore.UploadFile(ctx, uploadReq)
 				if err != nil {
 					logger.Error("Failed to upload file %s: %v", filePath, err)
 					continue
 				}
-				
+
 				// Add file ID to the list
 				fileIDs = append(fileIDs, fileInfo.ID)
 			}
-			
+
 			// Create cache request
 			cacheReq := &CacheRequest{
 				Model:        modelName,
@@ -254,7 +253,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 				FileIDs:      fileIDs,
 				TTL:          cacheTTL,
 			}
-			
+
 			// Create the cache
 			cacheInfo, err := s.cacheStore.CreateCache(ctx, cacheReq)
 			if err != nil {
@@ -292,10 +291,10 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 	// Add file contents if provided
 	if len(filePaths) > 0 {
 		parts := []genai.Part{}
-		
+
 		// Add the query as text
 		parts = append(parts, genai.Text(query))
-		
+
 		// Add each file
 		for _, filePath := range filePaths {
 			// Read the file
@@ -304,28 +303,28 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 				logger.Error("Failed to read file %s: %v", filePath, err)
 				continue
 			}
-			
+
 			// Get mime type from file path
 			mimeType := getMimeTypeFromPath(filePath)
-			
+
 			// Get filename from path
 			fileName := filepath.Base(filePath)
-			
+
 			// Upload to Gemini
 			logger.Info("Uploading file %s with mime type %s", fileName, mimeType)
 			file, err := s.client.UploadFile(ctx, fileName, bytes.NewReader(content), &genai.UploadFileOptions{
 				MIMEType: mimeType,
 			})
-			
+
 			if err != nil {
 				logger.Error("Failed to upload file %s: %v", filePath, err)
 				continue
 			}
-			
+
 			// Add file to parts
 			parts = append(parts, genai.FileData{URI: file.URI})
 		}
-		
+
 		// Generate content with multiple parts
 		response, err := model.GenerateContent(ctx, parts...)
 		if err != nil {
@@ -336,7 +335,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 			}
 			return createErrorResponse(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 		}
-		
+
 		return s.formatResponse(response), nil
 	} else {
 		// No files, just send the query as text
@@ -349,7 +348,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 			}
 			return createErrorResponse(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 		}
-		
+
 		return s.formatResponse(response), nil
 	}
 }
@@ -393,7 +392,7 @@ func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallTo
 			logger.Error("Error writing to response: %v", err)
 			return createErrorResponse("Error generating model list"), nil
 		}
-		
+
 		// Add caching support info
 		if err := writeStringf("- Supports Caching: %v\n\n", model.SupportsCaching); err != nil {
 			logger.Error("Error writing to response: %v", err)
@@ -416,18 +415,18 @@ func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallTo
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResponse("Error generating model list"), nil
 	}
-	
+
 	// Add info about caching
 	if err := writeStringf("\n## Caching\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResponse("Error generating model list"), nil
 	}
-	
+
 	if err := writeStringf("Only models with version suffixes (e.g., ending with `-001`) support caching.\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResponse("Error generating model list"), nil
 	}
-	
+
 	if err := writeStringf("When using a cacheable model, you can enable caching with the `use_cache` parameter. This will create a temporary cache that automatically expires after 10 minutes by default. You can specify a custom TTL with the `cache_ttl` parameter.\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResponse("Error generating model list"), nil
@@ -577,7 +576,7 @@ func (s *GeminiServer) formatResponse(resp *genai.GenerateContentResponse) *prot
 // Helper function to get MIME type from file path
 func getMimeTypeFromPath(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
-	
+
 	switch ext {
 	case ".txt":
 		return "text/plain"

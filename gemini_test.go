@@ -64,11 +64,14 @@ func TestGeminiServerListTools(t *testing.T) {
 	}
 
 	// Verify response
-	if len(resp.Tools) != 1 {
-		t.Errorf("expected 1 tool, got %d", len(resp.Tools))
+	if len(resp.Tools) != 2 {
+		t.Errorf("expected 2 tools, got %d", len(resp.Tools))
 	}
-	if resp.Tools[0].Name != "research" {
-		t.Errorf("expected tool name 'research', got '%s'", resp.Tools[0].Name)
+	if resp.Tools[0].Name != "gemini_ask" {
+		t.Errorf("expected tool name 'gemini_ask', got '%s'", resp.Tools[0].Name)
+	}
+	if resp.Tools[1].Name != "gemini_models" {
+		t.Errorf("expected tool name 'gemini_models', got '%s'", resp.Tools[1].Name)
 	}
 }
 
@@ -86,11 +89,14 @@ func TestErrorGeminiServerListTools(t *testing.T) {
 	}
 
 	// Verify response
-	if len(resp.Tools) != 1 {
-		t.Errorf("expected 1 tool, got %d", len(resp.Tools))
+	if len(resp.Tools) != 2 {
+		t.Errorf("expected 2 tools, got %d", len(resp.Tools))
 	}
-	if resp.Tools[0].Name != "research" {
-		t.Errorf("expected tool name 'research', got '%s'", resp.Tools[0].Name)
+	if resp.Tools[0].Name != "gemini_ask" {
+		t.Errorf("expected tool name 'gemini_ask', got '%s'", resp.Tools[0].Name)
+	}
+	if resp.Tools[1].Name != "gemini_models" {
+		t.Errorf("expected tool name 'gemini_models', got '%s'", resp.Tools[1].Name)
 	}
 }
 
@@ -104,7 +110,7 @@ func TestErrorGeminiServerCallTool(t *testing.T) {
 
 	// Test CallTool
 	req := &protocol.CallToolRequest{
-		Name: "research",
+		Name: "gemini_ask",
 		Arguments: map[string]interface{}{
 			"query": "test query",
 		},
@@ -219,7 +225,7 @@ func TestGeminiServerCallTool_InvalidArgument(t *testing.T) {
 
 	// Test with invalid argument
 	req := &protocol.CallToolRequest{
-		Name: "research",
+		Name: "gemini_ask",
 		Arguments: map[string]interface{}{
 			"query": 123, // Not a string
 		},

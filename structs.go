@@ -67,7 +67,7 @@ func (s *ErrorGeminiServer) ListTools(ctx context.Context) (*protocol.ListToolsR
 				"properties": {},
 				"required": []
 			}`),
-		}
+		},
 	}
 
 	return &protocol.ListToolsResponse{
