@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 )
 
 // GeminiModelInfo holds information about a Gemini model
@@ -31,12 +33,13 @@ func ValidateModelID(modelID string) error {
 	}
 
 	// Model not found, return error with available models
-	errMsg := fmt.Sprintf("Invalid model ID: %s. Available models are:", modelID)
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Invalid model ID: %s. Available models are:", modelID))
 	for _, model := range GetAvailableGeminiModels() {
-		errMsg += fmt.Sprintf("\n- %s: %s", model.ID, model.Name)
+		sb.WriteString(fmt.Sprintf("\n- %s: %s", model.ID, model.Name))
 	}
 
-	return fmt.Errorf(errMsg)
+	return errors.New(sb.String())
 }
 
 // GetAvailableGeminiModels returns a list of available Gemini models
