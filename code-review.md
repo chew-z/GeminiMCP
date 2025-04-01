@@ -3,34 +3,33 @@
 ## Overview
 This code review examines the GeminiMCP project, which appears to be a service that provides Google Gemini AI model access through a custom MCP (Model Control Protocol) interface. The application serves as a proxy/wrapper for Google's Gemini API, providing file handling capabilities, caching, and various configuration options.
 
-## Unused Functions and Deprecated Code
+## Recent Code Improvements
 
-### 1. Deprecated API Handlers in gemini.go
-Several functions in `gemini.go` appear to be maintained only for backward compatibility but are unused:
+### 1. Removal of Deprecated Functions
+The recent commit (fdfe38e) has successfully removed the deprecated API handlers from `gemini.go` that were previously maintained only for backward compatibility:
 
-- **Lines 719-748**: `handleUploadFile()` - Comment indicates "kept for backward compatibility"
-- **Lines 751-792**: `handleListFiles()` - Comment indicates "kept for backward compatibility"
-- **Lines 795-815**: `handleDeleteFile()` - Comment indicates "kept for backward compatibility" 
-- **Lines 818-824**: `handleCreateCache()` - Comment indicates "kept for backward compatibility"
-- **Lines 893-900**: `handleListCaches()` - Comment indicates "kept for backward compatibility"
-- **Lines 903-909**: `handleDeleteCache()` - Comment indicates "kept for backward compatibility"
+- `handleUploadFile()` - Removed
+- `handleListFiles()` - Removed
+- `handleDeleteFile()` - Removed
+- `handleCreateCache()` - Removed
+- `handleListCaches()` - Removed
+- `handleDeleteCache()` - Removed
 
-Recommendation: Since these functions are not called in the codebase and serve only as backwards compatibility placeholders, consider removing them in a future cleanup, or add a formal deprecation timeline with comments.
+This cleanup has improved code maintainability and reduced potential confusion for developers. The removal is an excellent step toward code quality improvement.
 
-### 2. Unused Function in models.go
-- **Lines 63-73**: `ValidateModelForCaching()` - This function is defined but never called in the codebase. The caching checks are handled directly in other functions.
+### 2. Unused Functions in models.go
+The recent changes have also removed several unused functions from `models.go`:
 
-Recommendation: Remove this function or ensure it's used consistently throughout the codebase.
+- `ValidateModelForCaching()` - This function was defined but never called in the codebase and has been removed.
+- `GetDefaultCacheTTL()` - This function that returned a fixed value but was never called has been removed.
+- `DetermineIfModelSupportsCaching()` - This function that checked if a model supports caching based on its suffix has been removed, with the `SupportsCaching` property being used consistently throughout the code instead.
 
-### 3. Unused Function in models.go
-- **Lines 76-79**: `GetDefaultCacheTTL()` - This function returns a fixed value but is never called. The default TTL is defined as a constant and used directly.
+### 3. Enhanced File Handling
+The codebase has been refactored to handle files more efficiently:
 
-Recommendation: Remove this function as it's not used anywhere.
-
-### 4. Inconsistent Helper Function in models.go
-- **Lines 137-142**: `DetermineIfModelSupportsCaching()` - This function checks if a model supports caching based on its suffix, but it's never called directly. Instead, the `SupportsCaching` property of model info objects is used throughout the code.
-
-Recommendation: Either remove this function or ensure it's used consistently for all caching support checks.
+- File handling is now integrated directly into the `gemini_ask` tool via the `file_paths` parameter, eliminating the need for separate API endpoints.
+- The `ExpiresAt` field in `FileInfo` is now non-optional, ensuring that expiration is always set, improving consistency.
+- Code formatting and whitespace have been improved throughout `files.go` for better readability.
 
 ## Test Coverage Issues
 
@@ -41,7 +40,7 @@ The test file contains several tests that no longer match the implementation:
 - **Lines 39-53**: `TestErrorGeminiServerListTools` - Also expects a "research" tool
 - **Lines 86-105**: `TestGeminiServerCallTool_InvalidArgument` - Tests for "research" tool which is not in the current implementation
 
-Recommendation: Update all test cases to match the current implementation with "gemini_ask" and other current tool names.
+Recommendation: Update all test cases to match the current implementation with "gemini_ask" and other current tool names. With the recent removal of deprecated APIs, it's even more important to ensure tests match the current API structure.
 
 ## Code Quality Issues
 
@@ -50,7 +49,6 @@ Recommendation: Update all test cases to match the current implementation with "
 
 Recommendation:
 ```go
-// Lines 475-485 in gemini.go
 // Consider adding a counter of failed uploads and notify the user
 failedUploads := 0
 // ...existing code...
@@ -97,15 +95,15 @@ func (l *StandardLogger) Debug(format string, args ...interface{}) {
 }
 ```
 
-### 5. Duplicate MIME Type Logic
-- **In `getMimeTypeFromPath()`**: This function in gemini.go duplicates logic that should be in the standard library or a dedicated package.
+### 5. MIME Type Improvements
+- **In `getMimeTypeFromPath()`**: A good improvement has been made by updating the MIME types for code files (like .go, .py, .java, .c) to use more specific MIME types (e.g., "text/x-go" instead of "text/plain"). This will help with proper handling of these file types. 
 
-Recommendation: Consider using a library like `github.com/gabriel-vasile/mimetype` for more reliable MIME type detection.
+Recommendation: Continue improving by considering a library like `github.com/gabriel-vasile/mimetype` for even more reliable MIME type detection.
 
 ## Security Concerns
 
 ### 1. File Type Validation
-- **In files.go**: The file upload validation checks allowed MIME types but doesn't validate the actual content of the files.
+- **In files.go**: The file upload validation checks allowed MIME types but doesn't validate the actual content of the files. Now with direct file handling through the `file_paths` parameter, ensuring proper file validation is even more critical.
 
 Recommendation: Consider adding additional validation such as file content scanning or more sophisticated content type detection.
 
@@ -139,13 +137,22 @@ The configuration management mixes environment variables and command-line argume
 
 Recommendation: Consider using a dedicated configuration library like `github.com/spf13/viper` to provide a more unified approach to configuration.
 
+### 3. Improved Caching Strategy
+The recent changes have integrated caching more directly into the main API (`gemini_ask`) using the `use_cache` and `cache_ttl` parameters, which is a significant architectural improvement. This simplifies the API surface and makes the caching behavior more intuitive.
+
 ## Conclusion
 
-The codebase is generally well-structured and follows Go conventions, but contains several unused functions and outdated tests that should be addressed. The most critical issues are:
+The codebase has undergone significant improvements with recent changes, particularly:
 
-1. Multiple deprecated handler functions that should be removed or clearly marked
-2. Inconsistent usage of helper functions that duplicate logic
-3. Outdated test cases that no longer match the implementation
-4. Missing error handling in certain file processing sections
+1. Removal of deprecated handler functions, enhancing clarity and maintainability
+2. Integration of file handling directly into the `gemini_ask` tool, simplifying the API
+3. Improved MIME type handling for code files
+4. Enhanced handling of caching functionality through the main API
 
-Addressing these issues will improve code maintainability, reduce technical debt, and increase reliability.
+The most important remaining issues are:
+
+1. Outdated test cases that no longer match the current implementation, especially after the removal of deprecated APIs
+2. Magic numbers and constants that could be better organized
+3. Opportunities for improved error handling in file processing
+
+The recent updates have made significant strides in addressing technical debt and improving overall code quality. Continued focus on addressing the remaining issues will further enhance the reliability and maintainability of the codebase.
