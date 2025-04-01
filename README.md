@@ -4,12 +4,12 @@ A production-grade MCP server integrating with Google's Gemini API, featuring ad
 
 ## Features
 
-- **Multi-Model Support**: Choose from various Gemini models optimized for different tasks
+- **Multi-Model Support**: Choose from various Gemini models including Gemini 2.5 Pro and Gemini 2.0 Flash variants
 - **Code Review Focus**: Built-in system prompt for detailed code analysis with markdown output
-- **File Management**: Upload/delete text/code files (Go, Python, JS, Java, C/C++, Markdown, etc.)
-- **Cached Contexts**: Create persistent contexts with files/text for repeated queries
-- **Advanced Error Handling**: Graceful degradation with error mode logging
-- **Retry Logic**: Automatic retries with exponential backoff for API calls
+- **File Management**: Robust handling for text/code files with automatic MIME type detection
+- **Enhanced Caching**: Create persistent contexts with user-defined TTL for repeated queries
+- **Advanced Error Handling**: Graceful degradation with structured error logging
+- **Improved Retry Logic**: Automatic retries with configurable exponential backoff for API calls
 - **Security**: Configurable file type restrictions and size limits
 
 ## Prerequisites
@@ -48,7 +48,11 @@ export GEMINI_MODEL=gemini-1.5-pro
 |----------|-------------|---------|
 | `GEMINI_TIMEOUT` | API timeout in seconds | `90` |
 | `GEMINI_MAX_RETRIES` | Max API retries | `2` |
+| `GEMINI_INITIAL_BACKOFF` | Initial backoff time (seconds) | `1` |
+| `GEMINI_MAX_BACKOFF` | Maximum backoff time (seconds) | `10` |
+| `GEMINI_TEMPERATURE` | Model temperature (0.0-1.0) | `0.4` |
 | `GEMINI_ENABLE_CACHING` | Enable context caching | `true` |
+| `GEMINI_DEFAULT_CACHE_TTL` | Default cache time-to-live | `1h` |
 
 Example `.env`:
 ```env
@@ -87,15 +91,30 @@ GEMINI_ALLOWED_FILE_TYPES=text/x-go,text/markdown
 ### Cached Contexts
 ```json
 {
-  "name": "gemini_create_cache",
+  "name": "gemini_ask",
   "arguments": {
-    "model": "gemini-1.5-pro",
-    "file_ids": ["file1", "file2"],
-    "content": "base64EncodedSupplementaryText",
-    "ttl": "24h"
+    "query": "Review this code considering the best practices we discussed earlier",
+    "model": "gemini-1.5-pro-001",
+    "use_cache": true,
+    "cache_ttl": "1h",
+    "file_paths": ["main.go", "config.go"]
   }
 }
 ```
+
+## Supported Models
+
+The following Gemini models are supported:
+
+| Model ID | Description | Caching Support |
+|----------|-------------|----------------|
+| `gemini-2.5-pro-exp-03-25` | State-of-the-art thinking model | No |
+| `gemini-2.0-flash-lite` | Optimized for speed and cost efficiency | No |
+| `gemini-2.0-flash-001` | Version with text-only output | Yes |
+| `gemini-1.5-pro` | Previous generation pro model | No |
+| `gemini-1.5-pro-001` | Stable version with version suffix | Yes |
+| `gemini-1.5-flash` | Optimized for efficiency and speed | No |
+| `gemini-1.5-flash-001` | Stable version with version suffix | Yes |
 
 ## Supported File Types
 | Extension | MIME Type | 
@@ -107,7 +126,7 @@ GEMINI_ALLOWED_FILE_TYPES=text/x-go,text/markdown
 | .java     | text/x-java |
 | .c/.h     | text/x-c |
 | .cpp/.hpp | text/x-c++ |
-| 25+ more  | (See `inferMIMEType` in files.go) |
+| 25+ more  | (See `getMimeTypeFromPath` in gemini.go) |
 
 ## Operational Notes
 
@@ -115,7 +134,24 @@ GEMINI_ALLOWED_FILE_TYPES=text/x-go,text/markdown
 - **Audit Logging**: All operations logged with timestamps and metadata
 - **Performance**: Typical response latency <2s for code reviews
 - **Security**: File content validated by MIME type and size before processing
-```
+
+## Caching Functionality
+
+The server now supports enhanced caching capabilities:
+
+- **Automatic Caching**: Simply set `use_cache: true` in the `gemini_ask` request
+- **TTL Control**: Specify cache expiration with the `cache_ttl` parameter (e.g., "10m", "2h")
+- **Model Support**: Only models with version suffixes (ending with `-001`) support caching
+- **Context Persistence**: Uploaded files are automatically stored and associated with the cache
+
+## Recent Changes
+
+- Added support for Gemini 2.5 Pro and Gemini 2.0 Flash models
+- Improved file handling with robust MIME type detection
+- Enhanced caching system with user-configurable TTL
+- Refactored retry logic with configurable backoff parameters
+- Improved error handling and logging throughout the codebase
+- Removed deprecated functions for a cleaner implementation
 
 ## Development
 
@@ -142,4 +178,3 @@ go test -v
 ## License
 
 [MIT License](LICENSE)
-# Gemini MCP
