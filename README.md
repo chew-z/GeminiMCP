@@ -6,7 +6,7 @@ A production-grade MCP server integrating with Google's Gemini API, featuring ad
 
 - **Multi-Model Support**: Choose from various Gemini models including Gemini 2.5 Pro and Gemini 2.0 Flash variants
 - **Code Review Focus**: Built-in system prompt for detailed code analysis with markdown output
-- **File Management**: Robust handling for text/code files with automatic MIME type detection
+- **Automatic File Handling**: Built-in file management with direct path integration
 - **Enhanced Caching**: Create persistent contexts with user-defined TTL for repeated queries
 - **Advanced Error Handling**: Graceful degradation with structured error logging
 - **Improved Retry Logic**: Automatic retries with configurable exponential backoff for API calls
@@ -64,41 +64,34 @@ GEMINI_ALLOWED_FILE_TYPES=text/x-go,text/markdown
 
 ## Core API Tools
 
-### Code Analysis & Query
+Currently, the server provides two main tools:
+
+### gemini_ask
+
+Used for code analysis, review, and general queries with optional file path inclusion and caching.
+
 ```json
 {
   "name": "gemini_ask",
   "arguments": {
     "query": "Review this Go code for concurrency issues...",
     "model": "gemini-2.5-pro-exp-03-25",
-    "systemPrompt": "Optional custom review instructions"
-  }
-}
-```
-
-### File Management
-```json
-{
-  "name": "gemini_upload_file",
-  "arguments": {
-    "filename": "review.go",
-    "content": "base64EncodedContent",
-    "display_name": "Core Application Code"
-  }
-}
-```
-
-### Cached Contexts
-```json
-{
-  "name": "gemini_ask",
-  "arguments": {
-    "query": "Review this code considering the best practices we discussed earlier",
-    "model": "gemini-1.5-pro-001",
+    "systemPrompt": "Optional custom review instructions",
+    "file_paths": ["main.go", "config.go"],
     "use_cache": true,
-    "cache_ttl": "1h",
-    "file_paths": ["main.go", "config.go"]
+    "cache_ttl": "1h"
   }
+}
+```
+
+### gemini_models
+
+Lists all available Gemini models with their capabilities and caching support.
+
+```json
+{
+  "name": "gemini_models",
+  "arguments": {}
 }
 ```
 
@@ -135,23 +128,50 @@ The following Gemini models are supported:
 - **Performance**: Typical response latency <2s for code reviews
 - **Security**: File content validated by MIME type and size before processing
 
+## File Handling
+
+The server now handles files directly through the `gemini_ask` tool:
+
+1. Specify local file paths in the `file_paths` array parameter
+2. The server automatically:
+   - Reads the files from the provided paths
+   - Determines the correct MIME type based on file extension
+   - Uploads the file content to the Gemini API
+   - Uses the files as context for the query
+
+This direct file handling approach eliminates the need for separate file upload/management endpoints.
+
 ## Caching Functionality
 
-The server now supports enhanced caching capabilities:
+The server supports enhanced caching capabilities:
 
 - **Automatic Caching**: Simply set `use_cache: true` in the `gemini_ask` request
 - **TTL Control**: Specify cache expiration with the `cache_ttl` parameter (e.g., "10m", "2h")
 - **Model Support**: Only models with version suffixes (ending with `-001`) support caching
 - **Context Persistence**: Uploaded files are automatically stored and associated with the cache
 
+Example with caching:
+```json
+{
+  "name": "gemini_ask",
+  "arguments": {
+    "query": "Review this code considering the best practices we discussed earlier",
+    "model": "gemini-1.5-pro-001",
+    "use_cache": true,
+    "cache_ttl": "1h",
+    "file_paths": ["main.go", "config.go"]
+  }
+}
+```
+
 ## Recent Changes
 
 - Added support for Gemini 2.5 Pro and Gemini 2.0 Flash models
-- Improved file handling with robust MIME type detection
+- Simplified the API by integrating file handling directly into the `gemini_ask` tool
 - Enhanced caching system with user-configurable TTL
 - Refactored retry logic with configurable backoff parameters
 - Improved error handling and logging throughout the codebase
-- Removed deprecated functions for a cleaner implementation
+- Removed deprecated functions and tools for a cleaner implementation
 
 ## Development
 
