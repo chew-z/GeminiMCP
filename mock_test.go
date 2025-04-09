@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"github.com/google/generative-ai-go/genai"
+	"google.golang.org/genai"
 )
 
 // newTestLogger creates a logger that writes to the provided buffer
@@ -19,10 +19,10 @@ func MockGeminiResponse(content string) *genai.GenerateContentResponse {
 		Candidates: []*genai.Candidate{
 			{
 				Content: &genai.Content{
-					Parts: []genai.Part{
-						genai.Text(content),
+					Parts: []*genai.Part{
+						{Text: content},
 					},
-					Role: "model",
+					Role: genai.RoleModel,
 				},
 			},
 		},

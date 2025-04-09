@@ -9,8 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/generative-ai-go/genai"
-	"google.golang.org/api/iterator"
+	"google.golang.org/genai"
 )
 
 // FileUploadRequest represents a request to upload a file
@@ -98,15 +97,16 @@ func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*F
 	}
 
 	// Create options with display name if provided
-	opts := &genai.UploadFileOptions{}
+	opts := &genai.UploadFileConfig{
+		MIMEType: req.MimeType,
+	}
 	if req.DisplayName != "" {
 		opts.DisplayName = req.DisplayName
 	}
-	opts.MIMEType = req.MimeType
 
 	// Upload file to Gemini API
 	logger.Info("Uploading file %s with MIME type %s", req.FileName, req.MimeType)
-	file, err := fs.client.UploadFile(ctx, req.FileName, bytes.NewReader(req.Content), opts)
+	file, err := fs.client.Files.Upload(ctx, bytes.NewReader(req.Content), opts)
 	if err != nil {
 		logger.Error("Failed to upload file: %v", err)
 		return nil, fmt.Errorf("failed to upload file: %w", err)
@@ -125,8 +125,13 @@ func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*F
 		URI:         file.URI,
 		DisplayName: file.DisplayName,
 		MimeType:    file.MIMEType,
-		Size:        file.SizeBytes,
+		Size:        0, // SizeBytes is now a pointer in the new API
 		UploadedAt:  file.CreateTime,
+	}
+	
+	// Set size if available
+	if file.SizeBytes != nil {
+		fileInfo.Size = *file.SizeBytes
 	}
 
 	// Set expiration if provided
@@ -164,7 +169,7 @@ func (fs *FileStore) GetFile(ctx context.Context, id string) (*FileInfo, error) 
 	}
 
 	logger.Info("Fetching file info for %s from API", name)
-	file, err := fs.client.GetFile(ctx, name)
+	file, err := fs.client.Files.Get(ctx, name, nil)
 	if err != nil {
 		logger.Error("Failed to get file from API: %v", err)
 		return nil, fmt.Errorf("failed to get file: %w", err)
@@ -183,8 +188,13 @@ func (fs *FileStore) GetFile(ctx context.Context, id string) (*FileInfo, error) 
 		URI:         file.URI,
 		DisplayName: file.DisplayName,
 		MimeType:    file.MIMEType,
-		Size:        file.SizeBytes,
+		Size:        0, // SizeBytes is now a pointer in the new API
 		UploadedAt:  file.CreateTime,
+	}
+	
+	// Set size if available
+	if file.SizeBytes != nil {
+		fileInfo.Size = *file.SizeBytes
 	}
 
 	// Set expiration if provided
@@ -213,7 +223,7 @@ func (fs *FileStore) DeleteFile(ctx context.Context, id string) error {
 
 	// Delete from API
 	logger.Info("Deleting file %s", fileInfo.Name)
-	if err := fs.client.DeleteFile(ctx, fileInfo.Name); err != nil {
+	if _, err := fs.client.Files.Delete(ctx, fileInfo.Name, &genai.DeleteFileConfig{}); err != nil {
 		logger.Error("Failed to delete file: %v", err)
 		return fmt.Errorf("failed to delete file: %w", err)
 	}
@@ -233,21 +243,17 @@ func (fs *FileStore) ListFiles(ctx context.Context) ([]*FileInfo, error) {
 	logger.Info("Listing all files")
 
 	// Get files from API
-	iter := fs.client.ListFiles(ctx)
+	page, err := fs.client.Files.List(ctx, nil)
+	if err != nil {
+		logger.Error("Failed to list files: %v", err)
+		return nil, fmt.Errorf("failed to list files: %w", err)
+	}
 
 	files := []*FileInfo{}
 	fileMap := make(map[string]*FileInfo)
 
-	// Iterate through all files
-	for {
-		file, err := iter.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			logger.Error("Failed to list files: %v", err)
-			return nil, fmt.Errorf("failed to list files: %w", err)
-		}
+	// Process all files in the page
+	for _, file := range page.Items {
 
 		// Extract ID from name
 		id := file.Name
@@ -262,8 +268,13 @@ func (fs *FileStore) ListFiles(ctx context.Context) ([]*FileInfo, error) {
 			URI:         file.URI,
 			DisplayName: file.DisplayName,
 			MimeType:    file.MIMEType,
-			Size:        file.SizeBytes,
+			Size:        0, // SizeBytes is now a pointer in the new API
 			UploadedAt:  file.CreateTime,
+		}
+		
+		// Set size if available
+		if file.SizeBytes != nil {
+			fileInfo.Size = *file.SizeBytes
 		}
 
 		// Set expiration if provided

@@ -41,6 +41,8 @@ export GEMINI_MODEL=gemini-1.5-pro
 |----------|-------------|---------|
 | `GEMINI_API_KEY` | Google Gemini API key | *Required* |
 | `GEMINI_MODEL` | Model ID from `models.go` | `gemini-1.5-pro` |
+| `GEMINI_SYSTEM_PROMPT` | System prompt for code review | *Custom review prompt* |
+| `GEMINI_SEARCH_SYSTEM_PROMPT` | System prompt for search queries | *Custom search prompt* |
 | `GEMINI_MAX_FILE_SIZE` | Max upload size (bytes) | `10485760` (10MB) |
 | `GEMINI_ALLOWED_FILE_TYPES` | Comma-separated MIME types | [Common text/code types] |
 
@@ -59,13 +61,15 @@ Example `.env`:
 ```env
 GEMINI_API_KEY=your_api_key
 GEMINI_MODEL=gemini-1.5-pro
+GEMINI_SYSTEM_PROMPT="Your custom code review prompt here"
+GEMINI_SEARCH_SYSTEM_PROMPT="Your custom search prompt here"
 GEMINI_MAX_FILE_SIZE=5242880  # 5MB
 GEMINI_ALLOWED_FILE_TYPES=text/x-go,text/markdown
 ```
 
 ## Core API Tools
 
-Currently, the server provides two main tools:
+Currently, the server provides three main tools:
 
 ### gemini_ask
 
@@ -81,6 +85,20 @@ Used for code analysis, review, and general queries with optional file path incl
     "file_paths": ["main.go", "config.go"],
     "use_cache": true,
     "cache_ttl": "1h"
+  }
+}
+```
+
+### gemini_search
+
+Uses Google Search integration with Gemini to provide grounded answers to questions. This tool uses the Gemini 2.0 Flash model specifically optimized for search-based queries.
+
+```json
+{
+  "name": "gemini_search",
+  "arguments": {
+    "query": "What is the current population of Warsaw, Poland?",
+    "systemPrompt": "Optional custom search instructions"
   }
 }
 ```
@@ -167,6 +185,7 @@ Example with caching:
 
 ## Recent Changes
 
+- Added `gemini_search` tool with Google Search integration
 - Added support for Gemini 2.5 Pro and Gemini 2.0 Flash models
 - Simplified the API by integrating file handling directly into the `gemini_ask` tool
 - Enhanced caching system with user-configurable TTL

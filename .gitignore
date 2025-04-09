@@ -6,3 +6,7 @@ go.sum
 run_*
 codemcp.toml
 Conventions.md
+ClaudeCode.md
+system_prompt.txt
+EDIT-FILE-GUIDE.md
+code-review.md

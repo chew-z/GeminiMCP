@@ -8,8 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/generative-ai-go/genai"
-	"google.golang.org/api/iterator"
+	"google.golang.org/genai"
 )
 
 // CacheRequest represents a request to create a cached context
@@ -83,25 +82,21 @@ func (cs *CacheStore) CreateCache(ctx context.Context, req *CacheRequest) (*Cach
 		}
 	}
 
-	// Create expiration
-	expiration := genai.ExpireTimeOrTTL{
+	// Create config with TTL
+	config := &genai.CreateCachedContentConfig{
 		TTL: ttl,
 	}
 
-	// Set up cached content
-	cachedContent := &genai.CachedContent{
-		Model:      req.Model,
-		Expiration: expiration,
+	// Set up display name if provided
+	if req.DisplayName != "" {
+		config.DisplayName = req.DisplayName
 	}
 
-	// Add display name if provided
-	if req.DisplayName != "" {
-		cachedContent.DisplayName = req.DisplayName
-	}
+	
 
 	// Set up system instruction if provided
 	if req.SystemPrompt != "" {
-		cachedContent.SystemInstruction = genai.NewUserContent(genai.Text(req.SystemPrompt))
+		config.SystemInstruction = genai.NewContentFromText(req.SystemPrompt, "")
 	}
 
 	// Build contents with files and text
@@ -118,26 +113,26 @@ func (cs *CacheStore) CreateCache(ctx context.Context, req *CacheRequest) (*Cach
 				return nil, fmt.Errorf("failed to get file with ID %s: %w", fileID, err)
 			}
 
-			// Add file to contents
-			logger.Debug("Adding file %s with URI %s to cache context", fileID, fileInfo.URI)
-			contents = append(contents, genai.NewUserContent(genai.FileData{URI: fileInfo.URI}))
+// Add file to contents
+				logger.Debug("Adding file %s with URI %s to cache context", fileID, fileInfo.URI)
+				contents = append(contents, genai.NewContentFromURI(fileInfo.URI, fileInfo.MimeType, genai.RoleUser))
 		}
 	}
 
 	// Add text content if provided
 	if req.Content != "" {
 		logger.Debug("Adding text content to cache context")
-		contents = append(contents, genai.NewUserContent(genai.Text(req.Content)))
+		contents = append(contents, genai.NewContentFromText(req.Content, genai.RoleUser))
 	}
 
-	// Set contents if we have any
+	// Add contents to config if we have any
 	if len(contents) > 0 {
-		cachedContent.Contents = contents
+		config.Contents = contents
 	}
 
 	// Create the cached content
 	logger.Info("Creating cached content with model %s", req.Model)
-	cc, err := cs.client.CreateCachedContent(ctx, cachedContent)
+	cc, err := cs.client.Caches.Create(ctx, req.Model, config)
 	if err != nil {
 		logger.Error("Failed to create cached content: %v", err)
 		return nil, fmt.Errorf("failed to create cached content: %w", err)
@@ -150,12 +145,7 @@ func (cs *CacheStore) CreateCache(ctx context.Context, req *CacheRequest) (*Cach
 	}
 
 	// Calculate expiration time
-	expiresAt := time.Time{}
-	if cc.Expiration.ExpireTime.IsZero() && cc.Expiration.TTL > 0 {
-		expiresAt = cc.CreateTime.Add(cc.Expiration.TTL)
-	} else if !cc.Expiration.ExpireTime.IsZero() {
-		expiresAt = cc.Expiration.ExpireTime
-	}
+	expiresAt := cc.ExpireTime
 
 	// Create cache info
 	cacheInfo := &CacheInfo{
@@ -198,7 +188,7 @@ func (cs *CacheStore) GetCache(ctx context.Context, id string) (*CacheInfo, erro
 	}
 
 	logger.Info("Fetching cache info for %s from API", name)
-	cc, err := cs.client.GetCachedContent(ctx, name)
+	cc, err := cs.client.Caches.Get(ctx, name, nil)
 	if err != nil {
 		logger.Error("Failed to get cached content: %v", err)
 		return nil, fmt.Errorf("failed to get cached content: %w", err)
@@ -210,13 +200,8 @@ func (cs *CacheStore) GetCache(ctx context.Context, id string) (*CacheInfo, erro
 		cacheID = strings.TrimPrefix(cc.Name, "cachedContents/")
 	}
 
-	// Calculate expiration time
-	expiresAt := time.Time{}
-	if cc.Expiration.ExpireTime.IsZero() && cc.Expiration.TTL > 0 {
-		expiresAt = cc.CreateTime.Add(cc.Expiration.TTL)
-	} else if !cc.Expiration.ExpireTime.IsZero() {
-		expiresAt = cc.Expiration.ExpireTime
-	}
+	// Get expiration time
+	expiresAt := cc.ExpireTime
 
 	// Create cache info
 	cacheInfo := &CacheInfo{
@@ -250,7 +235,7 @@ func (cs *CacheStore) DeleteCache(ctx context.Context, id string) error {
 
 	// Delete from API
 	logger.Info("Deleting cache %s", cacheInfo.Name)
-	if err := cs.client.DeleteCachedContent(ctx, cacheInfo.Name); err != nil {
+	if _, err := cs.client.Caches.Delete(ctx, cacheInfo.Name, nil); err != nil {
 		logger.Error("Failed to delete cached content: %v", err)
 		return fmt.Errorf("failed to delete cached content: %w", err)
 	}
@@ -270,35 +255,26 @@ func (cs *CacheStore) ListCaches(ctx context.Context) ([]*CacheInfo, error) {
 	logger.Info("Listing all cached contents")
 
 	// Get caches from API
-	iter := cs.client.ListCachedContents(ctx)
+	page, err := cs.client.Caches.List(ctx, nil)
+	if err != nil {
+		logger.Error("Failed to list cached contents: %v", err)
+		return nil, fmt.Errorf("failed to list cached contents: %w", err)
+	}
 
 	caches := []*CacheInfo{}
 	cacheMap := make(map[string]*CacheInfo)
 
-	// Iterate through all caches
-	for {
-		cc, err := iter.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			logger.Error("Failed to list cached contents: %v", err)
-			return nil, fmt.Errorf("failed to list cached contents: %w", err)
-		}
+	// Process the page
+	for _, cc := range page.Items {
 
-		// Extract ID from name
+// Extract ID from name
 		id := cc.Name
 		if strings.HasPrefix(cc.Name, "cachedContents/") {
 			id = strings.TrimPrefix(cc.Name, "cachedContents/")
 		}
 
-		// Calculate expiration time
-		expiresAt := time.Time{}
-		if cc.Expiration.ExpireTime.IsZero() && cc.Expiration.TTL > 0 {
-			expiresAt = cc.CreateTime.Add(cc.Expiration.TTL)
-		} else if !cc.Expiration.ExpireTime.IsZero() {
-			expiresAt = cc.Expiration.ExpireTime
-		}
+		// Get expiration time
+		expiresAt := cc.ExpireTime
 
 		// Create cache info
 		cacheInfo := &CacheInfo{

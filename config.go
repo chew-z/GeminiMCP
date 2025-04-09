@@ -21,6 +21,13 @@ Include line numbers, and contextual info.
 Your code review will be passed to another teammate, so be thorough.
 Think deeply  before writing the code review. Review every part, and don't hallucinate.
 `
+	// System prompt for search-based queries
+	defaultGeminiSearchSystemPrompt = `
+You are a helpful search assistant. Use the Google Search results to provide accurate and up-to-date information.
+Your answers should be comprehensive but concise, focusing on the most relevant information.
+Cite your sources when appropriate and maintain a neutral, informative tone.
+If the search results don't contain enough information to fully answer the query, acknowledge the limitations.
+`
 	// File handling defaults
 	defaultMaxFileSize = int64(10 * 1024 * 1024) // 10MB explicitly as int64
 
@@ -32,10 +39,11 @@ Think deeply  before writing the code review. Review every part, and don't hallu
 // Config holds all configuration parameters for the application
 type Config struct {
 	// Gemini API settings
-	GeminiAPIKey       string
-	GeminiModel        string
-	GeminiSystemPrompt string
-	GeminiTemperature  float64
+	GeminiAPIKey             string
+	GeminiModel              string
+	GeminiSystemPrompt       string
+	GeminiSearchSystemPrompt string
+	GeminiTemperature        float64
 
 	// HTTP client settings
 	HTTPTimeout time.Duration
@@ -81,6 +89,12 @@ func NewConfig() (*Config, error) {
 	geminiSystemPrompt := os.Getenv("GEMINI_SYSTEM_PROMPT")
 	if geminiSystemPrompt == "" {
 		geminiSystemPrompt = defaultGeminiSystemPrompt // Default system prompt if not specified
+	}
+
+	// Get Gemini search system prompt - optional with default
+	geminiSearchSystemPrompt := os.Getenv("GEMINI_SEARCH_SYSTEM_PROMPT")
+	if geminiSearchSystemPrompt == "" {
+		geminiSearchSystemPrompt = defaultGeminiSearchSystemPrompt // Default search system prompt if not specified
 	}
 
 	// Default timeout of 90 seconds
@@ -162,10 +176,11 @@ func NewConfig() (*Config, error) {
 	}
 
 	return &Config{
-		GeminiAPIKey:       geminiAPIKey,
-		GeminiModel:        geminiModel,
-		GeminiSystemPrompt: geminiSystemPrompt,
-		GeminiTemperature:  geminiTemperature,
+		GeminiAPIKey:             geminiAPIKey,
+		GeminiModel:              geminiModel,
+		GeminiSystemPrompt:       geminiSystemPrompt,
+		GeminiSearchSystemPrompt: geminiSearchSystemPrompt,
+		GeminiTemperature:        geminiTemperature,
 		HTTPTimeout:        timeout,
 		MaxRetries:         maxRetries,
 		InitialBackoff:     initialBackoff,

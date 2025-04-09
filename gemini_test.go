@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gomcpgo/mcp/pkg/protocol"
-	"github.com/google/generative-ai-go/genai"
+	"google.golang.org/genai"
 )
 
 // TestNewGeminiServer tests the creation of a new GeminiServer
@@ -30,7 +30,7 @@ func TestNewGeminiServer(t *testing.T) {
 			},
 			expectError: true,
 		},
-		// Note: We can't easily test successful creation without mocking the genai.NewClient function
+		// Note: We can't easily test successful creation without mocking the genai.NewClient constructor
 	}
 
 	for _, tc := range tests {
@@ -139,10 +139,10 @@ func MockGenerateContentResponse(content string) *genai.GenerateContentResponse 
 		Candidates: []*genai.Candidate{
 			{
 				Content: &genai.Content{
-					Parts: []genai.Part{
-						genai.Text(content),
+					Parts: []*genai.Part{
+						{Text: content},
 					},
-					Role: "model",
+					Role: genai.RoleModel,
 				},
 			},
 		},

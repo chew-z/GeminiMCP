@@ -60,6 +60,24 @@ func (s *ErrorGeminiServer) ListTools(ctx context.Context) (*protocol.ListToolsR
 			}`),
 		},
 		{
+			Name:        "gemini_search",
+			Description: "Use Google's Gemini AI model with Google Search to answer questions with grounded information",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"query": {
+						"type": "string",
+						"description": "The question to ask Gemini using Google Search for grounding"
+					},
+					"systemPrompt": {
+						"type": "string",
+						"description": "Optional: Custom system prompt to use for this request (overrides default configuration)"
+					}
+				},
+				"required": ["query"]
+			}`),
+		},
+		{
 			Name:        "gemini_models",
 			Description: "List available Gemini models with descriptions",
 			InputSchema: json.RawMessage(`{

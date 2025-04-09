@@ -11,8 +11,7 @@ import (
 	"strings"
 
 	"github.com/gomcpgo/mcp/pkg/protocol"
-	"github.com/google/generative-ai-go/genai"
-	"google.golang.org/api/option"
+	"google.golang.org/genai"
 )
 
 // GeminiServer implements the ToolHandler interface for Gemini API interactions
@@ -34,7 +33,10 @@ func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error)
 	}
 
 	// Initialize the Gemini client
-	client, err := genai.NewClient(ctx, option.WithAPIKey(config.GeminiAPIKey))
+	clientConfig := &genai.ClientConfig{
+		APIKey: config.GeminiAPIKey,
+	}
+	client, err := genai.NewClient(ctx, clientConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 	}
@@ -51,11 +53,9 @@ func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error)
 	}, nil
 }
 
-// Close closes the Gemini client connection
+// Close closes the Gemini client connection (client doesn't need to be closed in the new API)
 func (s *GeminiServer) Close() {
-	if s.client != nil {
-		s.client.Close()
-	}
+	// No need to close the client in the new API
 }
 
 // ListTools implements the ToolHandler interface for GeminiServer
@@ -93,6 +93,24 @@ func (s *GeminiServer) ListTools(ctx context.Context) (*protocol.ListToolsRespon
 					"cache_ttl": {
 						"type": "string",
 						"description": "Optional: TTL for cache if created (e.g., '10m', '1h'). Default is 10 minutes"
+					}
+				},
+				"required": ["query"]
+			}`),
+		},
+		{
+			Name:        "gemini_search",
+			Description: "Use Google's Gemini AI model with Google Search to answer questions with grounded information",
+			InputSchema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"query": {
+						"type": "string",
+						"description": "The question to ask Gemini using Google Search for grounding"
+					},
+					"systemPrompt": {
+						"type": "string",
+						"description": "Optional: Custom system prompt to use for this request (overrides default configuration)"
 					}
 				},
 				"required": ["query"]
@@ -144,6 +162,8 @@ func (s *GeminiServer) CallTool(ctx context.Context, req *protocol.CallToolReque
 	switch req.Name {
 	case "gemini_ask":
 		return s.handleAskGemini(ctx, req)
+	case "gemini_search":
+		return s.handleGeminiSearch(ctx, req)
 	case "gemini_models":
 		return s.handleGeminiModels(ctx)
 	default:
@@ -281,19 +301,19 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 	}
 
 	// If caching failed or wasn't requested, use regular API
-	model := s.client.GenerativeModel(modelName)
-	model.SystemInstruction = genai.NewUserContent(genai.Text(systemPrompt))
+	config := &genai.GenerateContentConfig{
+		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
+		Temperature: genai.Ptr(float32(s.config.GeminiTemperature)),
+	}
 
-	// Use the configured temperature
-	model.SetTemperature(float32(s.config.GeminiTemperature))
+	// Log the temperature setting
 	logger.Debug("Using temperature: %v for model %s", s.config.GeminiTemperature, modelName)
 
 	// Add file contents if provided
 	if len(filePaths) > 0 {
-		parts := []genai.Part{}
-
-		// Add the query as text
-		parts = append(parts, genai.Text(query))
+		contents := []*genai.Content{
+			genai.NewContentFromText(query, genai.RoleUser),
+		}
 
 		// Add each file
 		for _, filePath := range filePaths {
@@ -312,21 +332,22 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 
 			// Upload to Gemini
 			logger.Info("Uploading file %s with mime type %s", fileName, mimeType)
-			file, err := s.client.UploadFile(ctx, fileName, bytes.NewReader(content), &genai.UploadFileOptions{
+			uploadConfig := &genai.UploadFileConfig{
 				MIMEType: mimeType,
-			})
+			}
+			file, err := s.client.Files.Upload(ctx, bytes.NewReader(content), uploadConfig)
 
 			if err != nil {
 				logger.Error("Failed to upload file %s: %v", filePath, err)
 				continue
 			}
 
-			// Add file to parts
-			parts = append(parts, genai.FileData{URI: file.URI})
+			// Add file to contents
+			contents = append(contents, genai.NewContentFromURI(file.URI, mimeType, genai.RoleUser))
 		}
 
-		// Generate content with multiple parts
-		response, err := model.GenerateContent(ctx, parts...)
+		// Generate content with files
+		response, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
 		if err != nil {
 			logger.Error("Gemini API error: %v", err)
 			if cacheErr != nil {
@@ -339,7 +360,10 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 		return s.formatResponse(response), nil
 	} else {
 		// No files, just send the query as text
-		response, err := model.GenerateContent(ctx, genai.Text(query))
+		contents := []*genai.Content{
+			genai.NewContentFromText(query, genai.RoleUser),
+		}
+		response, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
 		if err != nil {
 			logger.Error("Gemini API error: %v", err)
 			if cacheErr != nil {
@@ -351,6 +375,72 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 
 		return s.formatResponse(response), nil
 	}
+}
+
+// handleGeminiSearch handles requests to the gemini_search tool
+func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
+	logger := getLoggerFromContext(ctx)
+
+	// Extract and validate query parameter (required)
+	query, ok := req.Arguments["query"].(string)
+	if !ok {
+		return createErrorResponse("query must be a string"), nil
+	}
+
+	// Extract optional systemPrompt parameter
+	systemPrompt := s.config.GeminiSearchSystemPrompt
+	if customPrompt, ok := req.Arguments["systemPrompt"].(string); ok && customPrompt != "" {
+		logger.Info("Using request-specific search system prompt")
+		systemPrompt = customPrompt
+	}
+
+	// Always use gemini-2.0-flash model for search
+	modelName := "gemini-2.0-flash"
+	logger.Info("Using %s model for Google Search integration", modelName)
+
+	// Create the generate content configuration
+	config := &genai.GenerateContentConfig{
+		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
+		Temperature:       genai.Ptr(float32(s.config.GeminiTemperature)),
+		Tools: []*genai.Tool{
+			{
+				GoogleSearch: &genai.GoogleSearch{},
+			},
+		},
+	}
+
+	// Create query content
+	contents := []*genai.Content{
+		genai.NewContentFromText(query, genai.RoleUser),
+	}
+
+	// Stream the response
+	responseText := ""
+	for result, err := range s.client.Models.GenerateContentStream(ctx, modelName, contents, config) {
+		if err != nil {
+			logger.Error("Gemini Search API error: %v", err)
+			return createErrorResponse(fmt.Sprintf("Error from Gemini Search API: %v", err)), nil
+		}
+
+		// Extract text from each candidate
+		if len(result.Candidates) > 0 && result.Candidates[0].Content != nil {
+			responseText += result.Text()
+		}
+	}
+
+	// Check for empty content and provide a fallback message
+	if responseText == "" {
+		responseText = "The Gemini Search model returned an empty response. This might indicate an issue with the search functionality or that no relevant information was found. Please try rephrasing your question or providing more specific details."
+	}
+
+	return &protocol.CallToolResponse{
+		Content: []protocol.ToolContent{
+			{
+				Type: "text",
+				Text: responseText,
+			},
+		},
+	}, nil
 }
 
 // handleGeminiModels handles requests to the gemini_models tool
@@ -470,20 +560,17 @@ func (s *GeminiServer) handleQueryWithCache(ctx context.Context, req *protocol.C
 		return createErrorResponse(fmt.Sprintf("failed to get cache: %v", err)), nil
 	}
 
-	// Create Gemini model with the cached content
-	name := cacheInfo.Name
-	if !strings.HasPrefix(name, "cachedContents/") {
-		name = "cachedContents/" + name
+	// Send the query with cached content
+	contents := []*genai.Content{
+		genai.NewContentFromText(query, genai.RoleUser),
 	}
 
-	model := s.client.GenerativeModel(cacheInfo.Model)
-	model.CachedContentName = name
+	config := &genai.GenerateContentConfig{
+		CachedContent: cacheInfo.Name,
+		Temperature: genai.Ptr(float32(s.config.GeminiTemperature)),
+	}
 
-	// Set the temperature from config
-	model.SetTemperature(float32(s.config.GeminiTemperature))
-
-	// Send the query
-	response, err := s.executeGeminiRequest(ctx, model, query)
+	response, err := s.client.Models.GenerateContent(ctx, cacheInfo.Model, contents, config)
 	if err != nil {
 		logger.Error("Gemini API error: %v", err)
 		return createErrorResponse(fmt.Sprintf("error from Gemini API: %v", err)), nil
@@ -493,7 +580,7 @@ func (s *GeminiServer) handleQueryWithCache(ctx context.Context, req *protocol.C
 }
 
 // executeGeminiRequest makes the request to the Gemini API with retry capability
-func (s *GeminiServer) executeGeminiRequest(ctx context.Context, model *genai.GenerativeModel, query string) (*genai.GenerateContentResponse, error) {
+func (s *GeminiServer) executeGeminiRequest(ctx context.Context, model string, query string) (*genai.GenerateContentResponse, error) {
 	logger := getLoggerFromContext(ctx)
 
 	var response *genai.GenerateContentResponse
@@ -505,7 +592,13 @@ func (s *GeminiServer) executeGeminiRequest(ctx context.Context, model *genai.Ge
 		timeoutCtx, cancel := context.WithTimeout(ctx, s.config.HTTPTimeout)
 		defer cancel()
 
-		response, err = model.GenerateContent(timeoutCtx, genai.Text(query))
+		contents := []*genai.Content{
+			genai.NewContentFromText(query, genai.RoleUser),
+		}
+		config := &genai.GenerateContentConfig{
+			Temperature: genai.Ptr(float32(s.config.GeminiTemperature)),
+		}
+		response, err = s.client.Models.GenerateContent(timeoutCtx, model, contents, config)
 		if err != nil {
 			// Check specifically for timeout errors
 			if errors.Is(err, context.DeadlineExceeded) {
@@ -547,15 +640,8 @@ func (s *GeminiServer) formatResponse(resp *genai.GenerateContentResponse) *prot
 	var content string
 
 	// Extract text from the response
-	for _, candidate := range resp.Candidates {
-		if candidate.Content != nil {
-			for _, part := range candidate.Content.Parts {
-				// Use type assertion for text parts
-				if textPart, ok := part.(genai.Text); ok {
-					content += string(textPart)
-				}
-			}
-		}
+	if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
+		content = resp.Text()
 	}
 
 	// Check for empty content and provide a fallback message
