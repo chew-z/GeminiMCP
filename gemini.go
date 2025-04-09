@@ -377,6 +377,20 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 	}
 }
 
+// SearchResponse is the JSON response format for the gemini_search tool
+type SearchResponse struct {
+	Answer        string       `json:"answer"`
+	Sources       []SourceInfo `json:"sources,omitempty"`
+	SearchQueries []string     `json:"search_queries,omitempty"`
+}
+
+// SourceInfo represents a source from search results
+type SourceInfo struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+	Type  string `json:"type"` // "web" or "retrieved_context"
+}
+
 // handleGeminiSearch handles requests to the gemini_search tool
 func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
@@ -414,8 +428,15 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 		genai.NewContentFromText(query, genai.RoleUser),
 	}
 
-	// Stream the response
+	// Initialize response data
 	responseText := ""
+	var sources []SourceInfo
+	var searchQueries []string
+	
+	// Track seen URLs to avoid duplicates
+	seenURLs := make(map[string]bool)
+
+	// Stream the response
 	for result, err := range s.client.Models.GenerateContentStream(ctx, modelName, contents, config) {
 		if err != nil {
 			logger.Error("Gemini Search API error: %v", err)
@@ -425,6 +446,49 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 		// Extract text from each candidate
 		if len(result.Candidates) > 0 && result.Candidates[0].Content != nil {
 			responseText += result.Text()
+			
+			// Extract metadata if available
+			if metadata := result.Candidates[0].GroundingMetadata; metadata != nil {
+				// Collect search queries
+				if len(metadata.WebSearchQueries) > 0 && len(searchQueries) == 0 {
+					searchQueries = metadata.WebSearchQueries
+				}
+				
+				// Collect sources from grounding chunks
+				for _, chunk := range metadata.GroundingChunks {
+					var source SourceInfo
+					
+					if web := chunk.Web; web != nil {
+						// Skip if we've seen this URL already
+						if seenURLs[web.URI] {
+							continue
+						}
+						
+						source = SourceInfo{
+							Title: web.Title,
+							URL:   web.URI,
+							Type:  "web",
+						}
+						seenURLs[web.URI] = true
+					} else if ctx := chunk.RetrievedContext; ctx != nil {
+						// Skip if we've seen this URL already
+						if seenURLs[ctx.URI] {
+							continue
+						}
+						
+						source = SourceInfo{
+							Title: ctx.Title,
+							URL:   ctx.URI,
+							Type:  "retrieved_context",
+						}
+						seenURLs[ctx.URI] = true
+					}
+					
+					if source.URL != "" {
+						sources = append(sources, source)
+					}
+				}
+			}
 		}
 	}
 
@@ -433,11 +497,25 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 		responseText = "The Gemini Search model returned an empty response. This might indicate an issue with the search functionality or that no relevant information was found. Please try rephrasing your question or providing more specific details."
 	}
 
+	// Create the response JSON
+	response := SearchResponse{
+		Answer:        responseText,
+		Sources:       sources,
+		SearchQueries: searchQueries,
+	}
+	
+	// Convert to JSON
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		logger.Error("Failed to marshal search response: %v", err)
+		return createErrorResponse(fmt.Sprintf("Failed to format search response: %v", err)), nil
+	}
+
 	return &protocol.CallToolResponse{
 		Content: []protocol.ToolContent{
 			{
 				Type: "text",
-				Text: responseText,
+				Text: string(responseJSON),
 			},
 		},
 	}, nil
