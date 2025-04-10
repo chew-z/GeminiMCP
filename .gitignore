@@ -5,8 +5,12 @@ go.sum
 .aider*
 run_*
 codemcp.toml
-Conventions.md
-ClaudeCode.md
 system_prompt.txt
-EDIT-FILE-GUIDE.md
 code-review.md
+ClaudeCode.md
+CONVENTIONS.md
+CHANGES.md
+CHANGES-APPROACH.md
+CLAUDE.md
+EDIT-FILE-GUIDE.md
+README-UPDATES.md

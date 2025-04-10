@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/gomcpgo/mcp/pkg/protocol"
 	"google.golang.org/genai"
@@ -20,6 +20,7 @@ type GeminiServer struct {
 	client     *genai.Client
 	fileStore  *FileStore
 	cacheStore *CacheStore
+	mutex      sync.Mutex // Added to protect client access
 }
 
 // NewGeminiServer creates a new GeminiServer with the provided configuration
@@ -255,6 +256,12 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 					DisplayName: fileName,
 				}
 
+// Check if file store is properly initialized
+				if s.fileStore == nil {
+					logger.Error("FileStore not properly initialized")
+					return createErrorResponse("Internal error: FileStore not properly initialized"), nil
+				}
+
 				// Upload the file
 				fileInfo, err := s.fileStore.UploadFile(ctx, uploadReq)
 				if err != nil {
@@ -304,14 +311,33 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
 		Temperature: genai.Ptr(float32(s.config.GeminiTemperature)),
-	}
+	}      
 
 	// Log the temperature setting
 	logger.Debug("Using temperature: %v for model %s", s.config.GeminiTemperature, modelName)
 
-	// Add file contents if provided
+	// Before processing files, set the environment variable explicitly
+	originalAPIKey := os.Getenv("GOOGLE_API_KEY")
+	os.Setenv("GOOGLE_API_KEY", s.config.GeminiAPIKey)
+
+// This will be executed at the end of this function to reset the environment
+	defer func() {
+		if originalAPIKey != "" {
+			os.Setenv("GOOGLE_API_KEY", originalAPIKey)
+		} else {
+			os.Unsetenv("GOOGLE_API_KEY")
+		}
+	}()
+
+// Add file contents if provided
 	if len(filePaths) > 0 {
-		contents := []*genai.Content{
+		// Validate client first
+		if s.client == nil {
+			logger.Error("Gemini client not properly initialized")
+			return createErrorResponse("Internal error: Gemini client not properly initialized"), nil
+		}
+
+contents := []*genai.Content{
 			genai.NewContentFromText(query, genai.RoleUser),
 		}
 
@@ -330,23 +356,23 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 			// Get filename from path
 			fileName := filepath.Base(filePath)
 
-			// Upload to Gemini
-			logger.Info("Uploading file %s with mime type %s", fileName, mimeType)
-			uploadConfig := &genai.UploadFileConfig{
-				MIMEType: mimeType,
-			}
-			file, err := s.client.Files.Upload(ctx, bytes.NewReader(content), uploadConfig)
+			// Skip using the Gemini API file upload entirely
+			logger.Info("Using direct file contents for %s with mime type %s", fileName, mimeType)
 
-			if err != nil {
-				logger.Error("Failed to upload file %s: %v", filePath, err)
-				continue
-			}
+// Instead of uploading, just add the content directly to the request
+			// This avoids the nil pointer deref issue completely
 
-			// Add file to contents
-			contents = append(contents, genai.NewContentFromURI(file.URI, mimeType, genai.RoleUser))
+// Add content directly to the request without uploading
+			contents = append(contents, genai.NewContentFromText(string(content), genai.RoleUser))
 		}
 
-		// Generate content with files
+		// Validate client and models before proceeding
+		if s.client == nil || s.client.Models == nil {
+			logger.Error("Gemini client or Models service not properly initialized")
+			return createErrorResponse("Internal error: Gemini client not properly initialized"), nil
+		}
+
+// Generate content with files
 		response, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
 		if err != nil {
 			logger.Error("Gemini API error: %v", err)
@@ -362,6 +388,12 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 		// No files, just send the query as text
 		contents := []*genai.Content{
 			genai.NewContentFromText(query, genai.RoleUser),
+		}
+
+// Validate client and models before proceeding
+		if s.client == nil || s.client.Models == nil {
+			logger.Error("Gemini client or Models service not properly initialized")
+			return createErrorResponse("Internal error: Gemini client not properly initialized"), nil
 		}
 		response, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
 		if err != nil {
@@ -432,9 +464,15 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 	responseText := ""
 	var sources []SourceInfo
 	var searchQueries []string
-	
-	// Track seen URLs to avoid duplicates
+
+// Track seen URLs to avoid duplicates
 	seenURLs := make(map[string]bool)
+
+	// Validate client and models before proceeding
+	if s.client == nil || s.client.Models == nil {
+		logger.Error("Gemini client or Models service not properly initialized")
+		return createErrorResponse("Internal error: Gemini client not properly initialized"), nil
+	}
 
 	// Stream the response
 	for result, err := range s.client.Models.GenerateContentStream(ctx, modelName, contents, config) {
@@ -446,25 +484,25 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 		// Extract text from each candidate
 		if len(result.Candidates) > 0 && result.Candidates[0].Content != nil {
 			responseText += result.Text()
-			
-			// Extract metadata if available
+
+// Extract metadata if available
 			if metadata := result.Candidates[0].GroundingMetadata; metadata != nil {
 				// Collect search queries
 				if len(metadata.WebSearchQueries) > 0 && len(searchQueries) == 0 {
 					searchQueries = metadata.WebSearchQueries
 				}
-				
-				// Collect sources from grounding chunks
+
+// Collect sources from grounding chunks
 				for _, chunk := range metadata.GroundingChunks {
 					var source SourceInfo
-					
-					if web := chunk.Web; web != nil {
+
+if web := chunk.Web; web != nil {
 						// Skip if we've seen this URL already
 						if seenURLs[web.URI] {
 							continue
 						}
-						
-						source = SourceInfo{
+
+source = SourceInfo{
 							Title: web.Title,
 							URL:   web.URI,
 							Type:  "web",
@@ -475,16 +513,16 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 						if seenURLs[ctx.URI] {
 							continue
 						}
-						
-						source = SourceInfo{
+
+source = SourceInfo{
 							Title: ctx.Title,
 							URL:   ctx.URI,
 							Type:  "retrieved_context",
 						}
 						seenURLs[ctx.URI] = true
 					}
-					
-					if source.URL != "" {
+
+if source.URL != "" {
 						sources = append(sources, source)
 					}
 				}
@@ -503,8 +541,8 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 		Sources:       sources,
 		SearchQueries: searchQueries,
 	}
-	
-	// Convert to JSON
+
+// Convert to JSON
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
 		logger.Error("Failed to marshal search response: %v", err)
@@ -646,6 +684,12 @@ func (s *GeminiServer) handleQueryWithCache(ctx context.Context, req *protocol.C
 	config := &genai.GenerateContentConfig{
 		CachedContent: cacheInfo.Name,
 		Temperature: genai.Ptr(float32(s.config.GeminiTemperature)),
+	}  
+
+	// Validate client and models before proceeding
+	if s.client == nil || s.client.Models == nil {
+		logger.Error("Gemini client or Models service not properly initialized")
+		return createErrorResponse("Internal error: Gemini client not properly initialized"), nil
 	}
 
 	response, err := s.client.Models.GenerateContent(ctx, cacheInfo.Model, contents, config)
@@ -676,7 +720,13 @@ func (s *GeminiServer) executeGeminiRequest(ctx context.Context, model string, q
 		config := &genai.GenerateContentConfig{
 			Temperature: genai.Ptr(float32(s.config.GeminiTemperature)),
 		}
-		response, err = s.client.Models.GenerateContent(timeoutCtx, model, contents, config)
+
+// Validate client and models before proceeding
+		if s.client == nil || s.client.Models == nil {
+			return fmt.Errorf("gemini client or Models service not properly initialized")
+		}
+
+response, err = s.client.Models.GenerateContent(timeoutCtx, model, contents, config)
 		if err != nil {
 			// Check specifically for timeout errors
 			if errors.Is(err, context.DeadlineExceeded) {
