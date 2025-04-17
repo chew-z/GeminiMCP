@@ -49,7 +49,7 @@ Add this server to any MCP-compatible client like Claude Desktop by adding to yo
 
 **Important Notes:**
 
-- **Environment Variables**: All environment variables must be included in the MCP configuration JSON shown above (in the `env` section), not as system environment variables or in .env files. Variables set outside the config JSON will not take effect for the client application.
+- **Environment Variables**: For Claude Desktop app all configuration variables must be included in the MCP configuration JSON shown above (in the `env` section), not as system environment variables or in .env files. Variables set outside the config JSON will not take effect for the client application.
 
 - **Claude Desktop Config Location**:
   - On macOS: `~/Library/Application\ Support/Claude/claude_desktop_config.json`
