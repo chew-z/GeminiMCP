@@ -71,6 +71,17 @@ func main() {
 	// NewHandlerRegistry is a constructor that doesn't return an error
 	registry := handler.NewHandlerRegistry()
 
+	// Fetch available Gemini models if API key is available
+	if config.GeminiAPIKey != "" {
+		logger.Info("Attempting to fetch available Gemini models...")
+		if err := FetchGeminiModels(ctx, config.GeminiAPIKey); err != nil {
+			// Just log the error but continue with fallback models
+			logger.Warn("Could not fetch Gemini models: %v. Using fallback model list.", err)
+		}
+	} else {
+		logger.Warn("No Gemini API key available, using fallback model list")
+	}
+
 	// Create and register the Gemini server
 	if err := setupGeminiServer(ctx, registry, config); err != nil {
 		handleStartupError(ctx, err)
