@@ -2,25 +2,6 @@
 
 MCP (Model Control Protocol) server integrating with Google's Gemini API.
 
-## Quick Start
-
-### Prerequisites
-- Google Gemini API key
-
-### Installation
-
-```bash
-# Clone and build
-git clone https://github.com/chew-z/GeminiMCP
-cd GeminiMCP
-go build -o gemini-mcp
-
-# Start server with environment variables
-export GEMINI_API_KEY=your_api_key
-export GEMINI_MODEL=gemini-1.5-pro
-./gemini-mcp
-```
-
 ## Key Advantages
 
 - **Dynamic Model Access**: Automatically fetches the latest available Gemini models at startup
@@ -29,7 +10,26 @@ export GEMINI_MODEL=gemini-1.5-pro
 - **Production Reliability**: Robust error handling, automatic retries, and graceful degradation
 - **Comprehensive Capabilities**: Full support for code analysis, general queries, and search with grounding
 
-## Client Configuration
+## Installation and Configuration
+
+### Prerequisites
+- Google Gemini API key
+
+### Building from Source
+
+```bash
+# Clone and build
+git clone https://github.com/chew-z/GeminiMCP
+cd GeminiMCP
+go build -o mcp-gemini
+
+# Start server with environment variables
+export GEMINI_API_KEY=your_api_key
+export GEMINI_MODEL=gemini-1.5-pro
+./mcp-gemini
+```
+
+### Client Configuration
 
 Add this server to any MCP-compatible client like Claude Desktop by adding to your client's configuration:
 
