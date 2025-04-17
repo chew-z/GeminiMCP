@@ -4,6 +4,7 @@ MCP (Model Control Protocol) server integrating with Google's Gemini API.
 
 ## Key Advantages
 
+- **Single Self-Contained Binary**: Written in Go, the project compiles to a single binary with no dependencies, eliminating package manager issues and preventing unexpected changes without user knowledge
 - **Dynamic Model Access**: Automatically fetches the latest available Gemini models at startup
 - **Advanced Context Handling**: Efficient caching system with TTL control for repeated queries
 - **Enhanced File Handling**: Seamless file integration with intelligent MIME detection
@@ -45,6 +46,16 @@ Add this server to any MCP-compatible client like Claude Desktop by adding to yo
         }
 }
 ```
+
+**Important Notes:**
+
+- **Environment Variables**: All environment variables must be included in the MCP configuration JSON shown above (in the `env` section), not as system environment variables or in .env files. Variables set outside the config JSON will not take effect for the client application.
+
+- **Claude Desktop Config Location**: 
+  - On macOS: `~/Library/Application\ Support/Claude/claude_desktop_config.json`
+  - On Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+- **Configuration Help**: If you encounter any issues configuring the Claude desktop app, refer to the [MCP Quickstart Guide](https://modelcontextprotocol.io/quickstart/user) for additional assistance.
 
 ## Using Gemini Tools from LLM Console
 
