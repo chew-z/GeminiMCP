@@ -96,6 +96,24 @@ Say to your LLM:
 
 > Use the gemini_search tool to find the latest information about advancements in fusion energy research. Include sources in your response.
 
+### File Analysis with Caching
+
+Say to your LLM:
+
+> Use the gemini_ask tool to analyze the code in main.go and config.go files. Please enable caching with a 1-hour TTL so we can discuss these files in follow-up questions. Set a system prompt that focuses on understanding the architecture and relationships between components.
+>
+> Use these parameters:
+> - model: gemini-1.5-pro-001 (make sure to use a model that supports caching)
+> - file_paths: ["main.go", "config.go"]
+> - use_cache: true
+> - cache_ttl: "1h"
+
+For follow-up questions, you can then say:
+
+> Using the cached context from our previous conversation about the code files, use the gemini_ask tool to explain how error handling is implemented across these files. Make sure to use the same cached context we created earlier.
+
+This approach lets you have an extended conversation about the same set of files without having to re-upload them for each query, improving response times and maintaining context across multiple questions.
+
 ### Customizing System Prompts
 
 The `gemini_ask` and `gemini_search` tools are highly versatile and not limited to programming-related queries. You can customize the system prompt for various use cases:
