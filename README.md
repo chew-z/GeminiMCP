@@ -96,23 +96,35 @@ Say to your LLM:
 
 > Use the gemini_search tool to find the latest information about advancements in fusion energy research. Include sources in your response.
 
-### File Analysis with Caching
+### Simple Project Analysis with Caching
 
 Say to your LLM:
 
-> Use the gemini_ask tool to analyze the code in main.go and config.go files. Please enable caching with a 1-hour TTL so we can discuss these files in follow-up questions. Set a system prompt that focuses on understanding the architecture and relationships between components.
->
-> Use these parameters:
-> - model: gemini-1.5-pro-001 (make sure to use a model that supports caching)
-> - file_paths: ["main.go", "config.go"]
-> - use_cache: true
-> - cache_ttl: "1h"
+> Please use a caching-enabled Gemini model to analyze our project files. Include the main.go, config.go and models.go files and ask Gemini a series of questions about our project architecture and how it could be improved. Use appropriate system prompts for each question.
 
-For follow-up questions, you can then say:
+With this simple prompt, the LLM will:
+- Select a caching-compatible model (with -001 suffix)
+- Include the specified project files
+- Enable caching automatically
+- Ask multiple questions while maintaining context
+- Customize system prompts for each question type
 
-> Using the cached context from our previous conversation about the code files, use the gemini_ask tool to explain how error handling is implemented across these files. Make sure to use the same cached context we created earlier.
+This approach makes it easy to have an extended conversation about your codebase without complex configuration.
 
-This approach lets you have an extended conversation about the same set of files without having to re-upload them for each query, improving response times and maintaining context across multiple questions.
+### Managing Multiple Caches and Reducing Costs
+
+During a conversation, you can create and use multiple caches for different sets of files or contexts:
+
+> Please create a new cache for our frontend code (App.js, components/*.js) and analyze it separately from our backend code cache we created earlier.
+
+The LLM can intelligently manage these different caches, switching between them as needed based on your queries. This capability is particularly valuable for projects with distinct components that require different analysis approaches.
+
+**Cost Savings**: Using caching significantly reduces API costs, especially when working with large codebases or having extended conversations. By caching the context:
+
+- Files are processed and tokenized only once instead of with every query
+- Follow-up questions reuse the existing context instead of creating new API requests
+- Complex analyses can be performed incrementally without re-uploading files
+- Multi-session analysis becomes more economical, with some users reporting 40-60% cost reductions for extended code reviews
 
 ### Customizing System Prompts
 
