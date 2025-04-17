@@ -52,49 +52,49 @@ You can use Gemini tools directly from an LLM console by creating prompt example
 
 ### Listing Available Models
 
-```
-Please use the gemini_models tool to show me the list of available Gemini models.
-```
+Say to your LLM:
+
+> Please use the gemini_models tool to show me the list of available Gemini models.
 
 The LLM will invoke the `gemini_models` tool and return the list of available models, their capabilities, and caching support status.
 
 ### Code Analysis with gemini_ask
 
-```
-Use the gemini_ask tool to analyze this Go code for potential concurrency issues:
+Say to your LLM:
 
-```go
-func processItems(items []string) {
-    var wg sync.WaitGroup
-    results := make([]string, len(items))
-    
-    for i, item := range items {
-        wg.Add(1)
-        go func(i int, item string) {
-            results[i] = processItem(item)
-            wg.Done()
-        }(i, item)
-    }
-    
-    wg.Wait()
-    return results
-}
-```
-
-Please use a system prompt that focuses on code review and performance optimization.
-```
+> Use the gemini_ask tool to analyze this Go code for potential concurrency issues:
+> 
+> ```
+> func processItems(items []string) {
+>     var wg sync.WaitGroup
+>     results := make([]string, len(items))
+>     
+>     for i, item := range items {
+>         wg.Add(1)
+>         go func(i int, item string) {
+>             results[i] = processItem(item)
+>             wg.Done()
+>         }(i, item)
+>     }
+>     
+>     wg.Wait()
+>     return results
+> }
+> ```
+>
+> Please use a system prompt that focuses on code review and performance optimization.
 
 ### Creative Writing with gemini_ask
 
-```
-Use the gemini_ask tool to create a short story about a space explorer discovering a new planet. Set a custom system prompt that encourages creative, descriptive writing with vivid imagery.
-```
+Say to your LLM:
+
+> Use the gemini_ask tool to create a short story about a space explorer discovering a new planet. Set a custom system prompt that encourages creative, descriptive writing with vivid imagery.
 
 ### Factual Research with gemini_search
 
-```
-Use the gemini_search tool to find the latest information about advancements in fusion energy research. Include sources in your response.
-```
+Say to your LLM:
+
+> Use the gemini_search tool to find the latest information about advancements in fusion energy research. Include sources in your response.
 
 ### Customizing System Prompts
 
