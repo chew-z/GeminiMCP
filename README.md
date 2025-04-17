@@ -67,13 +67,13 @@ Say to your LLM:
 
 > Please use the gemini_models tool to show me the list of available Gemini models.
 
-The LLM will invoke the `gemini_models` tool and return the list of available models, their capabilities, and caching support status.
+The LLM will invoke the **`gemini_models`** tool and return the list of available models, their capabilities, and caching support status.
 
-### Code Analysis with gemini_ask
+### Code Analysis with **`gemini_ask`**
 
 Say to your LLM:
 
-> Use the gemini_ask tool to analyze this Go code for potential concurrency issues:
+> Use the **`gemini_ask`** tool to analyze this Go code for potential concurrency issues:
 > 
 > ```
 > func processItems(items []string) {
@@ -95,23 +95,23 @@ Say to your LLM:
 >
 > Please use a system prompt that focuses on code review and performance optimization.
 
-### Creative Writing with gemini_ask
+### Creative Writing with **`gemini_ask`**
 
 Say to your LLM:
 
-> Use the gemini_ask tool to create a short story about a space explorer discovering a new planet. Set a custom system prompt that encourages creative, descriptive writing with vivid imagery.
+> Use the **`gemini_ask`** tool to create a short story about a space explorer discovering a new planet. Set a custom system prompt that encourages creative, descriptive writing with vivid imagery.
 
-### Factual Research with gemini_search
+### Factual Research with **`gemini_search`**
 
 Say to your LLM:
 
-> Use the gemini_search tool to find the latest information about advancements in fusion energy research. Include sources in your response.
+> Use the **`gemini_search`** tool to find the latest information about advancements in fusion energy research. Include sources in your response.
 
 ### Simple Project Analysis with Caching
 
 Say to your LLM:
 
-> Please use a caching-enabled Gemini model to analyze our project files. Include the main.go, config.go and models.go files and ask Gemini a series of questions about our project architecture and how it could be improved. Use appropriate system prompts for each question.
+> Please use a caching-enabled **Gemini model** to analyze our project files. Include the main.go, config.go and models.go files and ask Gemini a series of questions about our project architecture and how it could be improved. Use appropriate system prompts for each question.
 
 With this simple prompt, the LLM will:
 - Select a caching-compatible model (with -001 suffix)
@@ -126,7 +126,7 @@ This approach makes it easy to have an extended conversation about your codebase
 
 During a conversation, you can create and use multiple caches for different sets of files or contexts:
 
-> Please create a new cache for our frontend code (App.js, components/*.js) and analyze it separately from our backend code cache we created earlier.
+> Please create a new **cache** for our frontend code (App.js, components/*.js) and analyze it separately from our backend code cache we created earlier.
 
 The LLM can intelligently manage these different caches, switching between them as needed based on your queries. This capability is particularly valuable for projects with distinct components that require different analysis approaches.
 
@@ -139,7 +139,7 @@ The LLM can intelligently manage these different caches, switching between them 
 
 ### Customizing System Prompts
 
-The `gemini_ask` and `gemini_search` tools are highly versatile and not limited to programming-related queries. You can customize the system prompt for various use cases:
+The **`gemini_ask`** and **`gemini_search`** tools are highly versatile and not limited to programming-related queries. You can customize the system prompt for various use cases:
 
 - **Educational content**: "You are an expert teacher who explains complex concepts in simple terms..."
 - **Creative writing**: "You are a creative writer specializing in vivid, engaging narratives..."
@@ -154,7 +154,7 @@ When using these tools from an LLM console, always encourage the LLM to set appr
 
 The server provides three primary tools:
 
-#### 1. gemini_ask
+#### 1. **`gemini_ask`**
 For code analysis, general queries, and creative tasks with optional file context.
 
 ```json
@@ -171,7 +171,7 @@ For code analysis, general queries, and creative tasks with optional file contex
 }
 ```
 
-#### 2. gemini_search
+#### 2. **`gemini_search`**
 Provides grounded answers using Google Search integration.
 
 ```json
@@ -199,7 +199,7 @@ Returns structured responses with sources:
 }
 ```
 
-#### 3. gemini_models
+#### 3. **`gemini_models`**
 Lists all available Gemini models with capabilities and caching support.
 
 ```json
