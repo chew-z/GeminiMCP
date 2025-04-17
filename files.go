@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -138,7 +137,7 @@ func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*F
 		Size:        0, // SizeBytes is now a pointer in the new API
 		UploadedAt:  file.CreateTime,
 	}
-	
+
 	// Set size if available
 	if file.SizeBytes != nil {
 		fileInfo.Size = *file.SizeBytes
