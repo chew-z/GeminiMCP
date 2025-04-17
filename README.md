@@ -185,6 +185,7 @@ Example with caching:
 
 ## Recent Changes
 
+- Reimplemented proper file upload functionality using the fixed v1.1.0 version of `google.golang.org/genai` library
 - Added `gemini_search` tool with Google Search integration
 - Added support for Gemini 2.5 Pro and Gemini 2.0 Flash models
 - Simplified the API by integrating file handling directly into the `gemini_ask` tool

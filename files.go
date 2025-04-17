@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -96,31 +97,77 @@ func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*F
 		return nil, fmt.Errorf("mime type %s is not allowed", req.MimeType)
 	}
 
-	// Manually construct a file info instead of using the API
-	// This is a workaround for the nil pointer dereference issue
-	logger.Info("Using manual file handling method for %s", req.FileName)
+	// Check if client is properly initialized
+	if fs.client == nil || fs.client.Files == nil {
+		logger.Error("Gemini client or Files service not properly initialized")
+		return nil, errors.New("internal error: Gemini client not properly initialized")
+	}
 
-	// Generate a unique ID for the file
-	fileID := fmt.Sprintf("local_%d", time.Now().UnixNano())
+	// Create options with display name if provided
+	opts := &genai.UploadFileConfig{
+		MIMEType: req.MimeType,
+	}
+	if req.DisplayName != "" {
+		opts.DisplayName = req.DisplayName
+	} else {
+		// Use filename as display name if not provided
+		opts.DisplayName = req.FileName
+	}
 
-	// Create file info directly
+	// Upload file to Gemini API
+	logger.Info("Uploading file %s with MIME type %s", req.FileName, req.MimeType)
+	file, err := fs.client.Files.Upload(ctx, bytes.NewReader(req.Content), opts)
+	if err != nil {
+		logger.Error("Failed to upload file: %v", err)
+		return nil, fmt.Errorf("failed to upload file: %w", err)
+	}
+
+	// Extract ID from name (format: "files/abc123")
+	id := file.Name
+	if strings.HasPrefix(file.Name, "files/") {
+		id = strings.TrimPrefix(file.Name, "files/")
+	}
+
+	// Create file info
 	fileInfo := &FileInfo{
-		ID:          fileID,
-		Name:        "files/" + fileID,
-		URI:         "data://" + req.MimeType + ";base64," + base64.StdEncoding.EncodeToString(req.Content),
-		DisplayName: req.DisplayName,
-		MimeType:    req.MimeType,
-		Size:        int64(len(req.Content)),
-		UploadedAt:  time.Now(),
-		ExpiresAt:   time.Now().Add(24 * time.Hour), // 24-hour expiration
+		ID:          id,
+		Name:        file.Name,
+		URI:         file.URI,
+		DisplayName: file.DisplayName,
+		MimeType:    file.MIMEType,
+		Size:        0, // SizeBytes is now a pointer in the new API
+		UploadedAt:  file.CreateTime,
+	}
+	
+	// Set size if available
+	if file.SizeBytes != nil {
+		fileInfo.Size = *file.SizeBytes
+	} else {
+		// If not available, use the content length
+		fileInfo.Size = int64(len(req.Content))
+	}
+
+	// Set expiration if provided
+	if !file.ExpirationTime.IsZero() {
+		fileInfo.ExpiresAt = file.ExpirationTime
+	} else {
+		// Default expiration if not provided by API
+		fileInfo.ExpiresAt = time.Now().Add(24 * time.Hour)
 	}
 
 	// Store file info
+	// Validate URI before storing
+	if fileInfo.URI == "" {
+		logger.Error("Invalid URI for uploaded file: empty URI")
+		return nil, errors.New("Invalid URI for uploaded file")
+	}
+
+	logger.Debug("Storing file info with URI: %s", fileInfo.URI)
 	fs.mu.Lock()
-	fs.fileInfo[fileID] = fileInfo
+	fs.fileInfo[id] = fileInfo
 	fs.mu.Unlock()
 
-	logger.Info("File handled successfully with ID: %s", fileID)
+	logger.Info("File uploaded successfully with ID: %s", id)
 	return fileInfo, nil
 }
 

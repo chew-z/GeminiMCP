@@ -102,7 +102,7 @@ func (cs *CacheStore) CreateCache(ctx context.Context, req *CacheRequest) (*Cach
 	// Build contents with files and text
 	contents := []*genai.Content{}
 
-	// Add files if provided
+// Add files if provided
 	if len(req.FileIDs) > 0 {
 		logger.Info("Adding %d files to cache context", len(req.FileIDs))
 		for _, fileID := range req.FileIDs {
@@ -113,9 +113,10 @@ func (cs *CacheStore) CreateCache(ctx context.Context, req *CacheRequest) (*Cach
 				return nil, fmt.Errorf("failed to get file with ID %s: %w", fileID, err)
 			}
 
-// Add file to contents
-				logger.Debug("Adding file %s with URI %s to cache context", fileID, fileInfo.URI)
-				contents = append(contents, genai.NewContentFromURI(fileInfo.URI, fileInfo.MimeType, genai.RoleUser))
+			// Add file to contents
+			logger.Info("Adding file %s with URI %s to cache context", fileID, fileInfo.URI)
+			logger.Debug("File details: Name=%s, MimeType=%s, Size=%d", fileInfo.DisplayName, fileInfo.MimeType, fileInfo.Size)
+			contents = append(contents, genai.NewContentFromURI(fileInfo.URI, fileInfo.MimeType, genai.RoleUser))
 		}
 	}
 

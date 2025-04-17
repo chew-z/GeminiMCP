@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -233,6 +234,12 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 			// Create a cache context from file paths
 			var fileIDs []string
 
+			// Check if file store is properly initialized
+			if s.fileStore == nil {
+				logger.Error("FileStore not properly initialized")
+				return createErrorResponse("Internal error: FileStore not properly initialized"), nil
+			}
+
 			// Upload files if provided
 			for _, filePath := range filePaths {
 				// Read the file
@@ -248,7 +255,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 				// Get filename from path
 				fileName := filepath.Base(filePath)
 
-				// Create upload request
+				// Create upload request with display name
 				uploadReq := &FileUploadRequest{
 					FileName:    fileName,
 					MimeType:    mimeType,
@@ -256,18 +263,14 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 					DisplayName: fileName,
 				}
 
-// Check if file store is properly initialized
-				if s.fileStore == nil {
-					logger.Error("FileStore not properly initialized")
-					return createErrorResponse("Internal error: FileStore not properly initialized"), nil
-				}
-
-				// Upload the file
+				// Upload the file using the updated UploadFile method
 				fileInfo, err := s.fileStore.UploadFile(ctx, uploadReq)
 				if err != nil {
 					logger.Error("Failed to upload file %s: %v", filePath, err)
 					continue
 				}
+
+				logger.Info("Successfully uploaded file %s with ID: %s for caching", fileName, fileInfo.ID)
 
 				// Add file ID to the list
 				fileIDs = append(fileIDs, fileInfo.ID)
@@ -337,7 +340,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 			return createErrorResponse("Internal error: Gemini client not properly initialized"), nil
 		}
 
-contents := []*genai.Content{
+		contents := []*genai.Content{
 			genai.NewContentFromText(query, genai.RoleUser),
 		}
 
@@ -356,14 +359,23 @@ contents := []*genai.Content{
 			// Get filename from path
 			fileName := filepath.Base(filePath)
 
-			// Skip using the Gemini API file upload entirely
-			logger.Info("Using direct file contents for %s with mime type %s", fileName, mimeType)
+			// Upload to Gemini
+			logger.Info("Uploading file %s with mime type %s", fileName, mimeType)
+			uploadConfig := &genai.UploadFileConfig{
+				MIMEType: mimeType,
+				DisplayName: fileName,
+			}
+			file, err := s.client.Files.Upload(ctx, bytes.NewReader(content), uploadConfig)
 
-// Instead of uploading, just add the content directly to the request
-			// This avoids the nil pointer deref issue completely
+			if err != nil {
+				logger.Error("Failed to upload file %s: %v - falling back to direct content", filePath, err)
+				// Fallback to direct content if upload fails
+				contents = append(contents, genai.NewContentFromText(string(content), genai.RoleUser))
+				continue
+			}
 
-// Add content directly to the request without uploading
-			contents = append(contents, genai.NewContentFromText(string(content), genai.RoleUser))
+			// Add file to contents using the URI
+			contents = append(contents, genai.NewContentFromURI(file.URI, mimeType, genai.RoleUser))
 		}
 
 		// Validate client and models before proceeding
