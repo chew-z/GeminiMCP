@@ -92,8 +92,6 @@ func (cs *CacheStore) CreateCache(ctx context.Context, req *CacheRequest) (*Cach
 		config.DisplayName = req.DisplayName
 	}
 
-	
-
 	// Set up system instruction if provided
 	if req.SystemPrompt != "" {
 		config.SystemInstruction = genai.NewContentFromText(req.SystemPrompt, "")
@@ -102,7 +100,7 @@ func (cs *CacheStore) CreateCache(ctx context.Context, req *CacheRequest) (*Cach
 	// Build contents with files and text
 	contents := []*genai.Content{}
 
-// Add files if provided
+	// Add files if provided
 	if len(req.FileIDs) > 0 {
 		logger.Info("Adding %d files to cache context", len(req.FileIDs))
 		for _, fileID := range req.FileIDs {
@@ -268,7 +266,7 @@ func (cs *CacheStore) ListCaches(ctx context.Context) ([]*CacheInfo, error) {
 	// Process the page
 	for _, cc := range page.Items {
 
-// Extract ID from name
+		// Extract ID from name
 		id := cc.Name
 		if strings.HasPrefix(cc.Name, "cachedContents/") {
 			id = strings.TrimPrefix(cc.Name, "cachedContents/")

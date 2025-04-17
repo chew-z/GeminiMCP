@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+
 	"google.golang.org/genai"
 )
 

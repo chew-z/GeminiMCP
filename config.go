@@ -154,9 +154,9 @@ func NewConfig() (*Config, error) {
 	}
 
 	allowedFileTypes := []string{
-		"text/x-go", "text/x-python", "text/javascript", "text/typescript",
-		"text/x-java", "text/x-c", "text/x-c++", "text/markdown", "text/html",
-		"text/css", "application/json", "text/yaml", "text/plain",
+		"text/plain", "text/javascript", "text/typescript",
+		"text/markdown", "text/html", "text/css",
+		"application/json", "text/yaml", "application/octet-stream",
 	}
 	if typesStr := os.Getenv("GEMINI_ALLOWED_FILE_TYPES"); typesStr != "" {
 		allowedFileTypes = strings.Split(typesStr, ",")
@@ -181,13 +181,13 @@ func NewConfig() (*Config, error) {
 		GeminiSystemPrompt:       geminiSystemPrompt,
 		GeminiSearchSystemPrompt: geminiSearchSystemPrompt,
 		GeminiTemperature:        geminiTemperature,
-		HTTPTimeout:        timeout,
-		MaxRetries:         maxRetries,
-		InitialBackoff:     initialBackoff,
-		MaxBackoff:         maxBackoff,
-		MaxFileSize:        maxFileSize,
-		AllowedFileTypes:   allowedFileTypes,
-		EnableCaching:      enableCaching,
-		DefaultCacheTTL:    defaultCacheTTL,
+		HTTPTimeout:              timeout,
+		MaxRetries:               maxRetries,
+		InitialBackoff:           initialBackoff,
+		MaxBackoff:               maxBackoff,
+		MaxFileSize:              maxFileSize,
+		AllowedFileTypes:         allowedFileTypes,
+		EnableCaching:            enableCaching,
+		DefaultCacheTTL:          defaultCacheTTL,
 	}, nil
 }

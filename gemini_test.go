@@ -64,14 +64,17 @@ func TestGeminiServerListTools(t *testing.T) {
 	}
 
 	// Verify response
-	if len(resp.Tools) != 2 {
-		t.Errorf("expected 2 tools, got %d", len(resp.Tools))
+	if len(resp.Tools) != 3 {
+		t.Errorf("expected 3 tools, got %d", len(resp.Tools))
 	}
 	if resp.Tools[0].Name != "gemini_ask" {
 		t.Errorf("expected tool name 'gemini_ask', got '%s'", resp.Tools[0].Name)
 	}
-	if resp.Tools[1].Name != "gemini_models" {
-		t.Errorf("expected tool name 'gemini_models', got '%s'", resp.Tools[1].Name)
+	if resp.Tools[1].Name != "gemini_search" {
+		t.Errorf("expected tool name 'gemini_search', got '%s'", resp.Tools[1].Name)
+	}
+	if resp.Tools[2].Name != "gemini_models" {
+		t.Errorf("expected tool name 'gemini_models', got '%s'", resp.Tools[2].Name)
 	}
 }
 
@@ -89,14 +92,17 @@ func TestErrorGeminiServerListTools(t *testing.T) {
 	}
 
 	// Verify response
-	if len(resp.Tools) != 2 {
-		t.Errorf("expected 2 tools, got %d", len(resp.Tools))
+	if len(resp.Tools) != 3 {
+		t.Errorf("expected 3 tools, got %d", len(resp.Tools))
 	}
 	if resp.Tools[0].Name != "gemini_ask" {
 		t.Errorf("expected tool name 'gemini_ask', got '%s'", resp.Tools[0].Name)
 	}
-	if resp.Tools[1].Name != "gemini_models" {
-		t.Errorf("expected tool name 'gemini_models', got '%s'", resp.Tools[1].Name)
+	if resp.Tools[1].Name != "gemini_search" {
+		t.Errorf("expected tool name 'gemini_search', got '%s'", resp.Tools[1].Name)
+	}
+	if resp.Tools[2].Name != "gemini_models" {
+		t.Errorf("expected tool name 'gemini_models', got '%s'", resp.Tools[2].Name)
 	}
 }
 

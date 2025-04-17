@@ -103,6 +103,36 @@ Uses Google Search integration with Gemini to provide grounded answers to questi
 }
 ```
 
+#### Structured Search Response Format
+
+The `gemini_search` tool returns responses in a structured JSON format containing:
+
+```json
+{
+  "answer": "Detailed answer text based on search results...",
+  "sources": [
+    {
+      "title": "Source Title",
+      "url": "https://example.com/source-page",
+      "type": "web"
+    },
+    {
+      "title": "Another Source",
+      "url": "https://another-site.org/page",
+      "type": "retrieved_context"
+    }
+  ],
+  "search_queries": [
+    "population Warsaw Poland 2025",
+    "Warsaw demographics current"
+  ]
+}
+```
+
+- **answer**: The complete response text from Gemini
+- **sources**: Array of reference sources used to ground the answer, with duplicate URLs automatically removed
+- **search_queries**: The actual search queries Gemini used to find information
+
 ### gemini_models
 
 Lists all available Gemini models with their capabilities and caching support.
@@ -131,13 +161,13 @@ The following Gemini models are supported:
 ## Supported File Types
 | Extension | MIME Type | 
 |-----------|-----------|
-| .go       | text/x-go |
-| .py       | text/x-python |
+| .go       | text/plain |
+| .py       | text/plain |
 | .js       | text/javascript |
 | .md       | text/markdown |
-| .java     | text/x-java |
-| .c/.h     | text/x-c |
-| .cpp/.hpp | text/x-c++ |
+| .java     | text/plain |
+| .c/.h     | text/plain |
+| .cpp/.hpp | text/plain |
 | 25+ more  | (See `getMimeTypeFromPath` in gemini.go) |
 
 ## Operational Notes
@@ -149,16 +179,30 @@ The following Gemini models are supported:
 
 ## File Handling
 
-The server now handles files directly through the `gemini_ask` tool:
+The server now provides enhanced file handling directly through the `gemini_ask` tool:
 
 1. Specify local file paths in the `file_paths` array parameter
 2. The server automatically:
    - Reads the files from the provided paths
    - Determines the correct MIME type based on file extension
-   - Uploads the file content to the Gemini API
+   - Validates file size against the `GEMINI_MAX_FILE_SIZE` limit
+   - Validates MIME type against the `GEMINI_ALLOWED_FILE_TYPES` allowlist
+   - Uploads the file content to the Gemini API with proper error handling
+   - Verifies returned URI validity to prevent potential issues
    - Uses the files as context for the query
+   - Stores file metadata in a local cache for quick future reference
 
-This direct file handling approach eliminates the need for separate file upload/management endpoints.
+File handling features include:
+
+- **Comprehensive Validation**: All files are validated for size, MIME type, and content before processing
+- **Automatic Retry**: Failed uploads are automatically retried with configurable backoff
+- **Enhanced Logging**: Detailed logging throughout the upload process for better troubleshooting
+- **Metadata Caching**: File information is cached locally to reduce API calls for repeat queries
+- **Configurable Limits**: Control file handling behavior through environment variables:
+  - `GEMINI_MAX_FILE_SIZE`: Maximum allowed file size (default: 10MB)
+  - `GEMINI_ALLOWED_FILE_TYPES`: Comma-separated list of allowed MIME types
+
+This robust file handling approach ensures reliable processing while maintaining security through proper validation.
 
 ## Caching Functionality
 
@@ -166,8 +210,15 @@ The server supports enhanced caching capabilities:
 
 - **Automatic Caching**: Simply set `use_cache: true` in the `gemini_ask` request
 - **TTL Control**: Specify cache expiration with the `cache_ttl` parameter (e.g., "10m", "2h")
-- **Model Support**: Only models with version suffixes (ending with `-001`) support caching
+- **Model Support**: Only models with version suffixes (ending with `-001`) support caching:
+  - `gemini-2.0-flash-001`
+  - `gemini-1.5-pro-001`
+  - `gemini-1.5-flash-001`
 - **Context Persistence**: Uploaded files are automatically stored and associated with the cache
+- **Metadata Management**: File and cache information are locally stored for quick access
+- **Configurable Settings**: Control caching behavior with environment variables:
+  - `GEMINI_ENABLE_CACHING`: Enable or disable the caching system globally
+  - `GEMINI_DEFAULT_CACHE_TTL`: Set the default Time-To-Live for cached contexts
 
 Example with caching:
 ```json
@@ -186,13 +237,17 @@ Example with caching:
 ## Recent Changes
 
 - Reimplemented proper file upload functionality using the fixed v1.1.0 version of `google.golang.org/genai` library
-- Added `gemini_search` tool with Google Search integration
+- Enhanced file handling with improved validation for file size, MIME type, and required fields
+- Updated MIME type detection to use `text/plain` for all code files for better compatibility
+- Improved URI validation to prevent issues with empty URIs after uploads
+- Enhanced logging for file handling, providing clearer insights into the upload process
+- Added `gemini_search` tool with Google Search integration and structured JSON responses
+- Implemented source deduplication for search results to prevent duplicate links
+- Enhanced the caching system with comprehensive validation and support for models with version suffixes
+- Implemented local metadata caching for quicker lookups of file and cache information
 - Added support for Gemini 2.5 Pro and Gemini 2.0 Flash models
-- Simplified the API by integrating file handling directly into the `gemini_ask` tool
-- Enhanced caching system with user-configurable TTL
 - Refactored retry logic with configurable backoff parameters
-- Improved error handling and logging throughout the codebase
-- Removed deprecated functions and tools for a cleaner implementation
+- Improved error handling and client validation throughout the codebase
 
 ## Development
 

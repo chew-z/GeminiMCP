@@ -313,8 +313,8 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 	// If caching failed or wasn't requested, use regular API
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
-		Temperature: genai.Ptr(float32(s.config.GeminiTemperature)),
-	}      
+		Temperature:       genai.Ptr(float32(s.config.GeminiTemperature)),
+	}
 
 	// Log the temperature setting
 	logger.Debug("Using temperature: %v for model %s", s.config.GeminiTemperature, modelName)
@@ -323,7 +323,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 	originalAPIKey := os.Getenv("GOOGLE_API_KEY")
 	os.Setenv("GOOGLE_API_KEY", s.config.GeminiAPIKey)
 
-// This will be executed at the end of this function to reset the environment
+	// This will be executed at the end of this function to reset the environment
 	defer func() {
 		if originalAPIKey != "" {
 			os.Setenv("GOOGLE_API_KEY", originalAPIKey)
@@ -332,7 +332,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 		}
 	}()
 
-// Add file contents if provided
+	// Add file contents if provided
 	if len(filePaths) > 0 {
 		// Validate client first
 		if s.client == nil {
@@ -362,7 +362,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 			// Upload to Gemini
 			logger.Info("Uploading file %s with mime type %s", fileName, mimeType)
 			uploadConfig := &genai.UploadFileConfig{
-				MIMEType: mimeType,
+				MIMEType:    mimeType,
 				DisplayName: fileName,
 			}
 			file, err := s.client.Files.Upload(ctx, bytes.NewReader(content), uploadConfig)
@@ -384,7 +384,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 			return createErrorResponse("Internal error: Gemini client not properly initialized"), nil
 		}
 
-// Generate content with files
+		// Generate content with files
 		response, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
 		if err != nil {
 			logger.Error("Gemini API error: %v", err)
@@ -402,7 +402,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 			genai.NewContentFromText(query, genai.RoleUser),
 		}
 
-// Validate client and models before proceeding
+		// Validate client and models before proceeding
 		if s.client == nil || s.client.Models == nil {
 			logger.Error("Gemini client or Models service not properly initialized")
 			return createErrorResponse("Internal error: Gemini client not properly initialized"), nil
@@ -477,7 +477,7 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 	var sources []SourceInfo
 	var searchQueries []string
 
-// Track seen URLs to avoid duplicates
+	// Track seen URLs to avoid duplicates
 	seenURLs := make(map[string]bool)
 
 	// Validate client and models before proceeding
@@ -497,24 +497,24 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 		if len(result.Candidates) > 0 && result.Candidates[0].Content != nil {
 			responseText += result.Text()
 
-// Extract metadata if available
+			// Extract metadata if available
 			if metadata := result.Candidates[0].GroundingMetadata; metadata != nil {
 				// Collect search queries
 				if len(metadata.WebSearchQueries) > 0 && len(searchQueries) == 0 {
 					searchQueries = metadata.WebSearchQueries
 				}
 
-// Collect sources from grounding chunks
+				// Collect sources from grounding chunks
 				for _, chunk := range metadata.GroundingChunks {
 					var source SourceInfo
 
-if web := chunk.Web; web != nil {
+					if web := chunk.Web; web != nil {
 						// Skip if we've seen this URL already
 						if seenURLs[web.URI] {
 							continue
 						}
 
-source = SourceInfo{
+						source = SourceInfo{
 							Title: web.Title,
 							URL:   web.URI,
 							Type:  "web",
@@ -526,7 +526,7 @@ source = SourceInfo{
 							continue
 						}
 
-source = SourceInfo{
+						source = SourceInfo{
 							Title: ctx.Title,
 							URL:   ctx.URI,
 							Type:  "retrieved_context",
@@ -534,7 +534,7 @@ source = SourceInfo{
 						seenURLs[ctx.URI] = true
 					}
 
-if source.URL != "" {
+					if source.URL != "" {
 						sources = append(sources, source)
 					}
 				}
@@ -554,7 +554,7 @@ if source.URL != "" {
 		SearchQueries: searchQueries,
 	}
 
-// Convert to JSON
+	// Convert to JSON
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
 		logger.Error("Failed to marshal search response: %v", err)
@@ -695,8 +695,8 @@ func (s *GeminiServer) handleQueryWithCache(ctx context.Context, req *protocol.C
 
 	config := &genai.GenerateContentConfig{
 		CachedContent: cacheInfo.Name,
-		Temperature: genai.Ptr(float32(s.config.GeminiTemperature)),
-	}  
+		Temperature:   genai.Ptr(float32(s.config.GeminiTemperature)),
+	}
 
 	// Validate client and models before proceeding
 	if s.client == nil || s.client.Models == nil {
@@ -733,12 +733,12 @@ func (s *GeminiServer) executeGeminiRequest(ctx context.Context, model string, q
 			Temperature: genai.Ptr(float32(s.config.GeminiTemperature)),
 		}
 
-// Validate client and models before proceeding
+		// Validate client and models before proceeding
 		if s.client == nil || s.client.Models == nil {
 			return fmt.Errorf("gemini client or Models service not properly initialized")
 		}
 
-response, err = s.client.Models.GenerateContent(timeoutCtx, model, contents, config)
+		response, err = s.client.Models.GenerateContent(timeoutCtx, model, contents, config)
 		if err != nil {
 			// Check specifically for timeout errors
 			if errors.Is(err, context.DeadlineExceeded) {
@@ -843,13 +843,13 @@ func getMimeTypeFromPath(path string) string {
 	case ".csv":
 		return "text/csv"
 	case ".go":
-		return "text/x-go"
+		return "text/plain" // Changed from "text/x-go" to "text/plain"
 	case ".py":
-		return "text/x-python"
+		return "text/plain" // Changed from "text/x-python" to "text/plain"
 	case ".java":
-		return "text/x-java"
+		return "text/plain" // Changed from "text/x-java" to "text/plain"
 	case ".c", ".cpp", ".h", ".hpp":
-		return "text/x-c"
+		return "text/plain" // Changed from "text/x-c" to "text/plain"
 	case ".rb":
 		return "text/plain"
 	case ".php":
