@@ -51,13 +51,13 @@ Add this server to any MCP-compatible client like Claude Desktop by adding to yo
 
 - **Environment Variables**: All environment variables must be included in the MCP configuration JSON shown above (in the `env` section), not as system environment variables or in .env files. Variables set outside the config JSON will not take effect for the client application.
 
-- **Claude Desktop Config Location**: 
+- **Claude Desktop Config Location**:
   - On macOS: `~/Library/Application\ Support/Claude/claude_desktop_config.json`
   - On Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 - **Configuration Help**: If you encounter any issues configuring the Claude desktop app, refer to the [MCP Quickstart Guide](https://modelcontextprotocol.io/quickstart/user) for additional assistance.
 
-## Using Gemini Tools from LLM Console
+## Using this MCP server from Claude Desktop app
 
 You can use Gemini tools directly from an LLM console by creating prompt examples that invoke the tools. Here are some example prompts for different use cases:
 
@@ -74,12 +74,12 @@ The LLM will invoke the **`gemini_models`** tool and return the list of availabl
 Say to your LLM:
 
 > *Use the **`gemini_ask`** tool to analyze this Go code for potential concurrency issues:*
-> 
+>
 > ```
 > func processItems(items []string) {
 >     var wg sync.WaitGroup
 >     results := make([]string, len(items))
->     
+>
 >     for i, item := range items {
 >         wg.Add(1)
 >         go func(i int, item string) {
@@ -87,7 +87,7 @@ Say to your LLM:
 >             wg.Done()
 >         }(i, item)
 >     }
->     
+>
 >     wg.Wait()
 >     return results
 > }
@@ -141,10 +141,10 @@ The LLM can intelligently manage these different caches, switching between them 
 
 The **`gemini_ask`** and **`gemini_search`** tools are highly versatile and not limited to programming-related queries. You can customize the system prompt for various use cases:
 
-- **Educational content**: "You are an expert teacher who explains complex concepts in simple terms..."
-- **Creative writing**: "You are a creative writer specializing in vivid, engaging narratives..."
-- **Technical documentation**: "You are a technical writer creating clear, structured documentation..."
-- **Data analysis**: "You are a data scientist analyzing patterns and trends in information..."
+- **Educational content**: *"You are an expert teacher who explains complex concepts in simple terms..."*
+- **Creative writing**: *"You are a creative writer specializing in vivid, engaging narratives..."*
+- **Technical documentation**: *"You are a technical writer creating clear, structured documentation..."*
+- **Data analysis**: *"You are a data scientist analyzing patterns and trends in information..."*
 
 When using these tools from an LLM console, always encourage the LLM to set appropriate system prompts and parameters for the specific use case. The flexibility of system prompts allows these tools to be effective for virtually any type of query.
 
