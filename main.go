@@ -19,6 +19,7 @@ func main() {
 	geminiSystemPromptFlag := flag.String("gemini-system-prompt", "", "System prompt (overrides env var)")
 	geminiTemperatureFlag := flag.Float64("gemini-temperature", -1, "Temperature setting (0.0-1.0, overrides env var)")
 	enableCachingFlag := flag.Bool("enable-caching", true, "Enable caching feature (overrides env var)")
+	enableThinkingFlag := flag.Bool("enable-thinking", true, "Enable thinking mode for supported models (overrides env var)")
 	flag.Parse()
 
 	// Create application context with logger
@@ -63,6 +64,10 @@ func main() {
 	// Override enable caching if flag is provided
 	config.EnableCaching = *enableCachingFlag
 	logger.Info("Caching feature is %s", getCachingStatusStr(config.EnableCaching))
+
+	// Override enable thinking if flag is provided
+	config.EnableThinking = *enableThinkingFlag
+	logger.Info("Thinking feature is %s", getCachingStatusStr(config.EnableThinking))
 
 	// Store config in context for error handler to access
 	ctx = context.WithValue(ctx, configKey, config)
@@ -139,6 +144,13 @@ func setupGeminiServer(ctx context.Context, registry *handler.HandlerRegistry, c
 	// Log cache configuration if enabled
 	if config.EnableCaching {
 		logger.Info("Cache settings: default TTL %v", config.DefaultCacheTTL)
+	}
+
+	// Log thinking configuration if enabled
+	model := GetModelByID(config.GeminiModel)
+	if config.EnableThinking && model != nil && model.SupportsThinking {
+		logger.Info("Thinking mode enabled for model %s with context window size %d tokens",
+			config.GeminiModel, model.ContextWindowSize)
 	}
 
 	// Log a truncated version of the system prompt for security/brevity

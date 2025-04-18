@@ -34,6 +34,9 @@ If the search results don't contain enough information to fully answer the query
 	// Cache settings defaults
 	defaultEnableCaching   = true
 	defaultDefaultCacheTTL = 1 * time.Hour
+
+	// Thinking settings
+	defaultEnableThinking = true
 )
 
 // Config holds all configuration parameters for the application
@@ -60,6 +63,9 @@ type Config struct {
 	// Cache settings
 	EnableCaching   bool          // Enable/disable caching
 	DefaultCacheTTL time.Duration // Default TTL if not specified
+
+	// Thinking settings
+	EnableThinking bool // Enable/disable thinking mode for supported models
 }
 
 // NewConfig creates a new configuration from environment variables
@@ -175,6 +181,12 @@ func NewConfig() (*Config, error) {
 		}
 	}
 
+	// Thinking settings
+	enableThinking := defaultEnableThinking
+	if thinkingStr := os.Getenv("GEMINI_ENABLE_THINKING"); thinkingStr != "" {
+		enableThinking = strings.ToLower(thinkingStr) == "true"
+	}
+
 	return &Config{
 		GeminiAPIKey:             geminiAPIKey,
 		GeminiModel:              geminiModel,
@@ -189,5 +201,6 @@ func NewConfig() (*Config, error) {
 		AllowedFileTypes:         allowedFileTypes,
 		EnableCaching:            enableCaching,
 		DefaultCacheTTL:          defaultCacheTTL,
+		EnableThinking:           enableThinking,
 	}, nil
 }
