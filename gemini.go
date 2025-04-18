@@ -95,6 +95,14 @@ func (s *GeminiServer) ListTools(ctx context.Context) (*protocol.ListToolsRespon
 					"cache_ttl": {
 						"type": "string",
 						"description": "Optional: TTL for cache if created (e.g., '10m', '1h'). Default is 10 minutes"
+					},
+					"enable_thinking": {
+						"type": "boolean",
+						"description": "Optional: Enable thinking mode to see model's reasoning process (only works with Pro models)"
+					},
+					"max_tokens": {
+						"type": "integer",
+						"description": "Optional: Maximum token limit for the response. Default is determined by the model"
 					}
 				},
 				"required": ["query"]
@@ -113,6 +121,14 @@ func (s *GeminiServer) ListTools(ctx context.Context) (*protocol.ListToolsRespon
 					"systemPrompt": {
 						"type": "string",
 						"description": "Optional: Custom system prompt to use for this request (overrides default configuration)"
+					},
+					"enable_thinking": {
+						"type": "boolean",
+						"description": "Optional: Enable thinking mode to see model's reasoning process (when supported)"
+					},
+					"max_tokens": {
+						"type": "integer",
+						"description": "Optional: Maximum token limit for the response. Default is determined by the model"
 					}
 				},
 				"required": ["query"]
@@ -324,13 +340,46 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 
 	// Get model information
 	modelInfo := GetModelByID(modelName)
+	if modelInfo == nil {
+		logger.Warn("Model information not found for %s, using default parameters", modelName)
+	}
+
+	// Check if max_tokens parameter was provided
+	if maxTokensRaw, ok := req.Arguments["max_tokens"].(float64); ok {
+		maxTokens := int(maxTokensRaw)
+		// Set the maximum output token limit
+		config.MaxOutputTokens = int32(maxTokens)
+		logger.Info("Setting max output tokens to %d", maxTokens)
+		
+		// Warn if tokens exceed the model's context window
+		if modelInfo != nil && maxTokens > modelInfo.ContextWindowSize {
+			logger.Warn("Requested max_tokens (%d) exceeds model's context window size (%d)", 
+				maxTokens, modelInfo.ContextWindowSize)
+		}
+	} else {
+		// Set a safe default if not specified
+		if modelInfo != nil {
+			// Use 75% of the context window as a safe default for max output tokens
+			safeTokenLimit := int32(modelInfo.ContextWindowSize * 3 / 4)
+			config.MaxOutputTokens = safeTokenLimit
+			logger.Debug("Using default max output tokens: %d (75%% of context window)", safeTokenLimit)
+		}
+	}
 
 	// Configure thinking mode if enabled and model supports it
-	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
-		config.ThinkingConfig = &genai.ThinkingConfig{
-			IncludeThoughts: true,
+	if enableThinking {
+		if modelInfo != nil && modelInfo.SupportsThinking {
+			config.ThinkingConfig = &genai.ThinkingConfig{
+				IncludeThoughts: true,
+			}
+			logger.Info("Thinking mode enabled for request with model %s", modelName)
+		} else {
+			if modelInfo != nil {
+				logger.Warn("Thinking mode requested but model %s doesn't support it", modelName)
+			} else {
+				logger.Warn("Thinking mode requested but unknown if model %s supports it", modelName)
+			}
 		}
-		logger.Info("Thinking mode enabled for request with model %s", modelName)
 	}
 
 	// Log the temperature setting
@@ -473,6 +522,18 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 	modelName := "gemini-2.0-flash"
 	logger.Info("Using %s model for Google Search integration", modelName)
 
+	// Check if thinking mode is requested
+	enableThinking := s.config.EnableThinking
+	if thinkingRaw, ok := req.Arguments["enable_thinking"].(bool); ok {
+		enableThinking = thinkingRaw
+	}
+	
+	// Get model information for capabilities and context window
+	modelInfo := GetModelByID(modelName)
+	if modelInfo == nil {
+		logger.Warn("Model information not found for %s, using default parameters", modelName)
+	}
+
 	// Create the generate content configuration
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
@@ -482,6 +543,39 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 				GoogleSearch: &genai.GoogleSearch{},
 			},
 		},
+	}
+	
+	// Check if max_tokens parameter was provided
+	if maxTokensRaw, ok := req.Arguments["max_tokens"].(float64); ok {
+		maxTokens := int(maxTokensRaw)
+		// Set the maximum output token limit
+		config.MaxOutputTokens = int32(maxTokens)
+		logger.Info("Setting max output tokens to %d", maxTokens)
+		
+		// Warn if tokens exceed the model's context window
+		if modelInfo != nil && maxTokens > modelInfo.ContextWindowSize {
+			logger.Warn("Requested max_tokens (%d) exceeds model's context window size (%d)", 
+				maxTokens, modelInfo.ContextWindowSize)
+		}
+	} else {
+		// Set a safe default if not specified
+		if modelInfo != nil {
+			// For search queries, use a more conservative limit (50% of context)
+			// as search results will take up context space too
+			safeTokenLimit := int32(modelInfo.ContextWindowSize / 2)
+			config.MaxOutputTokens = safeTokenLimit
+			logger.Debug("Using default max output tokens: %d (50%% of context window)", safeTokenLimit)
+		}
+	}
+	
+	// Configure thinking mode if enabled and model supports it
+	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
+		config.ThinkingConfig = &genai.ThinkingConfig{
+			IncludeThoughts: true,
+		}
+		logger.Info("Thinking mode enabled for search request with model %s", modelName)
+	} else if enableThinking {
+		logger.Warn("Thinking mode requested but model %s may not support it", modelName)
 	}
 
 	// Create query content
