@@ -243,10 +243,28 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 	// If caching is requested and the model supports it, use caching
 	var cacheID string
 	var cacheErr error
+	
+	// Check if thinking mode is also requested, as this can conflict with caching
+	thinkingRequested := s.config.EnableThinking
+	if thinkingRaw, ok := req.Arguments["enable_thinking"].(bool); ok {
+		thinkingRequested = thinkingRaw
+	}
+	
+	if thinkingRequested && useCache {
+		logger.Warn("Both caching and thinking mode were requested - these features may conflict. Prioritizing thinking mode.")
+		useCache = false
+	}
+	
 	if useCache && s.config.EnableCaching {
 		// Check if model supports caching
 		model := GetModelByID(modelName)
 		if model != nil && model.SupportsCaching {
+			// Estimate content size - caching requires at least ~32K tokens of context
+			estimatedTokens := len(query) / 4 // Very rough estimation: ~4 chars per token
+			if len(filePaths) == 0 && estimatedTokens < 32768 {
+				logger.Warn("Query may be too small for caching (min ~32K tokens needed). Caching may fail.")
+			}
+			
 			// Create a cache context from file paths
 			var fileIDs []string
 

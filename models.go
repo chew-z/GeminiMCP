@@ -69,7 +69,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			Name:              "Gemini 1.5 Pro Latest",
 			Description:       "Pro model with advanced reasoning capabilities",
 			SupportsCaching:   false,
-			SupportsThinking:  true,
+			SupportsThinking:  false, // Not reliably working with thinking mode
 			ContextWindowSize: 1048576,
 		},
 		{
@@ -77,7 +77,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			Name:              "Gemini 1.5 Pro 001",
 			Description:       "Pro model with advanced reasoning capabilities",
 			SupportsCaching:   true,
-			SupportsThinking:  true,
+			SupportsThinking:  false, // Doesn't work with thinking mode per testing
 			ContextWindowSize: 1048576,
 		},
 		{
@@ -85,7 +85,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			Name:              "Gemini 1.5 Pro",
 			Description:       "Pro model with advanced reasoning capabilities",
 			SupportsCaching:   false,
-			SupportsThinking:  true,
+			SupportsThinking:  false, // Doesn't work with thinking mode per testing
 			ContextWindowSize: 1048576,
 		},
 		
@@ -121,15 +121,15 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			Name:              "Gemini 2.5 Pro Exp 03 25",
 			Description:       "Preview/Experimental Pro model with advanced reasoning capabilities",
 			SupportsCaching:   false,
-			SupportsThinking:  true,
+			SupportsThinking:  true, // Confirmed to work with thinking mode
 			ContextWindowSize: 1048576,
 		},
 		{
 			ID:                "gemini-2.5-pro-preview-03-25",
 			Name:              "Gemini 2.5 Pro Preview 03 25",
-			Description:       "Preview/Experimental Pro model with advanced reasoning capabilities",
+			Description:       "Preview/Experimental Pro model with advanced reasoning capabilities (best thinking mode support)",
 			SupportsCaching:   false,
-			SupportsThinking:  true,
+			SupportsThinking:  true, // Confirmed to work with thinking mode
 			ContextWindowSize: 1048576,
 		},
 		{
@@ -272,7 +272,19 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 			// Check for Pro models first (they have higher capabilities)
 			if strings.Contains(idLower, "pro") {
 				description = "Pro model with strong reasoning capabilities and long context support"
-				supportsThinking = true
+				
+				// Only mark specific models as supporting thinking based on actual API behavior
+				// Testing shows inconsistent thinking support across Pro models
+				if strings.Contains(idLower, "2.5-pro") && (strings.Contains(idLower, "preview") || strings.Contains(idLower, "exp")) {
+					// Only 2.5 preview/experimental models confirmed to work with thinking
+					supportsThinking = true
+					logger.Debug("Marking model %s as supporting thinking mode", id)
+				} else {
+					// Other Pro models might claim to support thinking but have API issues
+					supportsThinking = false
+					logger.Debug("Pro model %s may have thinking capabilities but API errors occur", id)
+				}
+				
 				contextWindowSize = 1048576 // 1M tokens for Pro models
 			} else if strings.Contains(idLower, "flash") {
 				description = "Flash model optimized for efficiency and speed"
