@@ -34,78 +34,155 @@ func GetModelByID(modelID string) *GeminiModelInfo {
 // ValidateModelID checks if a model ID is in the list of available models
 // Returns nil if valid, error otherwise
 func ValidateModelID(modelID string) error {
+	// First check if it's in our known models list
 	if GetModelByID(modelID) != nil {
 		return nil
 	}
-
-	// Model not found, return error with available models
+	
+	// Special handling for preview models or other special cases
+	// Preview models often have date suffixes like "preview-04-17"
+	if strings.Contains(modelID, "preview") || 
+	   strings.Contains(modelID, "exp") || 
+	   strings.HasSuffix(modelID, "-dev") {
+		// Allow preview/experimental models even if not in our list
+		return nil
+	}
+	
+	// Model is neither in our list nor a recognized preview format
+	// Return a warning, but don't block the model from being used
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Invalid model ID: %s. Available models are:", modelID))
+	sb.WriteString(fmt.Sprintf("Unknown model ID: %s. Known models are:", modelID))
 	for _, model := range GetAvailableGeminiModels() {
 		sb.WriteString(fmt.Sprintf("\n- %s: %s", model.ID, model.Name))
 	}
-
+	sb.WriteString("\n\nHowever, we will attempt to use this model anyway. It may be a new or preview model.")
+	
 	return errors.New(sb.String())
 }
 
 // fallbackGeminiModels provides a list of default Gemini models to use if API fetching fails
 func fallbackGeminiModels() []GeminiModelInfo {
 	return []GeminiModelInfo{
+		// Gemini 1.5 Pro Models (core models)
 		{
-			ID:                "gemini-2.0-flash-lite",
-			Name:              "Gemini 2.0 Flash Lite",
-			Description:       "Optimized for speed, scale, and cost efficiency",
-			SupportsCaching:   false,
-			SupportsThinking:  false,
-			ContextWindowSize: 32768,
-		},
-		{
-			ID:                "gemini-2.5-pro-exp-03-25",
-			Name:              "Gemini 2.5 Pro",
-			Description:       "State-of-the-art thinking model, capable of reasoning over complex problems in code, math, and STEM, as well as analyzing large datasets, codebases, and documents using long context",
+			ID:                "gemini-1.5-pro-latest",
+			Name:              "Gemini 1.5 Pro Latest",
+			Description:       "Pro model with advanced reasoning capabilities",
 			SupportsCaching:   false,
 			SupportsThinking:  true,
 			ContextWindowSize: 1048576,
 		},
 		{
-			ID:                "gemini-2.0-flash-001",
-			Name:              "Gemini 2.0 Flash",
-			Description:       "Version of Gemini 2.0 Flash that supports text-only output",
-			SupportsCaching:   true, // Has version suffix
-			SupportsThinking:  false,
-			ContextWindowSize: 32768,
+			ID:                "gemini-1.5-pro-001",
+			Name:              "Gemini 1.5 Pro 001",
+			Description:       "Pro model with advanced reasoning capabilities",
+			SupportsCaching:   true,
+			SupportsThinking:  true,
+			ContextWindowSize: 1048576,
 		},
 		{
 			ID:                "gemini-1.5-pro",
 			Name:              "Gemini 1.5 Pro",
-			Description:       "Previous generation pro model with strong reasoning capabilities and long context support",
+			Description:       "Pro model with advanced reasoning capabilities",
 			SupportsCaching:   false,
 			SupportsThinking:  true,
 			ContextWindowSize: 1048576,
+		},
+		
+		// Gemini 1.5 Flash Models (core models)
+		{
+			ID:                "gemini-1.5-flash-latest",
+			Name:              "Gemini 1.5 Flash Latest",
+			Description:       "Flash model optimized for efficiency and speed",
+			SupportsCaching:   false,
+			SupportsThinking:  false,
+			ContextWindowSize: 32768,
+		},
+		{
+			ID:                "gemini-1.5-flash-001",
+			Name:              "Gemini 1.5 Flash 001",
+			Description:       "Flash model optimized for efficiency and speed",
+			SupportsCaching:   true,
+			SupportsThinking:  false,
+			ContextWindowSize: 32768,
 		},
 		{
 			ID:                "gemini-1.5-flash",
 			Name:              "Gemini 1.5 Flash",
-			Description:       "Previous generation flash model optimized for efficiency and speed",
+			Description:       "Flash model optimized for efficiency and speed",
+			SupportsCaching:   false,
+			SupportsThinking:  false,
+			ContextWindowSize: 32768,
+		},
+		
+		// Gemini 2.5 Models (Preview/Experimental)
+		{
+			ID:                "gemini-2.5-pro-exp-03-25",
+			Name:              "Gemini 2.5 Pro Exp 03 25",
+			Description:       "Preview/Experimental Pro model with advanced reasoning capabilities",
+			SupportsCaching:   false,
+			SupportsThinking:  true,
+			ContextWindowSize: 1048576,
+		},
+		{
+			ID:                "gemini-2.5-pro-preview-03-25",
+			Name:              "Gemini 2.5 Pro Preview 03 25",
+			Description:       "Preview/Experimental Pro model with advanced reasoning capabilities",
+			SupportsCaching:   false,
+			SupportsThinking:  true,
+			ContextWindowSize: 1048576,
+		},
+		{
+			ID:                "gemini-2.5-flash-preview-04-17",
+			Name:              "Gemini 2.5 Flash Preview 04 17",
+			Description:       "Preview/Experimental Flash model optimized for efficiency and speed",
+			SupportsCaching:   false,
+			SupportsThinking:  false,
+			ContextWindowSize: 32768,
+		},
+		
+		// Gemini 2.0 Models (core models)
+		{
+			ID:                "gemini-2.0-flash",
+			Name:              "Gemini 2.0 Flash",
+			Description:       "Flash model optimized for efficiency and speed",
 			SupportsCaching:   false,
 			SupportsThinking:  false,
 			ContextWindowSize: 32768,
 		},
 		{
-			ID:                "gemini-1.5-pro-001",
-			Name:              "Gemini 1.5 Pro (Stable)",
-			Description:       "Stable version of Gemini 1.5 Pro with version suffix",
-			SupportsCaching:   true, // Has version suffix
-			SupportsThinking:  true,
-			ContextWindowSize: 1048576,
-		},
-		{
-			ID:                "gemini-1.5-flash-001",
-			Name:              "Gemini 1.5 Flash (Stable)",
-			Description:       "Stable version of Gemini 1.5 Flash with version suffix",
-			SupportsCaching:   true, // Has version suffix
+			ID:                "gemini-2.0-flash-001",
+			Name:              "Gemini 2.0 Flash 001",
+			Description:       "Flash model optimized for efficiency and speed",
+			SupportsCaching:   true,
 			SupportsThinking:  false,
 			ContextWindowSize: 32768,
+		},
+		{
+			ID:                "gemini-2.0-flash-lite",
+			Name:              "Gemini 2.0 Flash Lite",
+			Description:       "Flash model optimized for efficiency and speed",
+			SupportsCaching:   false,
+			SupportsThinking:  false,
+			ContextWindowSize: 32768,
+		},
+		
+		// Latest Preview/Experimental models
+		{
+			ID:                "gemini-2.0-flash-exp",
+			Name:              "Gemini 2.0 Flash Exp",
+			Description:       "Preview/Experimental Flash model optimized for efficiency and speed",
+			SupportsCaching:   false,
+			SupportsThinking:  false,
+			ContextWindowSize: 32768,
+		},
+		{
+			ID:                "gemini-2.0-pro-exp",
+			Name:              "Gemini 2.0 Pro Exp",
+			Description:       "Preview/Experimental Pro model with advanced reasoning capabilities",
+			SupportsCaching:   false,
+			SupportsThinking:  true,
+			ContextWindowSize: 1048576,
 		},
 	}
 }
@@ -146,21 +223,34 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 
 	// Create a slice to store fetched models
 	var fetchedModels []GeminiModelInfo
-
+	
+	// Track total models found for better diagnostics
+	modelCount := 0
+	
 	// Fetch models from API
+	logger.Debug("Starting model fetch from Gemini API...")
 	for model, err := range client.Models.All(ctx) {
+		modelCount++
 		if err != nil {
 			logger.Error("Error fetching models: %v", err)
 			return fmt.Errorf("error fetching models: %w", err)
 		}
 
-		// Only include Gemini models
-		if strings.HasPrefix(model.Name, "models/gemini") {
-			// Extract ID from model name
-			id := strings.TrimPrefix(model.Name, "models/")
-
+		// More flexible matching for Gemini models
+		// Look for common markers in model names/identifiers
+		modelName := strings.ToLower(model.Name)
+		if strings.Contains(modelName, "gemini") {
+			// Extract ID from model name, handling different API response formats
+			id := model.Name
+			if strings.HasPrefix(id, "models/") {
+				id = strings.TrimPrefix(id, "models/")
+			}
+			
+			logger.Debug("Found Gemini model from API: %s", id)
+			logger.Debug("Model details: %+v", model)
+			
 			// Check if model has version suffix for caching support
-			supportsCaching := strings.HasSuffix(id, "-001")
+			supportsCaching := strings.HasSuffix(id, "-001") || strings.Contains(id, "stable")
 
 			// Create a more user-friendly name
 			name := strings.TrimPrefix(id, "gemini-")
@@ -176,13 +266,29 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 			supportsThinking := false
 			contextWindowSize := 32768 // Default for Flash models
 
-			if strings.Contains(id, "pro") {
+			// Determine model capabilities based on name patterns
+			idLower := strings.ToLower(id)
+			
+			// Check for Pro models first (they have higher capabilities)
+			if strings.Contains(idLower, "pro") {
 				description = "Pro model with strong reasoning capabilities and long context support"
 				supportsThinking = true
 				contextWindowSize = 1048576 // 1M tokens for Pro models
-			} else if strings.Contains(id, "flash") {
+			} else if strings.Contains(idLower, "flash") {
 				description = "Flash model optimized for efficiency and speed"
 				// Flash models use the default values set above
+			}
+			
+			// Special handling for preview/experimental models
+			if strings.Contains(idLower, "preview") || strings.Contains(idLower, "exp") {
+				// Add preview designation to description
+				if strings.Contains(description, "Pro") {
+					description = "Preview/Experimental " + description
+				} else if strings.Contains(description, "Flash") {
+					description = "Preview/Experimental " + description
+				} else {
+					description = "Preview/Experimental Gemini model"
+				}
 			}
 
 			// Add model to list
@@ -201,17 +307,23 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 
 	// If we got models, update the store
 	if len(fetchedModels) > 0 {
-		logger.Info("Successfully fetched %d Gemini models", len(fetchedModels))
+		logger.Info("Successfully fetched %d Gemini models from %d total models", len(fetchedModels), modelCount)
 
 		// Update model store with write lock
 		modelStore.Lock()
 		modelStore.models = fetchedModels
 		modelStore.Unlock()
 
+		// Log the found models for easier debugging
+		for i, model := range fetchedModels {
+			logger.Debug("Fetched model %d: %s (%s)", i+1, model.ID, model.Name)
+		}
+
 		return nil
 	}
 
-	logger.Warn("No Gemini models found via API, using fallback models")
+	logger.Warn("No Gemini models found via API (from %d total models), using fallback models", modelCount)
+	logger.Debug("API may have returned models in an unexpected format or access restrictions may be in place")
 	return fmt.Errorf("no Gemini models found via API")
 }
 

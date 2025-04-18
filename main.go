@@ -33,15 +33,31 @@ func main() {
 		return
 	}
 
+	// Store config in context for error handler to access
+	ctx = context.WithValue(ctx, configKey, config)
+
+	// Fetch available Gemini models first if API key is available
+	// This ensures we have the latest models before validation
+	if config.GeminiAPIKey != "" {
+		logger.Info("Attempting to fetch available Gemini models...")
+		if err := FetchGeminiModels(ctx, config.GeminiAPIKey); err != nil {
+			// Just log the error but continue with fallback models
+			logger.Warn("Could not fetch Gemini models: %v. Using fallback model list.", err)
+		}
+	} else {
+		logger.Warn("No Gemini API key available, using fallback model list")
+	}
+
 	// Override with command-line flags if provided
 	if *geminiModelFlag != "" {
-		// Validate the model ID before setting it
+		// We'll use the model specified, even if it's not in our known list
+		// This allows for new models and preview versions
 		if err := ValidateModelID(*geminiModelFlag); err != nil {
-			logger.Error("Invalid model specified: %v", err)
-			handleStartupError(ctx, fmt.Errorf("invalid model specified: %w", err))
-			return
+			// Just log a warning, we'll still use the model
+			logger.Info("Using custom model: %s (not in known list, but may be valid)", *geminiModelFlag)
+		} else {
+			logger.Info("Using known model: %s", *geminiModelFlag)
 		}
-		logger.Info("Overriding Gemini model with flag value: %s", *geminiModelFlag)
 		config.GeminiModel = *geminiModelFlag
 	}
 	if *geminiSystemPromptFlag != "" {
@@ -69,23 +85,11 @@ func main() {
 	config.EnableThinking = *enableThinkingFlag
 	logger.Info("Thinking feature is %s", getCachingStatusStr(config.EnableThinking))
 
-	// Store config in context for error handler to access
-	ctx = context.WithValue(ctx, configKey, config)
-
+	// Store config in context for error handler to access (already done earlier)
+	
 	// Set up handler registry
 	// NewHandlerRegistry is a constructor that doesn't return an error
 	registry := handler.NewHandlerRegistry()
-
-	// Fetch available Gemini models if API key is available
-	if config.GeminiAPIKey != "" {
-		logger.Info("Attempting to fetch available Gemini models...")
-		if err := FetchGeminiModels(ctx, config.GeminiAPIKey); err != nil {
-			// Just log the error but continue with fallback models
-			logger.Warn("Could not fetch Gemini models: %v. Using fallback model list.", err)
-		}
-	} else {
-		logger.Warn("No Gemini API key available, using fallback model list")
-	}
 
 	// Create and register the Gemini server
 	if err := setupGeminiServer(ctx, registry, config); err != nil {

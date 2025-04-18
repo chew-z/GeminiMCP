@@ -593,8 +593,105 @@ func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallTo
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Listing available Gemini models")
 
-	// Get available models
-	models := GetAvailableGeminiModels()
+	// Direct API access to get the most up-to-date model list
+	var models []GeminiModelInfo
+	
+	if s.config.GeminiAPIKey != "" {
+		// We'll try to fetch models directly here for the most accurate list
+		logger.Info("Fetching models directly from API for most current list...")
+		
+		// Create a new client specifically for this request
+		clientConfig := &genai.ClientConfig{
+			APIKey: s.config.GeminiAPIKey,
+		}
+		
+		tempClient, err := genai.NewClient(ctx, clientConfig)
+		if err != nil {
+			logger.Warn("Could not create temporary client for model listing: %v. Will use cached list.", err)
+		} else {
+			// Try to fetch models directly
+			var fetchedModels []GeminiModelInfo
+			modelCount := 0
+			
+			// Iterate through all available models
+			for model, err := range tempClient.Models.All(ctx) {
+				modelCount++
+				if err != nil {
+					logger.Warn("Error while fetching model: %v", err)
+					continue
+				}
+				
+				// Look for Gemini models
+				modelName := strings.ToLower(model.Name)
+				if strings.Contains(modelName, "gemini") {
+					id := model.Name
+					if strings.HasPrefix(id, "models/") {
+						id = strings.TrimPrefix(id, "models/")
+					}
+					
+					logger.Debug("Found model: %s", id)
+					
+					// Determine capabilities based on model type
+					supportsCaching := strings.HasSuffix(id, "-001")
+					supportsThinking := strings.Contains(strings.ToLower(id), "pro")
+					contextWindowSize := 32768 // Default for Flash models
+					
+					if supportsThinking {
+						contextWindowSize = 1048576 // Pro models have 1M context
+					}
+					
+					// Create user-friendly name
+					name := strings.TrimPrefix(id, "gemini-")
+					name = strings.ReplaceAll(name, "-", " ")
+					name = strings.Title(name)
+					name = "Gemini " + name
+					
+					// Create appropriate description
+					description := "Google Gemini model"
+					if strings.Contains(strings.ToLower(id), "pro") {
+						description = "Pro model with advanced reasoning capabilities"
+					} else if strings.Contains(strings.ToLower(id), "flash") {
+						description = "Flash model optimized for efficiency and speed"
+					}
+					
+					// Add preview designation if applicable
+					if strings.Contains(strings.ToLower(id), "preview") || strings.Contains(strings.ToLower(id), "exp") {
+						description = "Preview/Experimental " + description
+					}
+					
+					// Add the model to our list
+					fetchedModels = append(fetchedModels, GeminiModelInfo{
+						ID:                id,
+						Name:              name,
+						Description:       description,
+						SupportsCaching:   supportsCaching,
+						SupportsThinking:  supportsThinking,
+						ContextWindowSize: contextWindowSize,
+					})
+				}
+			}
+			
+			if len(fetchedModels) > 0 {
+				// Use the directly fetched models for this response
+				models = fetchedModels
+				logger.Info("Successfully fetched %d models directly from API for display", len(models))
+				
+				// Also update the store for future use
+				modelStore.Lock()
+				modelStore.models = fetchedModels
+				modelStore.Unlock()
+			} else {
+				logger.Warn("No models found from direct API call (from %d total). Using cached list.", modelCount)
+				models = GetAvailableGeminiModels()
+			}
+		}
+	}
+	
+	// Fallback if we couldn't get models directly
+	if len(models) == 0 {
+		models = GetAvailableGeminiModels()
+		logger.Info("Using cached model list with %d models", len(models))
+	}
 
 	// Create a formatted response using strings.Builder with error handling
 	var formattedContent strings.Builder
@@ -629,7 +726,19 @@ func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallTo
 		}
 
 		// Add caching support info
-		if err := writeStringf("- Supports Caching: %v\n\n", model.SupportsCaching); err != nil {
+		if err := writeStringf("- Supports Caching: %v\n", model.SupportsCaching); err != nil {
+			logger.Error("Error writing to response: %v", err)
+			return createErrorResponse("Error generating model list"), nil
+		}
+		
+		// Add thinking support info
+		if err := writeStringf("- Supports Thinking: %v\n", model.SupportsThinking); err != nil {
+			logger.Error("Error writing to response: %v", err)
+			return createErrorResponse("Error generating model list"), nil
+		}
+		
+		// Add context window size
+		if err := writeStringf("- Context Window Size: %d tokens\n\n", model.ContextWindowSize); err != nil {
 			logger.Error("Error writing to response: %v", err)
 			return createErrorResponse("Error generating model list"), nil
 		}
@@ -663,6 +772,27 @@ func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallTo
 	}
 
 	if err := writeStringf("When using a cacheable model, you can enable caching with the `use_cache` parameter. This will create a temporary cache that automatically expires after 10 minutes by default. You can specify a custom TTL with the `cache_ttl` parameter.\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+	
+	// Add info about thinking mode
+	if err := writeStringf("\n## Thinking Mode\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+
+	if err := writeStringf("Pro models support thinking mode, which shows the model's detailed reasoning process.\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+
+	if err := writeStringf("Enable thinking mode with the `enable_thinking` parameter. Example:\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+	
+	if err := writeStringf("```json\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"gemini-1.5-pro\",\n  \"enable_thinking\": true\n}\n```\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResponse("Error generating model list"), nil
 	}

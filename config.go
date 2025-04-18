@@ -70,10 +70,8 @@ type Config struct {
 
 // NewConfig creates a new configuration from environment variables
 func NewConfig() (*Config, error) {
-	// Validate that the default model is valid
-	if err := ValidateModelID(defaultGeminiModel); err != nil {
-		return nil, fmt.Errorf("default model is not valid: %w", err)
-	}
+	// No longer validating default model at startup - will be checked when needed
+	// This allows for new models not in our hardcoded list
 	// Get Gemini API key - required
 	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
 	if geminiAPIKey == "" {
@@ -84,12 +82,9 @@ func NewConfig() (*Config, error) {
 	geminiModel := os.Getenv("GEMINI_MODEL")
 	if geminiModel == "" {
 		geminiModel = defaultGeminiModel // Default model if not specified
-	} else {
-		// Validate the model from environment variable
-		if err := ValidateModelID(geminiModel); err != nil {
-			return nil, fmt.Errorf("invalid GEMINI_MODEL environment variable: %w", err)
-		}
 	}
+	// Note: We no longer validate the model here to allow for new models
+	// and preview versions not in our hardcoded list
 
 	// Get Gemini system prompt - optional with default
 	geminiSystemPrompt := os.Getenv("GEMINI_SYSTEM_PROMPT")
