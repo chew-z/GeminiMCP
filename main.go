@@ -86,7 +86,7 @@ func main() {
 	logger.Info("Thinking feature is %s", getCachingStatusStr(config.EnableThinking))
 
 	// Store config in context for error handler to access (already done earlier)
-	
+
 	// Set up handler registry
 	// NewHandlerRegistry is a constructor that doesn't return an error
 	registry := handler.NewHandlerRegistry()

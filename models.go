@@ -38,16 +38,16 @@ func ValidateModelID(modelID string) error {
 	if GetModelByID(modelID) != nil {
 		return nil
 	}
-	
+
 	// Special handling for preview models or other special cases
 	// Preview models often have date suffixes like "preview-04-17"
-	if strings.Contains(modelID, "preview") || 
-	   strings.Contains(modelID, "exp") || 
-	   strings.HasSuffix(modelID, "-dev") {
+	if strings.Contains(modelID, "preview") ||
+		strings.Contains(modelID, "exp") ||
+		strings.HasSuffix(modelID, "-dev") {
 		// Allow preview/experimental models even if not in our list
 		return nil
 	}
-	
+
 	// Model is neither in our list nor a recognized preview format
 	// Return a warning, but don't block the model from being used
 	var sb strings.Builder
@@ -56,7 +56,7 @@ func ValidateModelID(modelID string) error {
 		sb.WriteString(fmt.Sprintf("\n- %s: %s", model.ID, model.Name))
 	}
 	sb.WriteString("\n\nHowever, we will attempt to use this model anyway. It may be a new or preview model.")
-	
+
 	return errors.New(sb.String())
 }
 
@@ -88,7 +88,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			SupportsThinking:  false, // Doesn't work with thinking mode per testing
 			ContextWindowSize: 1048576,
 		},
-		
+
 		// Gemini 1.5 Flash Models (core models)
 		{
 			ID:                "gemini-1.5-flash-latest",
@@ -114,7 +114,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			SupportsThinking:  false,
 			ContextWindowSize: 32768,
 		},
-		
+
 		// Gemini 2.5 Models (Preview/Experimental)
 		{
 			ID:                "gemini-2.5-pro-exp-03-25",
@@ -140,7 +140,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			SupportsThinking:  false,
 			ContextWindowSize: 32768,
 		},
-		
+
 		// Gemini 2.0 Models (core models)
 		{
 			ID:                "gemini-2.0-flash",
@@ -166,7 +166,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			SupportsThinking:  false,
 			ContextWindowSize: 32768,
 		},
-		
+
 		// Latest Preview/Experimental models
 		{
 			ID:                "gemini-2.0-flash-exp",
@@ -223,10 +223,10 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 
 	// Create a slice to store fetched models
 	var fetchedModels []GeminiModelInfo
-	
+
 	// Track total models found for better diagnostics
 	modelCount := 0
-	
+
 	// Fetch models from API
 	logger.Debug("Starting model fetch from Gemini API...")
 	for model, err := range client.Models.All(ctx) {
@@ -245,10 +245,10 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 			if strings.HasPrefix(id, "models/") {
 				id = strings.TrimPrefix(id, "models/")
 			}
-			
+
 			logger.Debug("Found Gemini model from API: %s", id)
 			logger.Debug("Model details: %+v", model)
-			
+
 			// Check if model has version suffix for caching support
 			supportsCaching := strings.HasSuffix(id, "-001") || strings.Contains(id, "stable")
 
@@ -268,11 +268,11 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 
 			// Determine model capabilities based on name patterns
 			idLower := strings.ToLower(id)
-			
+
 			// Check for Pro models first (they have higher capabilities)
 			if strings.Contains(idLower, "pro") {
 				description = "Pro model with strong reasoning capabilities and long context support"
-				
+
 				// Only mark specific models as supporting thinking based on actual API behavior
 				// Testing shows inconsistent thinking support across Pro models
 				if strings.Contains(idLower, "2.5-pro") && (strings.Contains(idLower, "preview") || strings.Contains(idLower, "exp")) {
@@ -284,13 +284,13 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 					supportsThinking = false
 					logger.Debug("Pro model %s may have thinking capabilities but API errors occur", id)
 				}
-				
+
 				contextWindowSize = 1048576 // 1M tokens for Pro models
 			} else if strings.Contains(idLower, "flash") {
 				description = "Flash model optimized for efficiency and speed"
 				// Flash models use the default values set above
 			}
-			
+
 			// Special handling for preview/experimental models
 			if strings.Contains(idLower, "preview") || strings.Contains(idLower, "exp") {
 				// Add preview designation to description
