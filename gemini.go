@@ -100,6 +100,15 @@ func (s *GeminiServer) ListTools(ctx context.Context) (*protocol.ListToolsRespon
 						"type": "boolean",
 						"description": "Optional: Enable thinking mode to see model's reasoning process (only works with Pro models)"
 					},
+					"thinking_budget": {
+						"type": "integer",
+						"description": "Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)"
+					},
+					"thinking_budget_level": {
+						"type": "string",
+						"enum": ["none", "low", "medium", "high"],
+						"description": "Optional: Predefined thinking budget level (none: 0, low: 4096, medium: 16384, high: 24576)"
+					},
 					"max_tokens": {
 						"type": "integer",
 						"description": "Optional: Maximum token limit for the response. Default is determined by the model"
@@ -125,6 +134,15 @@ func (s *GeminiServer) ListTools(ctx context.Context) (*protocol.ListToolsRespon
 					"enable_thinking": {
 						"type": "boolean",
 						"description": "Optional: Enable thinking mode to see model's reasoning process (when supported)"
+					},
+					"thinking_budget": {
+						"type": "integer",
+						"description": "Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)"
+					},
+					"thinking_budget_level": {
+						"type": "string",
+						"enum": ["none", "low", "medium", "high"],
+						"description": "Optional: Predefined thinking budget level (none: 0, low: 4096, medium: 16384, high: 24576)"
 					},
 					"max_tokens": {
 						"type": "integer",
@@ -391,9 +409,34 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 	// Configure thinking mode if enabled and model supports it
 	if enableThinking {
 		if modelInfo != nil && modelInfo.SupportsThinking {
-			config.ThinkingConfig = &genai.ThinkingConfig{
+			thinkingConfig := &genai.ThinkingConfig{
 				IncludeThoughts: true,
 			}
+			
+			// Determine thinking budget - check for level first, then explicit value
+			thinkingBudget := 0
+			
+			// Check if thinking_budget_level parameter was provided
+			if levelStr, ok := req.Arguments["thinking_budget_level"].(string); ok && levelStr != "" {
+				thinkingBudget = getThinkingBudgetFromLevel(levelStr)
+				logger.Info("Setting thinking budget to %d tokens from level: %s", thinkingBudget, levelStr)
+			} else if budgetRaw, ok := req.Arguments["thinking_budget"].(float64); ok && budgetRaw >= 0 {
+				// If explicit budget was provided, use that instead of level
+				thinkingBudget = int(budgetRaw)
+				logger.Info("Setting thinking budget to %d tokens from explicit value", thinkingBudget)
+			} else if s.config.ThinkingBudget > 0 {
+				// Fall back to config value if neither level nor explicit budget provided
+				thinkingBudget = s.config.ThinkingBudget
+				logger.Info("Using default thinking budget of %d tokens from config", thinkingBudget)
+			}
+			
+			// Only set the thinking budget if it's greater than 0
+			if thinkingBudget > 0 {
+				budget := int32(thinkingBudget)
+				thinkingConfig.ThinkingBudget = &budget
+			}
+			
+			config.ThinkingConfig = thinkingConfig
 			logger.Info("Thinking mode enabled for request with model %s", modelName)
 		} else {
 			if modelInfo != nil {
@@ -604,9 +647,34 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 	// Configure thinking mode if enabled and model supports it
 	if enableThinking {
 		if modelInfo != nil && modelInfo.SupportsThinking {
-			config.ThinkingConfig = &genai.ThinkingConfig{
+			thinkingConfig := &genai.ThinkingConfig{
 				IncludeThoughts: true,
 			}
+			
+			// Determine thinking budget - check for level first, then explicit value
+			thinkingBudget := 0
+			
+			// Check if thinking_budget_level parameter was provided
+			if levelStr, ok := req.Arguments["thinking_budget_level"].(string); ok && levelStr != "" {
+				thinkingBudget = getThinkingBudgetFromLevel(levelStr)
+				logger.Info("Setting thinking budget to %d tokens from level: %s for search request", thinkingBudget, levelStr)
+			} else if budgetRaw, ok := req.Arguments["thinking_budget"].(float64); ok && budgetRaw >= 0 {
+				// If explicit budget was provided, use that instead of level
+				thinkingBudget = int(budgetRaw)
+				logger.Info("Setting thinking budget to %d tokens from explicit value for search request", thinkingBudget)
+			} else if s.config.ThinkingBudget > 0 {
+				// Fall back to config value if neither level nor explicit budget provided
+				thinkingBudget = s.config.ThinkingBudget
+				logger.Info("Using default thinking budget of %d tokens from config for search request", thinkingBudget)
+			}
+			
+			// Only set the thinking budget if it's greater than 0
+			if thinkingBudget > 0 {
+				budget := int32(thinkingBudget)
+				thinkingConfig.ThinkingBudget = &budget
+			}
+			
+			config.ThinkingConfig = thinkingConfig
 			logger.Info("Thinking mode enabled for search request with model %s", modelName)
 		} else {
 			if modelInfo != nil {
@@ -923,12 +991,32 @@ func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallTo
 		return createErrorResponse("Error generating model list"), nil
 	}
 
-	if err := writeStringf("Enable thinking mode with the `enable_thinking` parameter. Example:\n"); err != nil {
+	if err := writeStringf("You can control thinking mode using these parameters:\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResponse("Error generating model list"), nil
 	}
 
-	if err := writeStringf("```json\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"gemini-1.5-pro\",\n  \"enable_thinking\": true\n}\n```\n"); err != nil {
+	if err := writeStringf("* `enable_thinking`: Enables or disables thinking mode (boolean)\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+
+	if err := writeStringf("* `thinking_budget_level`: Sets predefined token budgets (\"none\", \"low\", \"medium\", \"high\")\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+
+	if err := writeStringf("  - none: 0 tokens (disabled)\n  - low: 4096 tokens\n  - medium: 16384 tokens\n  - high: 24576 tokens (maximum)\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+
+	if err := writeStringf("* `thinking_budget`: Sets a specific token count (0-24576)\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResponse("Error generating model list"), nil
+	}
+
+	if err := writeStringf("Example:\n\n```json\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"gemini-1.5-pro\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\"\n}\n```\n\nOr with explicit budget:\n\n```json\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"gemini-1.5-pro\",\n  \"enable_thinking\": true,\n  \"thinking_budget\": 8192\n}\n```\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResponse("Error generating model list"), nil
 	}

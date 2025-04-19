@@ -37,7 +37,13 @@ If the search results don't contain enough information to fully answer the query
 	defaultDefaultCacheTTL = 1 * time.Hour
 
 	// Thinking settings
-	defaultEnableThinking = true
+	defaultEnableThinking       = true
+	defaultThinkingBudget       = 4096                // Default thinking budget in tokens (low)
+	defaultThinkingBudgetLevel  = "low"               // Default thinking budget level
+	thinkingBudgetNone          = 0                   // None: Thinking disabled
+	thinkingBudgetLow           = 4096                // Low: 4096 tokens
+	thinkingBudgetMedium        = 16384               // Medium: 16384 tokens
+	thinkingBudgetHigh          = 24576               // High: Maximum allowed by Gemini (24576 tokens)
 )
 
 // Config holds all configuration parameters for the application
@@ -67,7 +73,25 @@ type Config struct {
 	DefaultCacheTTL time.Duration // Default TTL if not specified
 
 	// Thinking settings
-	EnableThinking bool // Enable/disable thinking mode for supported models
+	EnableThinking      bool   // Enable/disable thinking mode for supported models
+	ThinkingBudget      int    // Maximum number of tokens to allocate for thinking
+	ThinkingBudgetLevel string // Thinking budget level (none, low, medium, high)
+}
+
+// getThinkingBudgetFromLevel converts a thinking budget level string to a token count
+func getThinkingBudgetFromLevel(level string) int {
+	switch strings.ToLower(level) {
+	case "none":
+		return thinkingBudgetNone
+	case "low":
+		return thinkingBudgetLow
+	case "medium":
+		return thinkingBudgetMedium
+	case "high":
+		return thinkingBudgetHigh
+	default:
+		return thinkingBudgetLow // Default to low if invalid level
+	}
 }
 
 // NewConfig creates a new configuration from environment variables
@@ -190,6 +214,35 @@ func NewConfig() (*Config, error) {
 		enableThinking = strings.ToLower(thinkingStr) == "true"
 	}
 
+	// Set thinking budget level from environment variable or use default
+	thinkingBudgetLevel := defaultThinkingBudgetLevel
+	if levelStr := os.Getenv("GEMINI_THINKING_BUDGET_LEVEL"); levelStr != "" {
+		level := strings.ToLower(levelStr)
+		// Validate level
+		switch level {
+		case "none", "low", "medium", "high":
+			thinkingBudgetLevel = level
+		default:
+			logger.Warn("Invalid GEMINI_THINKING_BUDGET_LEVEL value: %s. Using default: %s", 
+				levelStr, defaultThinkingBudgetLevel)
+		}
+	}
+
+	// Set thinking budget from environment variable or derive from level
+	thinkingBudget := defaultThinkingBudget
+	if budgetStr := os.Getenv("GEMINI_THINKING_BUDGET"); budgetStr != "" {
+		// Explicit token count overrides level
+		if budget, err := strconv.Atoi(budgetStr); err == nil && budget >= 0 {
+			thinkingBudget = budget
+		} else {
+			logger.Warn("Invalid GEMINI_THINKING_BUDGET value: %s. Using default from level.", budgetStr)
+			thinkingBudget = getThinkingBudgetFromLevel(thinkingBudgetLevel)
+		}
+	} else {
+		// Derive budget from level
+		thinkingBudget = getThinkingBudgetFromLevel(thinkingBudgetLevel)
+	}
+
 	return &Config{
 		GeminiAPIKey:             geminiAPIKey,
 		GeminiModel:              geminiModel,
@@ -206,5 +259,7 @@ func NewConfig() (*Config, error) {
 		EnableCaching:            enableCaching,
 		DefaultCacheTTL:          defaultCacheTTL,
 		EnableThinking:           enableThinking,
+		ThinkingBudget:           thinkingBudget,
+		ThinkingBudgetLevel:      thinkingBudgetLevel,
 	}, nil
 }
