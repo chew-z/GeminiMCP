@@ -87,7 +87,7 @@ func NewConfig() (*Config, error) {
 	}
 	// Note: We no longer validate the model here to allow for new models
 	// and preview versions not in our hardcoded list
-	
+
 	// Get Gemini search model - optional with default
 	geminiSearchModel := os.Getenv("GEMINI_SEARCH_MODEL")
 	if geminiSearchModel == "" {

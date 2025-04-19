@@ -579,14 +579,14 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 	// Check if max_tokens parameter was provided
 	if maxTokensRaw, ok := req.Arguments["max_tokens"].(float64); ok && maxTokensRaw > 0 {
 		maxTokens := int(maxTokensRaw)
-		
+
 		// Cap at model's maximum if available
 		if modelInfo != nil && maxTokens > modelInfo.ContextWindowSize {
 			logger.Warn("Requested max_tokens (%d) exceeds model's context window size (%d), capping at model limit",
 				maxTokens, modelInfo.ContextWindowSize)
 			maxTokens = modelInfo.ContextWindowSize
 		}
-		
+
 		// Set the maximum output token limit
 		config.MaxOutputTokens = int32(maxTokens)
 		logger.Info("Setting max output tokens to %d", maxTokens)

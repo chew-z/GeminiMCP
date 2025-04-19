@@ -68,8 +68,8 @@ func TestHandleGeminiSearchWithModelParameter(t *testing.T) {
 		{
 			name: "With thinking enabled",
 			args: map[string]interface{}{
-				"query":          "test query",
-				"model":          "gemini-2.5-pro-exp-03-25",
+				"query":           "test query",
+				"model":           "gemini-2.5-pro-exp-03-25",
 				"enable_thinking": true,
 			},
 			expectedModel: "gemini-2.5-pro-exp-03-25",
@@ -103,7 +103,7 @@ func TestHandleGeminiSearchWithModelParameter(t *testing.T) {
 
 			// Verify the result
 			assert.NoError(t, err, "Function should not return an error")
-			
+
 			if tc.expectError {
 				assert.True(t, resp.IsError, "Response should be an error")
 			} else {
