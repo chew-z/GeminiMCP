@@ -107,6 +107,18 @@ Say to your LLM:
 
 > *Use the **`gemini_search`** tool to find the latest information about advancements in fusion energy research. Include sources in your response.*
 
+### Complex Reasoning with Thinking Mode
+
+Say to your LLM:
+
+> *Use the `gemini_ask` tool with a thinking-capable model to solve this algorithmic problem:*
+> 
+> *"Given an array of integers, find the longest consecutive sequence of integers. For example, given [100, 4, 200, 1, 3, 2], the longest consecutive sequence is [1, 2, 3, 4], so return 4."*
+> 
+> *Enable thinking mode so I can see the step-by-step reasoning process.*
+
+This will show both the final answer and the model's detailed reasoning process.
+
 ### Simple Project Analysis with Caching
 
 Say to your LLM:
@@ -179,15 +191,19 @@ Provides grounded answers using Google Search integration.
   "name": "gemini_search",
   "arguments": {
     "query": "What is the current population of Warsaw, Poland?",
-    "systemPrompt": "Optional custom search instructions"
+    "systemPrompt": "Optional custom search instructions",
+    "enable_thinking": true,
+    "max_tokens": 4096,
+    "model": "gemini-2.5-pro-exp-03-25"  // Coming soon: Custom model support
   }
 }
 ```
 
-Returns structured responses with sources:
+Returns structured responses with sources and optional thinking process:
 ```json
 {
   "answer": "Detailed answer text based on search results...",
+  "thinking": "Optional detailed reasoning process when thinking mode is enabled",
   "sources": [
     {
       "title": "Source Title",
@@ -258,6 +274,50 @@ Robust file processing with:
 - **Wide Format Support**: Handles common code, text, and document formats
 - **Metadata Caching**: Stores file information for quick future reference
 
+### Advanced Features
+
+#### Thinking Mode
+
+The server supports "thinking mode" for compatible models (primarily Gemini 2.5 Pro models):
+
+- **Enhanced Reasoning**: Shows the model's step-by-step reasoning process
+- **Complex Problem Solving**: Particularly useful for debugging, mathematical reasoning, and complex analysis
+- **Model Compatibility**: Automatically validates thinking capability based on requested model
+- **Tool Support**: Available in both `gemini_ask` and `gemini_search` tools
+
+Example with thinking mode:
+```json
+{
+  "name": "gemini_ask",
+  "arguments": {
+    "query": "Analyze the algorithmic complexity of merge sort vs. quick sort",
+    "model": "gemini-2.5-pro-exp-03-25",
+    "enable_thinking": true
+  }
+}
+```
+
+#### Context Window Size Management
+
+The server intelligently manages token limits:
+
+- **Custom Sizing**: Set `max_tokens` parameter to control response length
+- **Model-Aware Defaults**: Automatically sets appropriate defaults based on model capabilities
+- **Capacity Warnings**: Provides warnings when requested tokens exceed model limits
+- **Proportional Defaults**: Uses percentage-based defaults (75% for general queries, 50% for search)
+
+Example with custom token limit:
+```json
+{
+  "name": "gemini_ask",
+  "arguments": {
+    "query": "Generate a detailed analysis of this code...",
+    "model": "gemini-1.5-pro-001",
+    "max_tokens": 8192
+  }
+}
+```
+
 ### Configuration Options
 
 #### Essential Environment Variables
@@ -280,6 +340,7 @@ Robust file processing with:
 | `GEMINI_TEMPERATURE` | Model temperature (0.0-1.0) | `0.4` |
 | `GEMINI_ENABLE_CACHING` | Enable context caching | `true` |
 | `GEMINI_DEFAULT_CACHE_TTL` | Default cache time-to-live | `1h` |
+| `GEMINI_ENABLE_THINKING` | Enable thinking mode capability | `false` |
 
 ### Operational Features
 
@@ -310,13 +371,18 @@ go test -v
 
 ## Recent Changes
 
+- **Enhanced Thinking Mode Support**: Added thinking capability across compatible models, enabling more detailed reasoning processes
+- **Conflict Management**: Improved handling of caching and thinking mode interactions to prevent conflicts
+- **Context Window Sizing**: Better management of token limits with automatic adjustments for model capabilities
+- **Advanced Model Selection**: Enhanced dynamic model validation and selection based on requested capabilities
+- **Improved Error Handling**: Better error messages and logging for troubleshooting API interactions
+- **Code Optimization**: Removed unnecessary whitespace and improved formatting for better maintainability
 - **Dynamic Model Fetching**: Automatic retrieval of available Gemini models at startup
 - **Enhanced Client Integration**: Added configuration guides for MCP clients
 - **Expanded Model Support**: Updated compatibility with latest Gemini 2.5 Pro and 2.0 Flash models
 - **Search Capabilities**: Added Google Search integration with source attribution
 - **Improved File Handling**: Enhanced MIME detection and validation
 - **Caching Enhancements**: Better support for models with version suffixes
-- **Reliability Improvements**: Refactored retry logic with configurable parameters
 
 ## License
 
