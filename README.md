@@ -115,9 +115,9 @@ Say to your LLM:
 > 
 > *"Given an array of integers, find the longest consecutive sequence of integers. For example, given [100, 4, 200, 1, 3, 2], the longest consecutive sequence is [1, 2, 3, 4], so return 4."*
 > 
-> *Enable thinking mode so I can see the step-by-step reasoning process.*
+> *Enable thinking mode with a high budget level so I can see the detailed step-by-step reasoning process.*
 
-This will show both the final answer and the model's detailed reasoning process.
+This will show both the final answer and the model's comprehensive reasoning process with maximum detail.
 
 ### Simple Project Analysis with Caching
 
@@ -193,6 +193,8 @@ Provides grounded answers using Google Search integration with enhanced model ca
     "query": "What is the current population of Warsaw, Poland?",
     "systemPrompt": "Optional custom search instructions",
     "enable_thinking": true,
+    "thinking_budget": 8192,
+    "thinking_budget_level": "medium",
     "max_tokens": 4096,
     "model": "gemini-2.5-pro-exp-03-25"
   }
@@ -284,6 +286,7 @@ The server supports "thinking mode" for compatible models (primarily Gemini 2.5 
 - **Complex Problem Solving**: Particularly useful for debugging, mathematical reasoning, and complex analysis
 - **Model Compatibility**: Automatically validates thinking capability based on requested model
 - **Tool Support**: Available in both `gemini_ask` and `gemini_search` tools
+- **Configurable Budget**: Control thinking depth with budget levels or explicit token counts
 
 Example with thinking mode:
 ```json
@@ -292,7 +295,46 @@ Example with thinking mode:
   "arguments": {
     "query": "Analyze the algorithmic complexity of merge sort vs. quick sort",
     "model": "gemini-2.5-pro-exp-03-25",
-    "enable_thinking": true
+    "enable_thinking": true,
+    "thinking_budget_level": "high"
+  }
+}
+```
+
+##### Thinking Budget Control
+
+Configure the depth and detail of the model's thinking process:
+
+- **Predefined Budget Levels**:
+  - `none`: 0 tokens (thinking disabled)
+  - `low`: 4096 tokens (default, quick analysis)
+  - `medium`: 16384 tokens (detailed reasoning)
+  - `high`: 24576 tokens (maximum depth for complex problems)
+
+- **Custom Token Budget**: Alternatively, set a specific token count with `thinking_budget` parameter (0-24576)
+
+Examples:
+
+```json
+// Using predefined level
+{
+  "name": "gemini_ask",
+  "arguments": {
+    "query": "Analyze this algorithm...",
+    "model": "gemini-2.5-pro-exp-03-25",
+    "enable_thinking": true,
+    "thinking_budget_level": "medium"
+  }
+}
+
+// Using explicit token count
+{
+  "name": "gemini_search",
+  "arguments": {
+    "query": "Research quantum computing developments...",
+    "model": "gemini-2.5-pro-exp-03-25",
+    "enable_thinking": true,
+    "thinking_budget": 12000
   }
 }
 ```
@@ -306,7 +348,7 @@ The server intelligently manages token limits:
 - **Capacity Warnings**: Provides warnings when requested tokens exceed model limits
 - **Proportional Defaults**: Uses percentage-based defaults (75% for general queries, 50% for search)
 
-Example with custom token limit:
+Example with context window size management:
 ```json
 {
   "name": "gemini_ask",
@@ -340,7 +382,9 @@ Example with custom token limit:
 | `GEMINI_TEMPERATURE` | Model temperature (0.0-1.0) | `0.4` |
 | `GEMINI_ENABLE_CACHING` | Enable context caching | `true` |
 | `GEMINI_DEFAULT_CACHE_TTL` | Default cache time-to-live | `1h` |
-| `GEMINI_ENABLE_THINKING` | Enable thinking mode capability | `false` |
+| `GEMINI_ENABLE_THINKING` | Enable thinking mode capability | `true` |
+| `GEMINI_THINKING_BUDGET_LEVEL` | Default thinking budget level (none/low/medium/high) | `low` |
+| `GEMINI_THINKING_BUDGET` | Explicit thinking token budget (0-24576) | `4096` |
 
 ### Operational Features
 
@@ -371,6 +415,7 @@ go test -v
 
 ## Recent Changes
 
+- **Thinking Budget Control**: Added configurable thinking budget levels and explicit token control for fine-tuning reasoning depth
 - **Model Selection for Search**: Added support for custom model selection in the `gemini_search` tool
 - **Enhanced Thinking Mode Support**: Added thinking capability across compatible models, enabling more detailed reasoning processes
 - **Conflict Management**: Improved handling of caching and thinking mode interactions to prevent conflicts
