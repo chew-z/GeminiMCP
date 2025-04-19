@@ -129,6 +129,10 @@ func (s *GeminiServer) ListTools(ctx context.Context) (*protocol.ListToolsRespon
 					"max_tokens": {
 						"type": "integer",
 						"description": "Optional: Maximum token limit for the response. Default is determined by the model"
+					},
+					"model": {
+						"type": "string",
+						"description": "Optional: Specific Gemini model to use (overrides default configuration)"
 					}
 				},
 				"required": ["query"]
@@ -536,8 +540,17 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 		systemPrompt = customPrompt
 	}
 
-	// Always use gemini-2.0-flash model for search
-	modelName := "gemini-2.0-flash"
+	// Extract optional model parameter
+	modelName := s.config.GeminiSearchModel
+	if customModel, ok := req.Arguments["model"].(string); ok && customModel != "" {
+		// Validate the custom model
+		if err := ValidateModelID(customModel); err != nil {
+			logger.Error("Invalid model requested: %v", err)
+			return createErrorResponse(fmt.Sprintf("Invalid model specified: %v", err)), nil
+		}
+		logger.Info("Using request-specific model: %s", customModel)
+		modelName = customModel
+	}
 	logger.Info("Using %s model for Google Search integration", modelName)
 
 	// Check if thinking mode is requested
@@ -564,17 +577,19 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 	}
 
 	// Check if max_tokens parameter was provided
-	if maxTokensRaw, ok := req.Arguments["max_tokens"].(float64); ok {
+	if maxTokensRaw, ok := req.Arguments["max_tokens"].(float64); ok && maxTokensRaw > 0 {
 		maxTokens := int(maxTokensRaw)
+		
+		// Cap at model's maximum if available
+		if modelInfo != nil && maxTokens > modelInfo.ContextWindowSize {
+			logger.Warn("Requested max_tokens (%d) exceeds model's context window size (%d), capping at model limit",
+				maxTokens, modelInfo.ContextWindowSize)
+			maxTokens = modelInfo.ContextWindowSize
+		}
+		
 		// Set the maximum output token limit
 		config.MaxOutputTokens = int32(maxTokens)
 		logger.Info("Setting max output tokens to %d", maxTokens)
-
-		// Warn if tokens exceed the model's context window
-		if modelInfo != nil && maxTokens > modelInfo.ContextWindowSize {
-			logger.Warn("Requested max_tokens (%d) exceeds model's context window size (%d)",
-				maxTokens, modelInfo.ContextWindowSize)
-		}
 	} else {
 		// Set a safe default if not specified
 		if modelInfo != nil {
@@ -587,13 +602,19 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 	}
 
 	// Configure thinking mode if enabled and model supports it
-	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
-		config.ThinkingConfig = &genai.ThinkingConfig{
-			IncludeThoughts: true,
+	if enableThinking {
+		if modelInfo != nil && modelInfo.SupportsThinking {
+			config.ThinkingConfig = &genai.ThinkingConfig{
+				IncludeThoughts: true,
+			}
+			logger.Info("Thinking mode enabled for search request with model %s", modelName)
+		} else {
+			if modelInfo != nil {
+				logger.Warn("Thinking mode requested but model %s doesn't support it", modelName)
+			} else {
+				logger.Warn("Thinking mode requested but unknown if model %s supports it", modelName)
+			}
 		}
-		logger.Info("Thinking mode enabled for search request with model %s", modelName)
-	} else if enableThinking {
-		logger.Warn("Thinking mode requested but model %s may not support it", modelName)
 	}
 
 	// Create query content
@@ -865,12 +886,12 @@ func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallTo
 		return createErrorResponse("Error generating model list"), nil
 	}
 
-	if err := writeStringf("You can specify a model ID in the `model` parameter when using the `gemini_ask` tool:\n"); err != nil {
+	if err := writeStringf("You can specify a model ID in the `model` parameter when using the `gemini_ask` or `gemini_search` tools:\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResponse("Error generating model list"), nil
 	}
 
-	if err := writeStringf("```json\n{\n  \"query\": \"Your question here\",\n  \"model\": \"gemini-1.5-pro-001\",\n  \"use_cache\": true\n}\n```\n"); err != nil {
+	if err := writeStringf("```json\n// For gemini_ask\n{\n  \"query\": \"Your question here\",\n  \"model\": \"gemini-1.5-pro-001\",\n  \"use_cache\": true\n}\n\n// For gemini_search\n{\n  \"query\": \"Your search question here\",\n  \"model\": \"gemini-2.5-pro-exp-03-25\",\n  \"enable_thinking\": true\n}\n```\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResponse("Error generating model list"), nil
 	}

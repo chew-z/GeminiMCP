@@ -13,6 +13,7 @@ import (
 const (
 	// Note: if this value changes, make sure to update the models.go list
 	defaultGeminiModel        = "gemini-1.5-pro"
+	defaultGeminiSearchModel  = "gemini-2.0-flash"
 	defaultGeminiTemperature  = 0.4
 	defaultGeminiSystemPrompt = `
 You are a senior developer. Your job is to do a thorough code review of this code.
@@ -44,6 +45,7 @@ type Config struct {
 	// Gemini API settings
 	GeminiAPIKey             string
 	GeminiModel              string
+	GeminiSearchModel        string
 	GeminiSystemPrompt       string
 	GeminiSearchSystemPrompt string
 	GeminiTemperature        float64
@@ -85,6 +87,12 @@ func NewConfig() (*Config, error) {
 	}
 	// Note: We no longer validate the model here to allow for new models
 	// and preview versions not in our hardcoded list
+	
+	// Get Gemini search model - optional with default
+	geminiSearchModel := os.Getenv("GEMINI_SEARCH_MODEL")
+	if geminiSearchModel == "" {
+		geminiSearchModel = defaultGeminiSearchModel // Default search model if not specified
+	}
 
 	// Get Gemini system prompt - optional with default
 	geminiSystemPrompt := os.Getenv("GEMINI_SYSTEM_PROMPT")
@@ -185,6 +193,7 @@ func NewConfig() (*Config, error) {
 	return &Config{
 		GeminiAPIKey:             geminiAPIKey,
 		GeminiModel:              geminiModel,
+		GeminiSearchModel:        geminiSearchModel,
 		GeminiSystemPrompt:       geminiSystemPrompt,
 		GeminiSearchSystemPrompt: geminiSearchSystemPrompt,
 		GeminiTemperature:        geminiTemperature,

@@ -184,7 +184,7 @@ For code analysis, general queries, and creative tasks with optional file contex
 ```
 
 #### 2. **`gemini_search`**
-Provides grounded answers using Google Search integration.
+Provides grounded answers using Google Search integration with enhanced model capabilities.
 
 ```json
 {
@@ -194,7 +194,7 @@ Provides grounded answers using Google Search integration.
     "systemPrompt": "Optional custom search instructions",
     "enable_thinking": true,
     "max_tokens": 4096,
-    "model": "gemini-2.5-pro-exp-03-25"  // Coming soon: Custom model support
+    "model": "gemini-2.5-pro-exp-03-25"
   }
 }
 ```
@@ -371,6 +371,7 @@ go test -v
 
 ## Recent Changes
 
+- **Model Selection for Search**: Added support for custom model selection in the `gemini_search` tool
 - **Enhanced Thinking Mode Support**: Added thinking capability across compatible models, enabling more detailed reasoning processes
 - **Conflict Management**: Improved handling of caching and thinking mode interactions to prevent conflicts
 - **Context Window Sizing**: Better management of token limits with automatic adjustments for model capabilities
