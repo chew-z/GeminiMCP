@@ -412,10 +412,10 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 			thinkingConfig := &genai.ThinkingConfig{
 				IncludeThoughts: true,
 			}
-			
+
 			// Determine thinking budget - check for level first, then explicit value
 			thinkingBudget := 0
-			
+
 			// Check if thinking_budget_level parameter was provided
 			if levelStr, ok := req.Arguments["thinking_budget_level"].(string); ok && levelStr != "" {
 				thinkingBudget = getThinkingBudgetFromLevel(levelStr)
@@ -429,13 +429,13 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 				thinkingBudget = s.config.ThinkingBudget
 				logger.Info("Using default thinking budget of %d tokens from config", thinkingBudget)
 			}
-			
+
 			// Only set the thinking budget if it's greater than 0
 			if thinkingBudget > 0 {
 				budget := int32(thinkingBudget)
 				thinkingConfig.ThinkingBudget = &budget
 			}
-			
+
 			config.ThinkingConfig = thinkingConfig
 			logger.Info("Thinking mode enabled for request with model %s", modelName)
 		} else {
@@ -650,10 +650,10 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 			thinkingConfig := &genai.ThinkingConfig{
 				IncludeThoughts: true,
 			}
-			
+
 			// Determine thinking budget - check for level first, then explicit value
 			thinkingBudget := 0
-			
+
 			// Check if thinking_budget_level parameter was provided
 			if levelStr, ok := req.Arguments["thinking_budget_level"].(string); ok && levelStr != "" {
 				thinkingBudget = getThinkingBudgetFromLevel(levelStr)
@@ -667,13 +667,13 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 				thinkingBudget = s.config.ThinkingBudget
 				logger.Info("Using default thinking budget of %d tokens from config for search request", thinkingBudget)
 			}
-			
+
 			// Only set the thinking budget if it's greater than 0
 			if thinkingBudget > 0 {
 				budget := int32(thinkingBudget)
 				thinkingConfig.ThinkingBudget = &budget
 			}
-			
+
 			config.ThinkingConfig = thinkingConfig
 			logger.Info("Thinking mode enabled for search request with model %s", modelName)
 		} else {
