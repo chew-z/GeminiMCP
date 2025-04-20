@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"context"
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/gomcpgo/mcp/pkg/protocol"
 	"google.golang.org/genai"
@@ -30,6 +32,106 @@ type SourceInfo struct {
 	Title string `json:"title"`
 	URL   string `json:"url"`
 	Type  string `json:"type"` // "web" or "retrieved_context"
+}
+
+// Config holds all configuration parameters for the application
+type Config struct {
+	// Gemini API settings
+	GeminiAPIKey             string
+	GeminiModel              string
+	GeminiSearchModel        string
+	GeminiSystemPrompt       string
+	GeminiSearchSystemPrompt string
+	GeminiTemperature        float64
+
+	// HTTP client settings
+	HTTPTimeout time.Duration
+
+	// Retry settings
+	MaxRetries     int
+	InitialBackoff time.Duration
+	MaxBackoff     time.Duration
+
+	// File handling settings
+	MaxFileSize      int64    // Max file size in bytes
+	AllowedFileTypes []string // Allowed MIME types
+
+	// Cache settings
+	EnableCaching   bool          // Enable/disable caching
+	DefaultCacheTTL time.Duration // Default TTL if not specified
+
+	// Thinking settings
+	EnableThinking      bool   // Enable/disable thinking mode for supported models
+	ThinkingBudget      int    // Maximum number of tokens to allocate for thinking
+	ThinkingBudgetLevel string // Thinking budget level (none, low, medium, high)
+}
+
+// CacheRequest represents a request to create a cached context
+type CacheRequest struct {
+	Model        string   `json:"model"`
+	SystemPrompt string   `json:"system_prompt,omitempty"`
+	FileIDs      []string `json:"file_ids,omitempty"`
+	Content      string   `json:"content,omitempty"`
+	TTL          string   `json:"ttl,omitempty"` // Duration like "1h", "24h", etc.
+	DisplayName  string   `json:"display_name,omitempty"`
+}
+
+// CacheInfo represents information about a cached context
+type CacheInfo struct {
+	ID          string    `json:"id"`   // The unique ID (last part of the Name)
+	Name        string    `json:"name"` // The full resource name
+	DisplayName string    `json:"display_name"`
+	Model       string    `json:"model"`
+	CreatedAt   time.Time `json:"created_at"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	FileIDs     []string  `json:"file_ids,omitempty"`
+}
+
+// CacheStore manages cache metadata
+type CacheStore struct {
+	client    *genai.Client
+	config    *Config
+	fileStore *FileStore
+	mu        sync.RWMutex
+	cacheInfo map[string]*CacheInfo // Map of ID -> CacheInfo
+}
+
+// GeminiModelInfo holds information about a Gemini model
+type GeminiModelInfo struct {
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Description       string `json:"description"`
+	SupportsCaching   bool   `json:"supports_caching"`    // Whether this model supports caching
+	SupportsThinking  bool   `json:"supports_thinking"`   // Whether this model supports thinking mode
+	ContextWindowSize int    `json:"context_window_size"` // Maximum context window size in tokens
+}
+
+// FileUploadRequest represents a request to upload a file
+type FileUploadRequest struct {
+	FileName    string `json:"filename"`
+	MimeType    string `json:"mime_type"`
+	Content     []byte `json:"content"`
+	DisplayName string `json:"display_name,omitempty"`
+}
+
+// FileInfo represents information about a stored file
+type FileInfo struct {
+	ID          string    `json:"id"`           // The unique ID (last part of the Name)
+	Name        string    `json:"name"`         // The full resource name (e.g., "files/abc123")
+	URI         string    `json:"uri"`          // The URI to use in requests
+	DisplayName string    `json:"display_name"` // Human-readable name
+	MimeType    string    `json:"mime_type"`
+	Size        int64     `json:"size"`
+	UploadedAt  time.Time `json:"uploaded_at"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+// FileStore manages file metadata
+type FileStore struct {
+	client   *genai.Client
+	config   *Config
+	mu       sync.RWMutex
+	fileInfo map[string]*FileInfo // Map of ID -> FileInfo
 }
 
 // GeminiServer implements the ToolHandler interface to provide research capabilities

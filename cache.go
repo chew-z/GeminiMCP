@@ -11,35 +11,9 @@ import (
 	"google.golang.org/genai"
 )
 
-// CacheRequest represents a request to create a cached context
-type CacheRequest struct {
-	Model        string   `json:"model"`
-	SystemPrompt string   `json:"system_prompt,omitempty"`
-	FileIDs      []string `json:"file_ids,omitempty"`
-	Content      string   `json:"content,omitempty"`
-	TTL          string   `json:"ttl,omitempty"` // Duration like "1h", "24h", etc.
-	DisplayName  string   `json:"display_name,omitempty"`
-}
-
-// CacheInfo represents information about a cached context
-type CacheInfo struct {
-	ID          string    `json:"id"`   // The unique ID (last part of the Name)
-	Name        string    `json:"name"` // The full resource name
-	DisplayName string    `json:"display_name"`
-	Model       string    `json:"model"`
-	CreatedAt   time.Time `json:"created_at"`
-	ExpiresAt   time.Time `json:"expires_at"`
-	FileIDs     []string  `json:"file_ids,omitempty"`
-}
-
-// CacheStore manages cache metadata
-type CacheStore struct {
-	client    *genai.Client
-	config    *Config
-	fileStore *FileStore
-	mu        sync.RWMutex
-	cacheInfo map[string]*CacheInfo // Map of ID -> CacheInfo
-}
+// CacheRequest struct definition moved to structs.go
+// CacheInfo struct definition moved to structs.go
+// CacheStore struct definition moved to structs.go
 
 // NewCacheStore creates a new cache store
 func NewCacheStore(client *genai.Client, config *Config, fileStore *FileStore) *CacheStore {

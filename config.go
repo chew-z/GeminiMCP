@@ -46,10 +46,11 @@ If the search results don't contain enough information to fully answer the query
 	thinkingBudgetHigh         = 24576 // High: Maximum allowed by Gemini (24576 tokens)
 )
 
-// Config holds all configuration parameters for the application
-type Config struct {
-	// Gemini API settings
-	GeminiAPIKey             string
+// Config struct definition moved to structs.go
+
+// getThinkingBudgetFromLevel converts a thinking budget level string to a token count
+func getThinkingBudgetFromLevel(level string) int {
+	switch strings.ToLower(level) {
 	GeminiModel              string
 	GeminiSearchModel        string
 	GeminiSystemPrompt       string
@@ -74,12 +75,6 @@ type Config struct {
 
 	// Thinking settings
 	EnableThinking      bool   // Enable/disable thinking mode for supported models
-	ThinkingBudget      int    // Maximum number of tokens to allocate for thinking
-	ThinkingBudgetLevel string // Thinking budget level (none, low, medium, high)
-}
-
-// getThinkingBudgetFromLevel converts a thinking budget level string to a token count
-func getThinkingBudgetFromLevel(level string) int {
 	switch strings.ToLower(level) {
 	case "none":
 		return thinkingBudgetNone

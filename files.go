@@ -12,13 +12,7 @@ import (
 	"google.golang.org/genai"
 )
 
-// FileUploadRequest represents a request to upload a file
-type FileUploadRequest struct {
-	FileName    string `json:"filename"`
-	MimeType    string `json:"mime_type"`
-	Content     []byte `json:"content"`
-	DisplayName string `json:"display_name,omitempty"`
-}
+// FileUploadRequest struct definition moved to structs.go
 
 // Validate ensures the file upload request contains valid data
 func (r *FileUploadRequest) Validate() error {
@@ -34,25 +28,8 @@ func (r *FileUploadRequest) Validate() error {
 	return nil
 }
 
-// FileInfo represents information about a stored file
-type FileInfo struct {
-	ID          string    `json:"id"`           // The unique ID (last part of the Name)
-	Name        string    `json:"name"`         // The full resource name (e.g., "files/abc123")
-	URI         string    `json:"uri"`          // The URI to use in requests
-	DisplayName string    `json:"display_name"` // Human-readable name
-	MimeType    string    `json:"mime_type"`
-	Size        int64     `json:"size"`
-	UploadedAt  time.Time `json:"uploaded_at"`
-	ExpiresAt   time.Time `json:"expires_at"`
-}
-
-// FileStore manages file metadata
-type FileStore struct {
-	client   *genai.Client
-	config   *Config
-	mu       sync.RWMutex
-	fileInfo map[string]*FileInfo // Map of ID -> FileInfo
-}
+// FileInfo struct definition moved to structs.go
+// FileStore struct definition moved to structs.go
 
 // NewFileStore creates a new file store
 func NewFileStore(client *genai.Client, config *Config) *FileStore {

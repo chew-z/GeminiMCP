@@ -10,15 +10,7 @@ import (
 	"google.golang.org/genai"
 )
 
-// GeminiModelInfo holds information about a Gemini model
-type GeminiModelInfo struct {
-	ID                string `json:"id"`
-	Name              string `json:"name"`
-	Description       string `json:"description"`
-	SupportsCaching   bool   `json:"supports_caching"`    // Whether this model supports caching
-	SupportsThinking  bool   `json:"supports_thinking"`   // Whether this model supports thinking mode
-	ContextWindowSize int    `json:"context_window_size"` // Maximum context window size in tokens
-}
+// GeminiModelInfo struct definition moved to structs.go
 
 // GetModelByID returns a specific model by ID, or nil if not found
 func GetModelByID(modelID string) *GeminiModelInfo {
