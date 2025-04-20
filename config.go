@@ -13,7 +13,7 @@ import (
 const (
 	// Note: if this value changes, make sure to update the models.go list
 	defaultGeminiModel        = "gemini-1.5-pro"
-	defaultGeminiSearchModel  = "gemini-2.0-flash"
+	defaultGeminiSearchModel  = "gemini-2.0-flash" // Default model specifically for search
 	defaultGeminiTemperature  = 0.4
 	defaultGeminiSystemPrompt = `
 You are a senior developer. Your job is to do a thorough code review of this code.
@@ -87,6 +87,7 @@ func NewConfig() (*Config, error) {
 	if geminiSearchModel == "" {
 		geminiSearchModel = defaultGeminiSearchModel // Default search model if not specified
 	}
+	// Note: We also don't validate the search model here
 
 	// Get Gemini system prompt - optional with default
 	geminiSystemPrompt := os.Getenv("GEMINI_SYSTEM_PROMPT")
@@ -216,7 +217,7 @@ func NewConfig() (*Config, error) {
 	return &Config{
 		GeminiAPIKey:             geminiAPIKey,
 		GeminiModel:              geminiModel,
-		GeminiSearchModel:        geminiSearchModel,
+		GeminiSearchModel:        geminiSearchModel, // Assign the read value
 		GeminiSystemPrompt:       geminiSystemPrompt,
 		GeminiSearchSystemPrompt: geminiSearchSystemPrompt,
 		GeminiTemperature:        geminiTemperature,

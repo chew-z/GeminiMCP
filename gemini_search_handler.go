@@ -26,7 +26,7 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *protocol.Cal
 		systemPrompt = customPrompt
 	}
 
-	// Extract optional model parameter
+	// Extract optional model parameter - use the specific search model from config as default
 	modelName := s.config.GeminiSearchModel
 	if customModel, ok := req.Arguments["model"].(string); ok && customModel != "" {
 		// Validate the custom model

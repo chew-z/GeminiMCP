@@ -37,8 +37,8 @@ type SourceInfo struct {
 type Config struct {
 	// Gemini API settings
 	GeminiAPIKey             string
-	GeminiModel              string
-	GeminiSearchModel        string
+	GeminiModel              string // Default model for 'gemini_ask'
+	GeminiSearchModel        string // Default model for 'gemini_search'
 	GeminiSystemPrompt       string
 	GeminiSearchSystemPrompt string
 	GeminiTemperature        float64
