@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
+	"strings"
 
 	"github.com/gomcpgo/mcp/pkg/protocol"
 	"google.golang.org/genai"
@@ -30,6 +32,68 @@ func createErrorResponse(message string) *protocol.CallToolResponse {
 				Text: message,
 			},
 		},
+	}
+}
+
+// Helper function to get MIME type from file path
+func getMimeTypeFromPath(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+
+	switch ext {
+	case ".txt":
+		return "text/plain"
+	case ".html", ".htm":
+		return "text/html"
+	case ".css":
+		return "text/css"
+	case ".js":
+		return "application/javascript"
+	case ".json":
+		return "application/json"
+	case ".xml":
+		return "application/xml"
+	case ".pdf":
+		return "application/pdf"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".svg":
+		return "image/svg+xml"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".mp4":
+		return "video/mp4"
+	case ".wav":
+		return "audio/wav"
+	case ".doc", ".docx":
+		return "application/msword"
+	case ".xls", ".xlsx":
+		return "application/vnd.ms-excel"
+	case ".ppt", ".pptx":
+		return "application/vnd.ms-powerpoint"
+	case ".zip":
+		return "application/zip"
+	case ".csv":
+		return "text/csv"
+	case ".go":
+		return "text/plain" // Changed from "text/x-go" to "text/plain"
+	case ".py":
+		return "text/plain" // Changed from "text/x-python" to "text/plain"
+	case ".java":
+		return "text/plain" // Changed from "text/x-java" to "text/plain"
+	case ".c", ".cpp", ".h", ".hpp":
+		return "text/plain" // Changed from "text/x-c" to "text/plain"
+	case ".rb":
+		return "text/plain"
+	case ".php":
+		return "text/plain"
+	case ".md":
+		return "text/markdown"
+	default:
+		return "application/octet-stream"
 	}
 }
 

@@ -357,3 +357,6 @@ func humanReadableSize(bytes int64) string {
 
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
+
+// Helper function to get MIME type from file path
+// Moved to gemini_utils.go
