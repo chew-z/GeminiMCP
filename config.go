@@ -51,31 +51,6 @@ If the search results don't contain enough information to fully answer the query
 // getThinkingBudgetFromLevel converts a thinking budget level string to a token count
 func getThinkingBudgetFromLevel(level string) int {
 	switch strings.ToLower(level) {
-	GeminiModel              string
-	GeminiSearchModel        string
-	GeminiSystemPrompt       string
-	GeminiSearchSystemPrompt string
-	GeminiTemperature        float64
-
-	// HTTP client settings
-	HTTPTimeout time.Duration
-
-	// Retry settings
-	MaxRetries     int
-	InitialBackoff time.Duration
-	MaxBackoff     time.Duration
-
-	// File handling settings
-	MaxFileSize      int64    // Max file size in bytes
-	AllowedFileTypes []string // Allowed MIME types
-
-	// Cache settings
-	EnableCaching   bool          // Enable/disable caching
-	DefaultCacheTTL time.Duration // Default TTL if not specified
-
-	// Thinking settings
-	EnableThinking      bool   // Enable/disable thinking mode for supported models
-	switch strings.ToLower(level) {
 	case "none":
 		return thinkingBudgetNone
 	case "low":
