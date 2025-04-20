@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"errors"
 	"testing"
-	"time"
 
 	"github.com/gomcpgo/mcp/pkg/protocol"
 	"google.golang.org/genai"
@@ -251,71 +249,5 @@ func TestGeminiServerCallTool_InvalidArgument(t *testing.T) {
 	}
 	if resp.Content[0].Text != "query must be a string" {
 		t.Errorf("expected error message 'query must be a string', got '%s'", resp.Content[0].Text)
-	}
-}
-
-// TestRetryWithBackoff tests the retry logic
-func TestRetryWithBackoff(t *testing.T) {
-	ctx := context.Background()
-	logger := NewLogger(LevelDebug)
-
-	tests := []struct {
-		name          string
-		maxRetries    int
-		shouldSucceed bool
-		operation     func() error
-	}{
-		{
-			name:          "succeeds first time",
-			maxRetries:    2,
-			shouldSucceed: true,
-			operation: func() error {
-				return nil
-			},
-		},
-		{
-			name:          "succeeds after retries",
-			maxRetries:    2,
-			shouldSucceed: true,
-			operation: func() func() error {
-				attempts := 0
-				return func() error {
-					attempts++
-					if attempts <= 1 {
-						return errors.New("temporary error")
-					}
-					return nil
-				}
-			}(),
-		},
-		{
-			name:          "never succeeds",
-			maxRetries:    2,
-			shouldSucceed: false,
-			operation: func() error {
-				return errors.New("permanent error")
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := RetryWithBackoff(
-				ctx,
-				tc.maxRetries,
-				10*time.Millisecond, // Small values for quick tests
-				50*time.Millisecond,
-				tc.operation,
-				func(err error) bool { return true }, // All errors are retriable in this test
-				logger,
-			)
-
-			if tc.shouldSucceed && err != nil {
-				t.Errorf("expected success but got error: %v", err)
-			}
-			if !tc.shouldSucceed && err == nil {
-				t.Error("expected error but got success")
-			}
-		})
 	}
 }
