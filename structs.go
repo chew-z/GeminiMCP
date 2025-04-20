@@ -3,9 +3,34 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"sync"
 
 	"github.com/gomcpgo/mcp/pkg/protocol"
+	"google.golang.org/genai"
 )
+
+// GeminiServer implements the ToolHandler interface for Gemini API interactions
+type GeminiServer struct {
+	config     *Config
+	client     *genai.Client
+	fileStore  *FileStore
+	cacheStore *CacheStore
+	mutex      sync.Mutex // Added to protect client access
+}
+
+// SearchResponse is the JSON response format for the gemini_search tool
+type SearchResponse struct {
+	Answer        string       `json:"answer"`
+	Sources       []SourceInfo `json:"sources,omitempty"`
+	SearchQueries []string     `json:"search_queries,omitempty"`
+}
+
+// SourceInfo represents a source from search results
+type SourceInfo struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+	Type  string `json:"type"` // "web" or "retrieved_context"
+}
 
 // GeminiServer implements the ToolHandler interface to provide research capabilities
 // through Google's Gemini API.
