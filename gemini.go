@@ -1084,68 +1084,6 @@ func (s *GeminiServer) handleQueryWithCache(ctx context.Context, req *protocol.C
 	return s.formatResponse(response), nil
 }
 
-// executeGeminiRequest makes the request to the Gemini API with retry capability
-func (s *GeminiServer) executeGeminiRequest(ctx context.Context, model string, query string) (*genai.GenerateContentResponse, error) {
-	logger := getLoggerFromContext(ctx)
-
-	var response *genai.GenerateContentResponse
-
-	// Define the operation to retry
-	operation := func() error {
-		var err error
-		// Set timeout context for the API call
-		timeoutCtx, cancel := context.WithTimeout(ctx, s.config.HTTPTimeout)
-		defer cancel()
-
-		contents := []*genai.Content{
-			genai.NewContentFromText(query, genai.RoleUser),
-		}
-		config := &genai.GenerateContentConfig{
-			Temperature: genai.Ptr(float32(s.config.GeminiTemperature)),
-		}
-
-		// Validate client and models before proceeding
-		if s.client == nil || s.client.Models == nil {
-			return fmt.Errorf("gemini client or Models service not properly initialized")
-		}
-
-		response, err = s.client.Models.GenerateContent(timeoutCtx, model, contents, config)
-		if err != nil {
-			// Check specifically for timeout errors
-			if errors.Is(err, context.DeadlineExceeded) {
-				return fmt.Errorf("request timed out after %v: consider increasing GEMINI_TIMEOUT: %w", s.config.HTTPTimeout, err)
-			}
-
-			// Handle other types of errors
-			return fmt.Errorf("failed to generate content: %w", err)
-		}
-
-		// Check for empty response
-		if response == nil || len(response.Candidates) == 0 {
-			return errors.New("no response candidates returned from Gemini API")
-		}
-
-		return nil
-	}
-
-	// Execute the operation with retry logic
-	err := RetryWithBackoff(
-		ctx,
-		s.config.MaxRetries,
-		s.config.InitialBackoff,
-		s.config.MaxBackoff,
-		operation,
-		IsTimeoutError, // Using the IsTimeoutError from retry.go
-		logger,
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return response, nil
-}
-
 // formatResponse formats the Gemini API response
 func (s *GeminiServer) formatResponse(resp *genai.GenerateContentResponse) *protocol.CallToolResponse {
 	var content string
