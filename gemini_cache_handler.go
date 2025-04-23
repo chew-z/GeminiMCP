@@ -1,3 +1,7 @@
+// DEPRECATED: This file contains the legacy cache handler implementation using internal types.
+// New code should use the direct handlers in direct_handlers.go instead.
+// This implementation will be removed in a future version once all references
+// have been updated to use the direct handlers.
 package main
 
 import (
@@ -8,24 +12,25 @@ import (
 )
 
 // handleQueryWithCache handles internal requests to query with a cached context
+// DEPRECATED: Use new direct handlers instead which use mcp-go types directly
 func (s *GeminiServer) handleQueryWithCache(ctx context.Context, req *internalCallToolRequest) (*internalCallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Handling query with cache request")
 
 	// Check if caching is enabled
 	if !s.config.EnableCaching {
-		return createErrorResponse("caching is disabled"), nil
+		return createErrorResponseWithMessage("caching is disabled"), nil
 	}
 
 	// Extract and validate required parameters
 	cacheID, ok := req.Arguments["cache_id"].(string)
 	if !ok || cacheID == "" {
-		return createErrorResponse("cache_id must be a non-empty string"), nil
+		return createErrorResponseWithMessage("cache_id must be a non-empty string"), nil
 	}
 
 	query, ok := req.Arguments["query"].(string)
 	if !ok || query == "" {
-		return createErrorResponse("query must be a non-empty string"), nil
+		return createErrorResponseWithMessage("query must be a non-empty string"), nil
 	}
 
 	// Get cache info

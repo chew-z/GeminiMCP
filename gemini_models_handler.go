@@ -1,3 +1,7 @@
+// DEPRECATED: This file contains the legacy handler implementation using internal types.
+// New code should use GeminiModelsHandler in direct_handlers.go instead.
+// This implementation will be removed in a future version once all references
+// have been updated to use the direct handlers.
 package main
 
 import (
@@ -9,6 +13,7 @@ import (
 )
 
 // handleGeminiModels handles requests to the gemini_models tool
+// DEPRECATED: Use GeminiModelsHandler instead which uses mcp-go types directly
 func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*internalCallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Listing available Gemini models")

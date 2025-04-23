@@ -48,41 +48,41 @@ func extractArgumentStringArray(args map[string]interface{}, name string) []stri
 // createModelConfig creates a GenerateContentConfig for Gemini API based on request parameters
 func createModelConfig(ctx context.Context, params map[string]interface{}, config *Config, defaultModel string) (*genai.GenerateContentConfig, string, error) {
 	logger := getLoggerFromContext(ctx)
-	
+
 	// Extract model parameter - use defaultModel if not specified
 	modelName := extractArgumentString(params, "model", defaultModel)
-	
+
 	// Validate the model
 	if err := ValidateModelID(modelName); err != nil {
 		logger.Error("Invalid model requested: %v", err)
 		return nil, "", fmt.Errorf("invalid model specified: %v", err)
 	}
-	
+
 	// Extract system prompt
 	systemPrompt := extractArgumentString(params, "systemPrompt", config.GeminiSystemPrompt)
-	
+
 	// Get model information
 	modelInfo := GetModelByID(modelName)
 	if modelInfo == nil {
 		logger.Warn("Model information not found for %s, using default parameters", modelName)
 	}
-	
+
 	// Create the configuration
 	contentConfig := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
 		Temperature:       genai.Ptr(float32(config.GeminiTemperature)),
 	}
-	
+
 	// Configure thinking if supported
 	enableThinking := extractArgumentBool(params, "enable_thinking", config.EnableThinking)
 	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
 		thinkingConfig := &genai.ThinkingConfig{
 			IncludeThoughts: true,
 		}
-		
+
 		// Determine thinking budget
 		thinkingBudget := 0
-		
+
 		// Check for level first
 		if levelStr, ok := params["thinking_budget_level"].(string); ok && levelStr != "" {
 			thinkingBudget = getThinkingBudgetFromLevel(levelStr)
@@ -96,39 +96,39 @@ func createModelConfig(ctx context.Context, params map[string]interface{}, confi
 			thinkingBudget = config.ThinkingBudget
 			logger.Info("Using default thinking budget of %d tokens", thinkingBudget)
 		}
-		
+
 		// Set budget if greater than 0
 		if thinkingBudget > 0 {
 			budget := int32(thinkingBudget)
 			thinkingConfig.ThinkingBudget = &budget
 		}
-		
+
 		contentConfig.ThinkingConfig = thinkingConfig
 		logger.Info("Thinking mode enabled with budget %d for model %s", thinkingBudget, modelName)
 	} else if enableThinking && (modelInfo == nil || !modelInfo.SupportsThinking) {
 		logger.Warn("Thinking mode was requested but model doesn't support it")
 	}
-	
+
 	// Configure max tokens with default ratio of context window
 	configureMaxTokensOutput(ctx, contentConfig, params, modelInfo, 0.75)
-	
+
 	return contentConfig, modelName, nil
 }
 
 // configureMaxTokensOutput configures the maximum output tokens for the request
 func configureMaxTokensOutput(ctx context.Context, config *genai.GenerateContentConfig, args map[string]interface{}, modelInfo *GeminiModelInfo, defaultRatio float64) {
 	logger := getLoggerFromContext(ctx)
-	
+
 	// Check if max_tokens parameter was provided
 	if maxTokensRaw, ok := args["max_tokens"].(float64); ok && maxTokensRaw > 0 {
 		maxTokens := int(maxTokensRaw)
-		
+
 		// Warn if tokens exceed the model's context window
 		if modelInfo != nil && maxTokens > modelInfo.ContextWindowSize {
 			logger.Warn("Requested max_tokens (%d) exceeds model's context window size (%d)",
 				maxTokens, modelInfo.ContextWindowSize)
 		}
-		
+
 		// Set the maximum output token limit
 		config.MaxOutputTokens = int32(maxTokens)
 		logger.Info("Setting max output tokens to %d", maxTokens)
@@ -152,13 +152,13 @@ func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse, withTh
 	if resp == nil || len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
 		return mcp.NewToolResultError("Gemini API returned an empty response")
 	}
-	
+
 	// Get the text from the response
 	text := resp.Text()
 	if text == "" {
 		text = "The Gemini model returned an empty response. This might indicate that the model couldn't generate an appropriate response for your query. Please try rephrasing your question or providing more context."
 	}
-	
+
 	// If thinking was requested, try to extract thinking data
 	if withThinking {
 		// Try to extract thinking from the response
@@ -173,7 +173,7 @@ func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse, withTh
 			}
 		}
 	}
-	
+
 	// Return simple text response
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
@@ -185,7 +185,7 @@ func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse, withTh
 // extractThinkingFromResponse attempts to extract thinking text from a Gemini response
 func extractThinkingFromResponse(resp *genai.GenerateContentResponse) string {
 	// This is not directly available in the Go API, would need to parse raw JSON
-	// For now, return empty string to indicate no thinking data 
+	// For now, return empty string to indicate no thinking data
 	// A proper implementation would need to look at resp.Candidates[0] raw data
 	return ""
 }

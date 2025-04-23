@@ -55,9 +55,9 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 		model := GetModelByID(modelName)
 		if model != nil && model.SupportsCaching {
 			// Try to create cache from files if provided
-			cacheID, cacheErr = s.createCacheFromFiles(ctx, query, modelName, filePaths, cacheTTL, 
+			cacheID, cacheErr = s.createCacheFromFiles(ctx, query, modelName, filePaths, cacheTTL,
 				extractArgumentString(req.Params.Arguments, "systemPrompt", s.config.GeminiSystemPrompt))
-			
+
 			if cacheErr != nil {
 				logger.Warn("Failed to create cache, falling back to regular request: %v", cacheErr)
 			} else if cacheID != "" {
@@ -84,19 +84,19 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 }
 
 // createCacheFromFiles creates a cache from the provided files and returns the cache ID
-func (s *GeminiServer) createCacheFromFiles(ctx context.Context, query, modelName string, 
+func (s *GeminiServer) createCacheFromFiles(ctx context.Context, query, modelName string,
 	filePaths []string, cacheTTL, systemPrompt string) (string, error) {
-	
+
 	logger := getLoggerFromContext(ctx)
-	
+
 	// Check if file store is properly initialized
 	if s.fileStore == nil {
 		return "", fmt.Errorf("FileStore not properly initialized")
 	}
-	
+
 	// Create a list of file IDs from uploaded files
 	var fileIDs []string
-	
+
 	// Upload each file to the API
 	for _, filePath := range filePaths {
 		// Read the file
@@ -105,11 +105,11 @@ func (s *GeminiServer) createCacheFromFiles(ctx context.Context, query, modelNam
 			logger.Error("Failed to read file %s: %v", filePath, err)
 			continue
 		}
-		
+
 		// Get mime type and filename
 		mimeType := getMimeTypeFromPath(filePath)
 		fileName := filepath.Base(filePath)
-		
+
 		// Create upload request
 		uploadReq := &FileUploadRequest{
 			FileName:    fileName,
@@ -117,23 +117,23 @@ func (s *GeminiServer) createCacheFromFiles(ctx context.Context, query, modelNam
 			Content:     content,
 			DisplayName: fileName,
 		}
-		
+
 		// Upload the file
 		fileInfo, err := s.fileStore.UploadFile(ctx, uploadReq)
 		if err != nil {
 			logger.Error("Failed to upload file %s: %v", filePath, err)
 			continue
 		}
-		
+
 		logger.Info("Successfully uploaded file %s with ID: %s for caching", fileName, fileInfo.ID)
 		fileIDs = append(fileIDs, fileInfo.ID)
 	}
-	
+
 	// If no files were uploaded successfully, return error
 	if len(fileIDs) == 0 && len(filePaths) > 0 {
 		return "", fmt.Errorf("failed to upload any files for caching")
 	}
-	
+
 	// Create cache request
 	cacheReq := &CacheRequest{
 		Model:        modelName,
@@ -142,13 +142,13 @@ func (s *GeminiServer) createCacheFromFiles(ctx context.Context, query, modelNam
 		TTL:          cacheTTL,
 		Content:      query,
 	}
-	
+
 	// Create the cache
 	cacheInfo, err := s.cacheStore.CreateCache(ctx, cacheReq)
 	if err != nil {
 		return "", fmt.Errorf("failed to create cache: %w", err)
 	}
-	
+
 	return cacheInfo.ID, nil
 }
 
@@ -190,16 +190,16 @@ func (s *GeminiServer) handleQueryWithCacheDirect(ctx context.Context, cacheID, 
 }
 
 // processWithFiles handles a Gemini API request with file attachments
-func (s *GeminiServer) processWithFiles(ctx context.Context, query string, filePaths []string, 
+func (s *GeminiServer) processWithFiles(ctx context.Context, query string, filePaths []string,
 	modelName string, config *genai.GenerateContentConfig, enableThinking bool, cacheErr error) (*mcp.CallToolResult, error) {
-	
+
 	logger := getLoggerFromContext(ctx)
-	
+
 	// Create initial content with the query
 	contents := []*genai.Content{
 		genai.NewContentFromText(query, genai.RoleUser),
 	}
-	
+
 	// Process each file
 	for _, filePath := range filePaths {
 		// Read the file
@@ -208,18 +208,18 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, fileP
 			logger.Error("Failed to read file %s: %v", filePath, err)
 			continue
 		}
-		
+
 		// Get mime type and filename
 		mimeType := getMimeTypeFromPath(filePath)
 		fileName := filepath.Base(filePath)
-		
+
 		// Upload the file to Gemini
 		logger.Info("Uploading file %s with mime type %s", fileName, mimeType)
 		uploadConfig := &genai.UploadFileConfig{
 			MIMEType:    mimeType,
 			DisplayName: fileName,
 		}
-		
+
 		file, err := s.client.Files.Upload(ctx, bytes.NewReader(content), uploadConfig)
 		if err != nil {
 			logger.Error("Failed to upload file %s: %v - falling back to direct content", filePath, err)
@@ -227,11 +227,11 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, fileP
 			contents = append(contents, genai.NewContentFromText(string(content), genai.RoleUser))
 			continue
 		}
-		
+
 		// Add file to contents using the URI
 		contents = append(contents, genai.NewContentFromURI(file.URI, mimeType, genai.RoleUser))
 	}
-	
+
 	// Generate content with files
 	response, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	if err != nil {
@@ -242,22 +242,22 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, fileP
 		}
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
-	
+
 	// Convert to MCP result
 	return convertGenaiResponseToMCPResult(response, enableThinking), nil
 }
 
 // processWithoutFiles handles a Gemini API request without file attachments
-func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string, 
+func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
 	modelName string, config *genai.GenerateContentConfig, enableThinking bool, cacheErr error) (*mcp.CallToolResult, error) {
-	
+
 	logger := getLoggerFromContext(ctx)
-	
+
 	// Create content with just the query
 	contents := []*genai.Content{
 		genai.NewContentFromText(query, genai.RoleUser),
 	}
-	
+
 	// Generate content
 	response, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	if err != nil {
@@ -268,7 +268,7 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
 		}
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
-	
+
 	// Convert to MCP result
 	return convertGenaiResponseToMCPResult(response, enableThinking), nil
 }
@@ -321,7 +321,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 
 		// Determine thinking budget
 		thinkingBudget := 0
-		
+
 		// Check for level first
 		if levelStr, ok := req.Params.Arguments["thinking_budget_level"].(string); ok && levelStr != "" {
 			thinkingBudget = getThinkingBudgetFromLevel(levelStr)

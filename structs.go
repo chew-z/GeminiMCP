@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -171,13 +172,15 @@ func (s *ErrorGeminiServer) CallTool(ctx context.Context, req mcp.CallToolReques
 
 // handleErrorResponse is a handler function that can be used with mark3labs/mcp-go's AddTool
 func (s *ErrorGeminiServer) handleErrorResponse(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// Log which tool was attempted, if a logger is in the context
-	if loggerValue := ctx.Value(loggerKey); loggerValue != nil {
-		if logger, ok := loggerValue.(Logger); ok {
-			logger.Info("Tool '%s' called in error mode", req.Params.Name)
-		}
-	}
+	// Get logger from context
+	logger := getLoggerFromContext(ctx)
 
-	// Return the same error message regardless of which tool is called
-	return mcp.NewToolResultError(s.errorMessage), nil
+	// Log which tool was attempted
+	toolName := req.Params.Name
+	logger.Info("Tool '%s' called in error mode", toolName)
+
+	// Return an error result with the initialization error message
+	// Include the tool name for better debugging
+	errorMessage := fmt.Sprintf("Error in tool '%s': %s", toolName, s.errorMessage)
+	return createErrorResult(errorMessage), nil
 }

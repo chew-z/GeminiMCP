@@ -1,3 +1,7 @@
+// DEPRECATED: This file contains the legacy handler implementation using internal types.
+// New code should use GeminiAskHandler in direct_handlers.go instead.
+// This implementation will be removed in a future version once all references
+// have been updated to use the direct handlers.
 package main
 
 import (
@@ -11,6 +15,7 @@ import (
 )
 
 // handleAskGemini handles requests to the ask_gemini tool
+// DEPRECATED: Use GeminiAskHandler instead which uses mcp-go types directly
 func (s *GeminiServer) handleAskGemini(ctx context.Context, req *internalCallToolRequest) (*internalCallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
 
@@ -107,7 +112,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *internalCallToo
 			}
 
 			// Extract optional systemPrompt parameter
-			systemPrompt := extractSystemPrompt(ctx, req.Arguments, s.config.GeminiSystemPrompt)
+			systemPrompt := extractStringParam(req.Arguments, "systemPrompt", s.config.GeminiSystemPrompt)
 
 			// Create cache request
 			cacheReq := &CacheRequest{
@@ -145,7 +150,18 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *internalCallToo
 
 	// If caching failed or wasn't requested, use regular API
 	// Create content config with system prompt and other settings
-	config := createGenaiContentConfig(ctx, req.Arguments, s.config, modelName)
+	systemPrompt := extractStringParam(req.Arguments, "systemPrompt", s.config.GeminiSystemPrompt)
+	modelInfo := GetModelByID(modelName)
+	config := &genai.GenerateContentConfig{
+		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
+		Temperature:       genai.Ptr(float32(s.config.GeminiTemperature)),
+	}
+
+	// Configure thinking
+	configureThinking(ctx, config, req.Arguments, modelInfo, thinkingRequested, s.config.ThinkingBudget)
+
+	// Configure max tokens (75% of context window by default for general queries)
+	configureMaxTokens(ctx, config, req.Arguments, modelInfo, 0.75)
 
 	// Validate client and models before proceeding
 	if s.client == nil || s.client.Models == nil {

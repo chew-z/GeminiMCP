@@ -1,3 +1,7 @@
+// DEPRECATED: This file contains the legacy handler implementation using internal types.
+// New code should use GeminiSearchHandler in direct_handlers.go instead.
+// This implementation will be removed in a future version once all references
+// have been updated to use the direct handlers.
 package main
 
 import (
@@ -9,6 +13,7 @@ import (
 )
 
 // handleGeminiSearch handles requests to the gemini_search tool
+// DEPRECATED: Use GeminiSearchHandler instead which uses mcp-go types directly
 func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *internalCallToolRequest) (*internalCallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
 
@@ -18,8 +23,8 @@ func (s *GeminiServer) handleGeminiSearch(ctx context.Context, req *internalCall
 		return createErrorResponseWithMessage("query must be a string"), nil
 	}
 
-	// Extract optional systemPrompt parameter for search
-	systemPrompt := extractSystemPrompt(ctx, req.Arguments, s.config.GeminiSearchSystemPrompt)
+	// Extract optional system prompt parameter for search
+	systemPrompt := extractStringParam(req.Arguments, "systemPrompt", s.config.GeminiSearchSystemPrompt)
 
 	// Extract optional model parameter - use the specific search model from config as default
 	modelName := extractModelParam(ctx, req.Arguments, s.config.GeminiSearchModel)
