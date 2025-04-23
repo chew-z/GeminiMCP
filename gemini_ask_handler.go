@@ -17,26 +17,24 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *internalCallToo
 	// Extract and validate query parameter (required)
 	query, ok := req.Arguments["query"].(string)
 	if !ok {
-		return createErrorResponse("query must be a string"), nil
+		return createErrorResponseWithMessage("query must be a string"), nil
 	}
 
 	// Extract optional model parameter
-	modelName := s.config.GeminiModel
-	if customModel, ok := req.Arguments["model"].(string); ok && customModel != "" {
-		// Validate the custom model
-		if err := ValidateModelID(customModel); err != nil {
-			logger.Error("Invalid model requested: %v", err)
-			return createErrorResponse(fmt.Sprintf("Invalid model specified: %v", err)), nil
-		}
-		logger.Info("Using request-specific model: %s", customModel)
-		modelName = customModel
-	}
+	modelName := extractModelParam(ctx, req.Arguments, s.config.GeminiModel)
 
-	// Extract optional systemPrompt parameter
-	systemPrompt := s.config.GeminiSystemPrompt
-	if customPrompt, ok := req.Arguments["systemPrompt"].(string); ok && customPrompt != "" {
-		logger.Info("Using request-specific system prompt")
-		systemPrompt = customPrompt
+	// Check if caching is requested
+	useCache := extractBoolParam(req.Arguments, "use_cache", false)
+
+	// Extract cache TTL if provided
+	cacheTTL := extractStringParam(req.Arguments, "cache_ttl", "")
+
+	// Check if thinking mode is also requested, as this can conflict with caching
+	thinkingRequested := extractBoolParam(req.Arguments, "enable_thinking", s.config.EnableThinking)
+
+	if thinkingRequested && useCache {
+		logger.Warn("Both caching and thinking mode were requested - these features may conflict. Prioritizing thinking mode.")
+		useCache = false
 	}
 
 	// Extract file paths if provided
@@ -49,33 +47,10 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *internalCallToo
 		}
 	}
 
-	// Check if caching is requested
-	useCache := false
-	if useCacheRaw, ok := req.Arguments["use_cache"].(bool); ok {
-		useCache = useCacheRaw
-	}
-
-	// Extract cache TTL if provided
-	cacheTTL := ""
-	if ttl, ok := req.Arguments["cache_ttl"].(string); ok {
-		cacheTTL = ttl
-	}
-
 	// If caching is requested and the model supports it, use caching
 	var cacheID string
 	var cacheErr error
-
-	// Check if thinking mode is also requested, as this can conflict with caching
-	thinkingRequested := s.config.EnableThinking
-	if thinkingRaw, ok := req.Arguments["enable_thinking"].(bool); ok {
-		thinkingRequested = thinkingRaw
-	}
-
-	if thinkingRequested && useCache {
-		logger.Warn("Both caching and thinking mode were requested - these features may conflict. Prioritizing thinking mode.")
-		useCache = false
-	}
-
+	
 	if useCache && s.config.EnableCaching {
 		// Check if model supports caching
 		model := GetModelByID(modelName)
@@ -92,7 +67,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *internalCallToo
 			// Check if file store is properly initialized
 			if s.fileStore == nil {
 				logger.Error("FileStore not properly initialized")
-				return createErrorResponse("Internal error: FileStore not properly initialized"), nil
+				return createErrorResponseWithMessage("Internal error: FileStore not properly initialized"), nil
 			}
 
 			// Upload files if provided
@@ -131,6 +106,9 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *internalCallToo
 				fileIDs = append(fileIDs, fileInfo.ID)
 			}
 
+			// Extract optional systemPrompt parameter
+			systemPrompt := extractSystemPrompt(ctx, req.Arguments, s.config.GeminiSystemPrompt)
+
 			// Create cache request
 			cacheReq := &CacheRequest{
 				Model:        modelName,
@@ -166,110 +144,18 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *internalCallToo
 	}
 
 	// If caching failed or wasn't requested, use regular API
-	config := &genai.GenerateContentConfig{
-		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
-		Temperature:       genai.Ptr(float32(s.config.GeminiTemperature)),
+	// Create content config with system prompt and other settings
+	config := createGenaiContentConfig(ctx, req.Arguments, s.config, modelName)
+
+	// Validate client and models before proceeding
+	if s.client == nil || s.client.Models == nil {
+		logger.Error("Gemini client or Models service not properly initialized")
+		return createErrorResponseWithMessage("Internal error: Gemini client not properly initialized"), nil
 	}
 
-	// Check if thinking mode should be enabled
-	enableThinking := s.config.EnableThinking
-	if thinkingRaw, ok := req.Arguments["enable_thinking"].(bool); ok {
-		enableThinking = thinkingRaw
-	}
-
-	// Get model information
-	modelInfo := GetModelByID(modelName)
-	if modelInfo == nil {
-		logger.Warn("Model information not found for %s, using default parameters", modelName)
-	}
-
-	// Check if max_tokens parameter was provided
-	if maxTokensRaw, ok := req.Arguments["max_tokens"].(float64); ok {
-		maxTokens := int(maxTokensRaw)
-		// Set the maximum output token limit
-		config.MaxOutputTokens = int32(maxTokens)
-		logger.Info("Setting max output tokens to %d", maxTokens)
-
-		// Warn if tokens exceed the model's context window
-		if modelInfo != nil && maxTokens > modelInfo.ContextWindowSize {
-			logger.Warn("Requested max_tokens (%d) exceeds model's context window size (%d)",
-				maxTokens, modelInfo.ContextWindowSize)
-		}
-	} else {
-		// Set a safe default if not specified
-		if modelInfo != nil {
-			// Use 75% of the context window as a safe default for max output tokens
-			safeTokenLimit := int32(modelInfo.ContextWindowSize * 3 / 4)
-			config.MaxOutputTokens = safeTokenLimit
-			logger.Debug("Using default max output tokens: %d (75%% of context window)", safeTokenLimit)
-		}
-	}
-
-	// Configure thinking mode if enabled and model supports it
-	if enableThinking {
-		if modelInfo != nil && modelInfo.SupportsThinking {
-			thinkingConfig := &genai.ThinkingConfig{
-				IncludeThoughts: true,
-			}
-
-			// Determine thinking budget - check for level first, then explicit value
-			thinkingBudget := 0
-
-			// Check if thinking_budget_level parameter was provided
-			if levelStr, ok := req.Arguments["thinking_budget_level"].(string); ok && levelStr != "" {
-				thinkingBudget = getThinkingBudgetFromLevel(levelStr)
-				logger.Info("Setting thinking budget to %d tokens from level: %s", thinkingBudget, levelStr)
-			} else if budgetRaw, ok := req.Arguments["thinking_budget"].(float64); ok && budgetRaw >= 0 {
-				// If explicit budget was provided, use that instead of level
-				thinkingBudget = int(budgetRaw)
-				logger.Info("Setting thinking budget to %d tokens from explicit value", thinkingBudget)
-			} else if s.config.ThinkingBudget > 0 {
-				// Fall back to config value if neither level nor explicit budget provided
-				thinkingBudget = s.config.ThinkingBudget
-				logger.Info("Using default thinking budget of %d tokens from config", thinkingBudget)
-			}
-
-			// Only set the thinking budget if it's greater than 0
-			if thinkingBudget > 0 {
-				budget := int32(thinkingBudget)
-				thinkingConfig.ThinkingBudget = &budget
-			}
-
-			config.ThinkingConfig = thinkingConfig
-			logger.Info("Thinking mode enabled for request with model %s", modelName)
-		} else {
-			if modelInfo != nil {
-				logger.Warn("Thinking mode requested but model %s doesn't support it", modelName)
-			} else {
-				logger.Warn("Thinking mode requested but unknown if model %s supports it", modelName)
-			}
-		}
-	}
-
-	// Log the temperature setting
-	logger.Debug("Using temperature: %v for model %s", s.config.GeminiTemperature, modelName)
-
-	// Before processing files, set the environment variable explicitly
-	originalAPIKey := os.Getenv("GOOGLE_API_KEY")
-	os.Setenv("GOOGLE_API_KEY", s.config.GeminiAPIKey)
-
-	// This will be executed at the end of this function to reset the environment
-	defer func() {
-		if originalAPIKey != "" {
-			os.Setenv("GOOGLE_API_KEY", originalAPIKey)
-		} else {
-			os.Unsetenv("GOOGLE_API_KEY")
-		}
-	}()
-
-	// Add file contents if provided
+	// Process with files if provided
 	if len(filePaths) > 0 {
-		// Validate client first
-		if s.client == nil {
-			logger.Error("Gemini client not properly initialized")
-			return createErrorResponse("Internal error: Gemini client not properly initialized"), nil
-		}
-
+		// Add file contents 
 		contents := []*genai.Content{
 			genai.NewContentFromText(query, genai.RoleUser),
 		}
@@ -308,21 +194,15 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *internalCallToo
 			contents = append(contents, genai.NewContentFromURI(file.URI, mimeType, genai.RoleUser))
 		}
 
-		// Validate client and models before proceeding
-		if s.client == nil || s.client.Models == nil {
-			logger.Error("Gemini client or Models service not properly initialized")
-			return createErrorResponse("Internal error: Gemini client not properly initialized"), nil
-		}
-
 		// Generate content with files
 		response, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
 		if err != nil {
 			logger.Error("Gemini API error: %v", err)
 			if cacheErr != nil {
 				// Include cache error in response if it exists
-				return createErrorResponse(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
+				return createErrorResponseWithMessage(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
 			}
-			return createErrorResponse(fmt.Sprintf("Error from Gemini API: %v", err)), nil
+			return createErrorResponseWithMessage(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 		}
 
 		return s.formatResponse(response), nil
@@ -332,19 +212,15 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *internalCallToo
 			genai.NewContentFromText(query, genai.RoleUser),
 		}
 
-		// Validate client and models before proceeding
-		if s.client == nil || s.client.Models == nil {
-			logger.Error("Gemini client or Models service not properly initialized")
-			return createErrorResponse("Internal error: Gemini client not properly initialized"), nil
-		}
+		// Generate content with simple text query
 		response, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
 		if err != nil {
 			logger.Error("Gemini API error: %v", err)
 			if cacheErr != nil {
 				// Include cache error in response if it exists
-				return createErrorResponse(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
+				return createErrorResponseWithMessage(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
 			}
-			return createErrorResponse(fmt.Sprintf("Error from Gemini API: %v", err)), nil
+			return createErrorResponseWithMessage(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 		}
 
 		return s.formatResponse(response), nil

@@ -22,17 +22,10 @@ func getLoggerFromContext(ctx context.Context) Logger {
 	return NewLogger(LevelInfo)
 }
 
+// NOTE: This function is deprecated, use createErrorResponseWithMessage instead
 // createErrorResponse creates a standardized error response
 func createErrorResponse(message string) *internalCallToolResponse {
-	return &internalCallToolResponse{
-		IsError: true,
-		Content: []internalToolContent{
-			{
-				Type: "text",
-				Text: message,
-			},
-		},
-	}
+	return createErrorResponseWithMessage(message)
 }
 
 // formatResponse formats the Gemini API response

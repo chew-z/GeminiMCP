@@ -15,7 +15,6 @@ type GeminiServer struct {
 	client     *genai.Client
 	fileStore  *FileStore
 	cacheStore *CacheStore
-	mutex      sync.Mutex // Added to protect client access
 }
 
 // SearchResponse is the JSON response format for the gemini_search tool
