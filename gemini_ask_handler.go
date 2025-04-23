@@ -7,12 +7,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/gomcpgo/mcp/pkg/protocol"
 	"google.golang.org/genai"
 )
 
 // handleAskGemini handles requests to the ask_gemini tool
-func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
+func (s *GeminiServer) handleAskGemini(ctx context.Context, req *internalCallToolRequest) (*internalCallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
 
 	// Extract and validate query parameter (required)
@@ -158,7 +157,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *protocol.CallTo
 
 	// If we successfully created a cache, use it
 	if cacheID != "" {
-		return s.handleQueryWithCache(ctx, &protocol.CallToolRequest{
+		return s.handleQueryWithCache(ctx, &internalCallToolRequest{
 			Arguments: map[string]interface{}{
 				"cache_id": cacheID,
 				"query":    query,

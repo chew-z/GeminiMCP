@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gomcpgo/mcp/pkg/protocol"
 	"google.golang.org/genai"
 )
 
 // handleGeminiModels handles requests to the gemini_models tool
-func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallToolResponse, error) {
+func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*internalCallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Listing available Gemini models")
 
@@ -238,8 +237,8 @@ func (s *GeminiServer) handleGeminiModels(ctx context.Context) (*protocol.CallTo
 		return createErrorResponse("Error generating model list"), nil
 	}
 
-	return &protocol.CallToolResponse{
-		Content: []protocol.ToolContent{
+	return &internalCallToolResponse{
+		Content: []internalToolContent{
 			{
 				Type: "text",
 				Text: formattedContent.String(),

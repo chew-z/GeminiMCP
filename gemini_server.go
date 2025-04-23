@@ -2,11 +2,10 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
-	"github.com/gomcpgo/mcp/pkg/protocol"
+	"github.com/mark3labs/mcp-go/mcp"
 	"google.golang.org/genai"
 )
 
@@ -47,127 +46,75 @@ func (s *GeminiServer) Close() {
 }
 
 // ListTools implements the ToolHandler interface for GeminiServer
-func (s *GeminiServer) ListTools(ctx context.Context) (*protocol.ListToolsResponse, error) {
-	tools := []protocol.Tool{
-		{
-			Name:        "gemini_ask",
-			Description: "Use Google's Gemini AI model to ask about complex coding problems",
-			InputSchema: json.RawMessage(`{
-				"type": "object",
-				"properties": {
-					"query": {
-						"type": "string",
-						"description": "The coding problem that we are asking Gemini AI to work on [question + code]"
-					},
-					"model": {
-						"type": "string",
-						"description": "Optional: Specific Gemini model to use (overrides default configuration)"
-					},
-					"systemPrompt": {
-						"type": "string",
-						"description": "Optional: Custom system prompt to use for this request (overrides default configuration)"
-					},
-					"file_paths": {
-						"type": "array",
-						"items": {
-							"type": "string"
-						},
-						"description": "Optional: Paths to files to include in the request context"
-					},
-					"use_cache": {
-						"type": "boolean",
-						"description": "Optional: Whether to try using a cache for this request (only works with compatible models)"
-					},
-					"cache_ttl": {
-						"type": "string",
-						"description": "Optional: TTL for cache if created (e.g., '10m', '1h'). Default is 10 minutes"
-					},
-					"enable_thinking": {
-						"type": "boolean",
-						"description": "Optional: Enable thinking mode to see model's reasoning process (only works with Pro models)"
-					},
-					"thinking_budget": {
-						"type": "integer",
-						"description": "Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)"
-					},
-					"thinking_budget_level": {
-						"type": "string",
-						"enum": ["none", "low", "medium", "high"],
-						"description": "Optional: Predefined thinking budget level (none: 0, low: 4096, medium: 16384, high: 24576)"
-					},
-					"max_tokens": {
-						"type": "integer",
-						"description": "Optional: Maximum token limit for the response. Default is determined by the model"
-					}
-				},
-				"required": ["query"]
-			}`),
-		},
-		{
-			Name:        "gemini_search",
-			Description: "Use Google's Gemini AI model with Google Search to answer questions with grounded information",
-			InputSchema: json.RawMessage(`{
-				"type": "object",
-				"properties": {
-					"query": {
-						"type": "string",
-						"description": "The question to ask Gemini using Google Search for grounding"
-					},
-					"systemPrompt": {
-						"type": "string",
-						"description": "Optional: Custom system prompt to use for this request (overrides default configuration)"
-					},
-					"enable_thinking": {
-						"type": "boolean",
-						"description": "Optional: Enable thinking mode to see model's reasoning process (when supported)"
-					},
-					"thinking_budget": {
-						"type": "integer",
-						"description": "Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)"
-					},
-					"thinking_budget_level": {
-						"type": "string",
-						"enum": ["none", "low", "medium", "high"],
-						"description": "Optional: Predefined thinking budget level (none: 0, low: 4096, medium: 16384, high: 24576)"
-					},
-					"max_tokens": {
-						"type": "integer",
-						"description": "Optional: Maximum token limit for the response. Default is determined by the model"
-					},
-					"model": {
-						"type": "string",
-						"description": "Optional: Specific Gemini model to use (overrides default configuration)"
-					}
-				},
-				"required": ["query"]
-			}`),
-		},
-		{
-			Name:        "gemini_models",
-			Description: "List available Gemini models with descriptions",
-			InputSchema: json.RawMessage(`{
-				"type": "object",
-				"properties": {},
-				"required": []
-			}`),
-		},
+func (s *GeminiServer) ListTools(ctx context.Context) ([]mcp.Tool, error) {
+
+	tools := []mcp.Tool{
+		mcp.NewTool(
+			"gemini_ask",
+			mcp.WithDescription("Use Google's Gemini AI model to ask about complex coding problems"),
+			mcp.WithString("query", mcp.Required(), mcp.Description("The coding problem that we are asking Gemini AI to work on [question + code]")),
+			mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
+			mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
+			mcp.WithArray("file_paths", mcp.Description("Optional: Paths to files to include in the request context")),
+			mcp.WithBoolean("use_cache", mcp.Description("Optional: Whether to try using a cache for this request (only works with compatible models)")),
+			mcp.WithString("cache_ttl", mcp.Description("Optional: TTL for cache if created (e.g., '10m', '1h'). Default is 10 minutes")),
+			mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (only works with Pro models)")),
+			mcp.WithNumber("thinking_budget", mcp.Description("Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)")),
+			mcp.WithString("thinking_budget_level", mcp.Description("Optional: Predefined thinking budget level (none, low, medium, high)")),
+			mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
+		),
+		mcp.NewTool(
+			"gemini_search",
+			mcp.WithDescription("Use Google's Gemini AI model with Google Search to answer questions with grounded information"),
+			mcp.WithString("query", mcp.Required(), mcp.Description("The question to ask Gemini using Google Search for grounding")),
+			mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
+			mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (when supported)")),
+			mcp.WithNumber("thinking_budget", mcp.Description("Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)")),
+			mcp.WithString("thinking_budget_level", mcp.Description("Optional: Predefined thinking budget level (none, low, medium, high)")),
+			mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
+			mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
+		),
+		mcp.NewTool(
+			"gemini_models",
+			mcp.WithDescription("List available Gemini models with descriptions"),
+		),
 	}
 
-	return &protocol.ListToolsResponse{
-		Tools: tools,
-	}, nil
+	return tools, nil
 }
 
 // CallTool implements the ToolHandler interface for GeminiServer
-func (s *GeminiServer) CallTool(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
-	switch req.Name {
+func (s *GeminiServer) CallTool(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	switch req.Params.Name {
 	case "gemini_ask":
-		return s.handleAskGemini(ctx, req)
+		// Convert to internal request
+		internalReq := &internalCallToolRequest{
+			Name:      req.Params.Name,
+			Arguments: req.Params.Arguments,
+		}
+		resp, err := s.handleAskGemini(ctx, internalReq)
+		if err != nil {
+			return nil, err
+		}
+		return convertToMCPResult(resp), nil
 	case "gemini_search":
-		return s.handleGeminiSearch(ctx, req)
+		// Convert to internal request
+		internalReq := &internalCallToolRequest{
+			Name:      req.Params.Name,
+			Arguments: req.Params.Arguments,
+		}
+		resp, err := s.handleGeminiSearch(ctx, internalReq)
+		if err != nil {
+			return nil, err
+		}
+		return convertToMCPResult(resp), nil
 	case "gemini_models":
-		return s.handleGeminiModels(ctx)
+		resp, err := s.handleGeminiModels(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return convertToMCPResult(resp), nil
 	default:
-		return createErrorResponse(fmt.Sprintf("unknown tool: %s", req.Name)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("unknown tool: %s", req.Params.Name)), nil
 	}
 }

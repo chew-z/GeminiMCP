@@ -3,8 +3,8 @@ module GeminiMCP
 go 1.24.2
 
 require (
-	github.com/gomcpgo/mcp v0.1.1
 	github.com/joho/godotenv v1.5.1
+	github.com/mark3labs/mcp-go v0.23.0
 	google.golang.org/genai v1.1.0
 )
 
@@ -15,8 +15,11 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/spf13/cast v1.7.1 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/crypto v0.27.0 // indirect
 	golang.org/x/net v0.29.0 // indirect

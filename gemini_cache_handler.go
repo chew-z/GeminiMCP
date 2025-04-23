@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/gomcpgo/mcp/pkg/protocol"
 	"google.golang.org/genai"
 )
 
 // handleQueryWithCache handles internal requests to query with a cached context
-func (s *GeminiServer) handleQueryWithCache(ctx context.Context, req *protocol.CallToolRequest) (*protocol.CallToolResponse, error) {
+func (s *GeminiServer) handleQueryWithCache(ctx context.Context, req *internalCallToolRequest) (*internalCallToolResponse, error) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Handling query with cache request")
 
