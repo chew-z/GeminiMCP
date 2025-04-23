@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 
+	_ "github.com/joho/godotenv/autoload"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	_ "github.com/joho/godotenv/autoload"
 )
 
 // main is the entry point for the application.
@@ -294,7 +294,7 @@ type MCPToolHandlerFunc = server.ToolHandlerFunc
 func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logger Logger) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		logger.Info("Calling tool '%s'...", toolName)
-		
+
 		// Call the actual handler
 		resp, err := handler(ctx, req)
 
@@ -361,7 +361,7 @@ type internalCallToolRequest struct {
 }
 
 type internalCallToolResponse struct {
-	IsError bool                `json:"isError"`
+	IsError bool                  `json:"isError"`
 	Content []internalToolContent `json:"content,omitempty"`
 }
 
@@ -389,7 +389,7 @@ func convertToMCPResult(protoResp *internalCallToolResponse) *mcp.CallToolResult
 		switch content.Type {
 		case "text":
 			result.Content = append(result.Content, mcp.NewTextContent(content.Text))
-		// Note: We only handle text content for now during the migration
+			// Note: We only handle text content for now during the migration
 		}
 	}
 
