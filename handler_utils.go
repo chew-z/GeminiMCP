@@ -81,7 +81,3 @@ func configureMaxTokens(ctx context.Context, config *genai.GenerateContentConfig
 			safeTokenLimit, defaultRatio*100)
 	}
 }
-
-// This function has been removed as it was unused after refactoring to use direct handlers with mcp-go types
-
-// This function has been removed after refactoring to use createErrorResult and direct MCP types

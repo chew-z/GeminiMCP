@@ -55,57 +55,6 @@ func ValidateModelID(modelID string) error {
 // fallbackGeminiModels provides a list of default Gemini models to use if API fetching fails
 func fallbackGeminiModels() []GeminiModelInfo {
 	return []GeminiModelInfo{
-		// Gemini 1.5 Pro Models (core models)
-		{
-			ID:                "gemini-1.5-pro-latest",
-			Name:              "Gemini 1.5 Pro Latest",
-			Description:       "Pro model with advanced reasoning capabilities",
-			SupportsCaching:   false,
-			SupportsThinking:  false, // Not reliably working with thinking mode
-			ContextWindowSize: 1048576,
-		},
-		{
-			ID:                "gemini-1.5-pro-001",
-			Name:              "Gemini 1.5 Pro 001",
-			Description:       "Pro model with advanced reasoning capabilities",
-			SupportsCaching:   true,
-			SupportsThinking:  false, // Doesn't work with thinking mode per testing
-			ContextWindowSize: 1048576,
-		},
-		{
-			ID:                "gemini-1.5-pro",
-			Name:              "Gemini 1.5 Pro",
-			Description:       "Pro model with advanced reasoning capabilities",
-			SupportsCaching:   false,
-			SupportsThinking:  false, // Doesn't work with thinking mode per testing
-			ContextWindowSize: 1048576,
-		},
-
-		// Gemini 1.5 Flash Models (core models)
-		{
-			ID:                "gemini-1.5-flash-latest",
-			Name:              "Gemini 1.5 Flash Latest",
-			Description:       "Flash model optimized for efficiency and speed",
-			SupportsCaching:   false,
-			SupportsThinking:  false,
-			ContextWindowSize: 32768,
-		},
-		{
-			ID:                "gemini-1.5-flash-001",
-			Name:              "Gemini 1.5 Flash 001",
-			Description:       "Flash model optimized for efficiency and speed",
-			SupportsCaching:   true,
-			SupportsThinking:  false,
-			ContextWindowSize: 32768,
-		},
-		{
-			ID:                "gemini-1.5-flash",
-			Name:              "Gemini 1.5 Flash",
-			Description:       "Flash model optimized for efficiency and speed",
-			SupportsCaching:   false,
-			SupportsThinking:  false,
-			ContextWindowSize: 32768,
-		},
 
 		// Gemini 2.5 Models (Preview/Experimental)
 		{

@@ -12,8 +12,8 @@ import (
 // Default configuration values
 const (
 	// Note: if this value changes, make sure to update the models.go list
-	defaultGeminiModel        = "gemini-1.5-pro"
-	defaultGeminiSearchModel  = "gemini-2.0-flash" // Default model specifically for search
+	defaultGeminiModel        = "gemini-2.5-pro-preview-03-25"
+	defaultGeminiSearchModel  = "gemini-2.5-flash-preview-04-17" // Default model specifically for search
 	defaultGeminiTemperature  = 0.4
 	defaultGeminiSystemPrompt = `
 You are a senior developer. Your job is to do a thorough code review of this code.
