@@ -22,74 +22,9 @@ func getLoggerFromContext(ctx context.Context) Logger {
 	return NewLogger(LevelInfo)
 }
 
-// NOTE: This function is deprecated, use createErrorResponseWithMessage instead
-// createErrorResponse creates a standardized error response
-func createErrorResponse(message string) *internalCallToolResponse {
-	return createErrorResponseWithMessage(message)
-}
+// This function has been removed after refactoring to use direct MCP types
 
-// formatResponse formats the Gemini API response
-func (s *GeminiServer) formatResponse(resp *genai.GenerateContentResponse) *internalCallToolResponse {
-	var content string
-	thinking := ""
-
-	// Extract text from the response
-	if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
-		content = resp.Text()
-
-		// Try to extract thinking output from candidate
-		candidate := resp.Candidates[0]
-		// The ThinkingOutput field is not directly exposed in the Go API
-		// We'll need to check the raw JSON if available
-		if data, err := json.Marshal(candidate); err == nil {
-			var candidateMap map[string]interface{}
-			if err := json.Unmarshal(data, &candidateMap); err == nil {
-				if thinkingOutput, ok := candidateMap["thinkingOutput"].(map[string]interface{}); ok {
-					if thinkingText, ok := thinkingOutput["thinking"].(string); ok {
-						thinking = thinkingText
-					}
-				}
-			}
-		}
-	}
-
-	// Check for empty content and provide a fallback message
-	if content == "" {
-		content = "The Gemini model returned an empty response. This might indicate that the model couldn't generate an appropriate response for your query. Please try rephrasing your question or providing more context."
-	}
-
-	// If thinking output was found, include it in the response
-	if thinking != "" {
-		// Create a JSON response with thinking included
-		thinkingResp := map[string]string{
-			"answer":   content,
-			"thinking": thinking,
-		}
-
-		// Convert to JSON
-		thinkingJSON, err := json.Marshal(thinkingResp)
-		if err == nil {
-			return &internalCallToolResponse{
-				Content: []internalToolContent{
-					{
-						Type: "text",
-						Text: string(thinkingJSON),
-					},
-				},
-			}
-		}
-		// Fall back to just content if JSON conversion fails
-	}
-
-	return &internalCallToolResponse{
-		Content: []internalToolContent{
-			{
-				Type: "text",
-				Text: content,
-			},
-		},
-	}
-}
+// This function has been removed after refactoring to use formatMCPResponse and direct MCP types
 
 // Helper function to get MIME type from file path
 func getMimeTypeFromPath(path string) string {

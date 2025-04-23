@@ -163,15 +163,4 @@ func createGenaiContentConfig(ctx context.Context, args map[string]interface{}, 
 	return contentConfig
 }
 
-// createErrorResponse creates a standardized error response
-func createErrorResponseWithMessage(message string) *internalCallToolResponse {
-	return &internalCallToolResponse{
-		IsError: true,
-		Content: []internalToolContent{
-			{
-				Type: "text",
-				Text: message,
-			},
-		},
-	}
-}
+// This function has been removed after refactoring to use createErrorResult and direct MCP types
