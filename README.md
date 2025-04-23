@@ -14,17 +14,18 @@ MCP (Model Control Protocol) server integrating with Google's Gemini API.
 ## Installation and Configuration
 
 ### Prerequisites
+
 - Google Gemini API key
 
 ### Building from Source
 
 ```bash
-# Clone and build
+## Clone and build
 git clone https://github.com/chew-z/GeminiMCP
 cd GeminiMCP
 go build -o mcp-gemini
 
-# Start server with environment variables
+## Start server with environment variables
 export GEMINI_API_KEY=your_api_key
 export GEMINI_MODEL=gemini-1.5-pro
 ./mcp-gemini
@@ -36,15 +37,16 @@ Add this server to any MCP-compatible client like Claude Desktop by adding to yo
 
 ```json
 {
-        "gemini": {
-            "command": "/Users/<user>/Path/to/bin/mcp-gemini",
-            "env": {
-                "GEMINI_API_KEY": "YOUR_API_KEY_HERE",
-                "GEMINI_MODEL": "gemini-1.5-pro-001",
-                "GEMINI_SEARCH_MODEL": "gemini-2.0-flash",
-                "GEMINI_SYSTEM_PROMPT": "You are a senior developer. Your job is to do a thorough code review of this code..."
-            }
+    "gemini": {
+        "command": "/Users/<user>/Path/to/bin/mcp-gemini",
+        "env": {
+            "GEMINI_API_KEY": "YOUR_API_KEY_HERE",
+            "GEMINI_MODEL": "gemini-2.5-pro-preview-03-25",
+            "GEMINI_SEARCH_MODEL": "gemini-2.5-flash-preview-04-17",
+            "GEMINI_SYSTEM_PROMPT": "You are a senior developer. Your job is to do a thorough code review of this code...",
+            "GEMINI_SEARCH_SYSTEM_PROMPT": "You are a search assistant. Your job is to find the most relevant information about this topic..."
         }
+    }
 }
 ```
 
@@ -53,8 +55,9 @@ Add this server to any MCP-compatible client like Claude Desktop by adding to yo
 - **Environment Variables**: For Claude Desktop app all configuration variables must be included in the MCP configuration JSON shown above (in the `env` section), not as system environment variables or in .env files. Variables set outside the config JSON will not take effect for the client application.
 
 - **Claude Desktop Config Location**:
-  - On macOS: `~/Library/Application\ Support/Claude/claude_desktop_config.json`
-  - On Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+    - On macOS: `~/Library/Application\ Support/Claude/claude_desktop_config.json`
+    - On Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 - **Configuration Help**: If you encounter any issues configuring the Claude desktop app, refer to the [MCP Quickstart Guide](https://modelcontextprotocol.io/quickstart/user) for additional assistance.
 
@@ -66,7 +69,7 @@ You can use Gemini tools directly from an LLM console by creating prompt example
 
 Say to your LLM:
 
-> *Please use the gemini_models tool to show me the list of available Gemini models.*
+> _Please use the gemini_models tool to show me the list of available Gemini models._
 
 The LLM will invoke the **`gemini_models`** tool and return the list of available models, their capabilities, and caching support status.
 
@@ -74,7 +77,7 @@ The LLM will invoke the **`gemini_models`** tool and return the list of availabl
 
 Say to your LLM:
 
-> *Use the **`gemini_ask`** tool to analyze this Go code for potential concurrency issues:*
+> _Use the **`gemini_ask`** tool to analyze this Go code for potential concurrency issues:_
 >
 > ```
 > func processItems(items []string) {
@@ -94,29 +97,29 @@ Say to your LLM:
 > }
 > ```
 >
-> *Please use a system prompt that focuses on code review and performance optimization.*
+> _Please use a system prompt that focuses on code review and performance optimization._
 
 ### Creative Writing with **`gemini_ask`**
 
 Say to your LLM:
 
-> *Use the **`gemini_ask`** tool to create a short story about a space explorer discovering a new planet. Set a custom system prompt that encourages creative, descriptive writing with vivid imagery.*
+> _Use the **`gemini_ask`** tool to create a short story about a space explorer discovering a new planet. Set a custom system prompt that encourages creative, descriptive writing with vivid imagery._
 
 ### Factual Research with **`gemini_search`**
 
 Say to your LLM:
 
-> *Use the **`gemini_search`** tool to find the latest information about advancements in fusion energy research. Include sources in your response.*
+> _Use the **`gemini_search`** tool to find the latest information about advancements in fusion energy research. Include sources in your response._
 
 ### Complex Reasoning with Thinking Mode
 
 Say to your LLM:
 
-> *Use the `gemini_ask` tool with a thinking-capable model to solve this algorithmic problem:*
-> 
-> *"Given an array of integers, find the longest consecutive sequence of integers. For example, given [100, 4, 200, 1, 3, 2], the longest consecutive sequence is [1, 2, 3, 4], so return 4."*
-> 
-> *Enable thinking mode with a high budget level so I can see the detailed step-by-step reasoning process.*
+> _Use the `gemini_ask` tool with a thinking-capable model to solve this algorithmic problem:_
+>
+> _"Given an array of integers, find the longest consecutive sequence of integers. For example, given [100, 4, 200, 1, 3, 2], the longest consecutive sequence is [1, 2, 3, 4], so return 4."_
+>
+> _Enable thinking mode with a high budget level so I can see the detailed step-by-step reasoning process._
 
 This will show both the final answer and the model's comprehensive reasoning process with maximum detail.
 
@@ -124,9 +127,10 @@ This will show both the final answer and the model's comprehensive reasoning pro
 
 Say to your LLM:
 
-> *Please use a caching-enabled **Gemini model** to analyze our project files. Include the main.go, config.go and models.go files and ask Gemini a series of questions about our project architecture and how it could be improved. Use appropriate system prompts for each question.*
+> _Please use a caching-enabled **Gemini model** to analyze our project files. Include the main.go, config.go and models.go files and ask Gemini a series of questions about our project architecture and how it could be improved. Use appropriate system prompts for each question._
 
 With this simple prompt, the LLM will:
+
 - Select a caching-compatible model (with -001 suffix)
 - Include the specified project files
 - Enable caching automatically
@@ -139,7 +143,7 @@ This approach makes it easy to have an extended conversation about your codebase
 
 During a conversation, you can create and use multiple caches for different sets of files or contexts:
 
-> *Please create a new **cache** for our frontend code (App.js, components/*.js) and analyze it separately from our backend code cache we created earlier.*
+> _Please create a new **cache** for our frontend code (App.js, components/_.js) and analyze it separately from our backend code cache we created earlier.\*
 
 The LLM can intelligently manage these different caches, switching between them as needed based on your queries. This capability is particularly valuable for projects with distinct components that require different analysis approaches.
 
@@ -154,10 +158,10 @@ The LLM can intelligently manage these different caches, switching between them 
 
 The **`gemini_ask`** and **`gemini_search`** tools are highly versatile and not limited to programming-related queries. You can customize the system prompt for various use cases:
 
-- **Educational content**: *"You are an expert teacher who explains complex concepts in simple terms..."*
-- **Creative writing**: *"You are a creative writer specializing in vivid, engaging narratives..."*
-- **Technical documentation**: *"You are a technical writer creating clear, structured documentation..."*
-- **Data analysis**: *"You are a data scientist analyzing patterns and trends in information..."*
+- **Educational content**: _"You are an expert teacher who explains complex concepts in simple terms..."_
+- **Creative writing**: _"You are a creative writer specializing in vivid, engaging narratives..."_
+- **Technical documentation**: _"You are a technical writer creating clear, structured documentation..."_
+- **Data analysis**: _"You are a data scientist analyzing patterns and trends in information..."_
 
 When using these tools from an LLM console, always encourage the LLM to set appropriate system prompts and parameters for the specific use case. The flexibility of system prompts allows these tools to be effective for virtually any type of query.
 
@@ -168,67 +172,72 @@ When using these tools from an LLM console, always encourage the LLM to set appr
 The server provides three primary tools:
 
 #### 1. **`gemini_ask`**
+
 For code analysis, general queries, and creative tasks with optional file context.
 
 ```json
 {
-  "name": "gemini_ask",
-  "arguments": {
-    "query": "Review this Go code for concurrency issues...",
-    "model": "gemini-2.0-flash-001",
-    "systemPrompt": "Optional custom instructions",
-    "file_paths": ["main.go", "config.go"],
-    "use_cache": true,
-    "cache_ttl": "1h"
-  }
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Review this Go code for concurrency issues...",
+        "model": "gemini-2.0-flash-001",
+        "systemPrompt": "Optional custom instructions",
+        "file_paths": ["main.go", "config.go"],
+        "use_cache": true,
+        "cache_ttl": "1h"
+    }
 }
 ```
 
 #### 2. **`gemini_search`**
+
 Provides grounded answers using Google Search integration with enhanced model capabilities.
 
 ```json
 {
-  "name": "gemini_search",
-  "arguments": {
-    "query": "What is the current population of Warsaw, Poland?",
-    "systemPrompt": "Optional custom search instructions",
-    "enable_thinking": true,
-    "thinking_budget": 8192,
-    "thinking_budget_level": "medium",
-    "max_tokens": 4096,
-    "model": "gemini-2.5-pro-exp-03-25"
-  }
+    "name": "gemini_search",
+    "arguments": {
+        "query": "What is the current population of Warsaw, Poland?",
+        "systemPrompt": "Optional custom search instructions",
+        "enable_thinking": true,
+        "thinking_budget": 8192,
+        "thinking_budget_level": "medium",
+        "max_tokens": 4096,
+        "model": "gemini-2.5-pro-exp-03-25"
+    }
 }
 ```
 
 Returns structured responses with sources and optional thinking process:
+
 ```json
 {
-  "answer": "Detailed answer text based on search results...",
-  "thinking": "Optional detailed reasoning process when thinking mode is enabled",
-  "sources": [
-    {
-      "title": "Source Title",
-      "url": "https://example.com/source-page",
-      "type": "web"
-    }
-  ],
-  "search_queries": ["population Warsaw Poland 2025"]
+    "answer": "Detailed answer text based on search results...",
+    "thinking": "Optional detailed reasoning process when thinking mode is enabled",
+    "sources": [
+        {
+            "title": "Source Title",
+            "url": "https://example.com/source-page",
+            "type": "web"
+        }
+    ],
+    "search_queries": ["population Warsaw Poland 2025"]
 }
 ```
 
 #### 3. **`gemini_models`**
+
 Lists all available Gemini models with capabilities and caching support.
 
 ```json
 {
-  "name": "gemini_models",
-  "arguments": {}
+    "name": "gemini_models",
+    "arguments": {}
 }
 ```
 
 Returns comprehensive model information including:
+
 - Complete list of available models (dynamically fetched at startup)
 - Model IDs and descriptions
 - Caching support status
@@ -238,11 +247,11 @@ Returns comprehensive model information including:
 
 The server dynamically fetches available Gemini models from the Google API at startup. Common models include:
 
-| Model ID | Description | Caching Support |
-|----------|-------------|----------------|
-| `gemini-2.5-pro-exp-03-25` | State-of-the-art thinking model | No |
-| `gemini-2.0-flash-001` | Optimized for speed with version suffix | Yes |
-| `gemini-1.5-pro-001` | Previous generation with stability | Yes |
+| Model ID                   | Description                             | Caching Support |
+| -------------------------- | --------------------------------------- | --------------- |
+| `gemini-2.5-pro-exp-03-25` | State-of-the-art thinking model         | No              |
+| `gemini-2.0-flash-001`     | Optimized for speed with version suffix | Yes             |
+| `gemini-1.5-pro-001`       | Previous generation with stability      | Yes             |
 
 Use the `gemini_models` tool for a complete, up-to-date list.
 
@@ -256,15 +265,16 @@ The server offers sophisticated context caching:
 - **Performance Optimization**: Local metadata caching for quick lookups
 
 Example with caching:
+
 ```json
 {
-  "name": "gemini_ask",
-  "arguments": {
-    "query": "Follow up on our previous discussion...",
-    "model": "gemini-1.5-pro-001",
-    "use_cache": true,
-    "cache_ttl": "1h"
-  }
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Follow up on our previous discussion...",
+        "model": "gemini-1.5-pro-001",
+        "use_cache": true,
+        "cache_ttl": "1h"
+    }
 }
 ```
 
@@ -290,15 +300,16 @@ The server supports "thinking mode" for compatible models (primarily Gemini 2.5 
 - **Configurable Budget**: Control thinking depth with budget levels or explicit token counts
 
 Example with thinking mode:
+
 ```json
 {
-  "name": "gemini_ask",
-  "arguments": {
-    "query": "Analyze the algorithmic complexity of merge sort vs. quick sort",
-    "model": "gemini-2.5-pro-exp-03-25",
-    "enable_thinking": true,
-    "thinking_budget_level": "high"
-  }
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Analyze the algorithmic complexity of merge sort vs. quick sort",
+        "model": "gemini-2.5-pro-exp-03-25",
+        "enable_thinking": true,
+        "thinking_budget_level": "high"
+    }
 }
 ```
 
@@ -307,10 +318,11 @@ Example with thinking mode:
 Configure the depth and detail of the model's thinking process:
 
 - **Predefined Budget Levels**:
-  - `none`: 0 tokens (thinking disabled)
-  - `low`: 4096 tokens (default, quick analysis)
-  - `medium`: 16384 tokens (detailed reasoning)
-  - `high`: 24576 tokens (maximum depth for complex problems)
+
+    - `none`: 0 tokens (thinking disabled)
+    - `low`: 4096 tokens (default, quick analysis)
+    - `medium`: 16384 tokens (detailed reasoning)
+    - `high`: 24576 tokens (maximum depth for complex problems)
 
 - **Custom Token Budget**: Alternatively, set a specific token count with `thinking_budget` parameter (0-24576)
 
@@ -350,14 +362,15 @@ The server intelligently manages token limits:
 - **Proportional Defaults**: Uses percentage-based defaults (75% for general queries, 50% for search)
 
 Example with context window size management:
+
 ```json
 {
-  "name": "gemini_ask",
-  "arguments": {
-    "query": "Generate a detailed analysis of this code...",
-    "model": "gemini-1.5-pro-001",
-    "max_tokens": 8192
-  }
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Generate a detailed analysis of this code...",
+        "model": "gemini-1.5-pro-001",
+        "max_tokens": 8192
+    }
 }
 ```
 
@@ -365,28 +378,28 @@ Example with context window size management:
 
 #### Essential Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `GEMINI_API_KEY` | Google Gemini API key | *Required* |
-| `GEMINI_MODEL` | Default model ID for `gemini_ask` | `gemini-1.5-pro` |
-| `GEMINI_SEARCH_MODEL` | Default model ID for `gemini_search` | `gemini-2.0-flash` |
-| `GEMINI_SYSTEM_PROMPT` | System prompt for general queries | *Custom review prompt* |
-| `GEMINI_SEARCH_SYSTEM_PROMPT` | System prompt for search | *Custom search prompt* |
-| `GEMINI_MAX_FILE_SIZE` | Max upload size (bytes) | `10485760` (10MB) |
-| `GEMINI_ALLOWED_FILE_TYPES` | Comma-separated MIME types | [Common text/code types] |
+| Variable                      | Description                          | Default                  |
+| ----------------------------- | ------------------------------------ | ------------------------ |
+| `GEMINI_API_KEY`              | Google Gemini API key                | _Required_               |
+| `GEMINI_MODEL`                | Default model ID for `gemini_ask`    | `gemini-1.5-pro`         |
+| `GEMINI_SEARCH_MODEL`         | Default model ID for `gemini_search` | `gemini-2.0-flash`       |
+| `GEMINI_SYSTEM_PROMPT`        | System prompt for general queries    | _Custom review prompt_   |
+| `GEMINI_SEARCH_SYSTEM_PROMPT` | System prompt for search             | _Custom search prompt_   |
+| `GEMINI_MAX_FILE_SIZE`        | Max upload size (bytes)              | `10485760` (10MB)        |
+| `GEMINI_ALLOWED_FILE_TYPES`   | Comma-separated MIME types           | [Common text/code types] |
 
 #### Optimization Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `GEMINI_TIMEOUT` | API timeout in seconds | `90` |
-| `GEMINI_MAX_RETRIES` | Max API retries | `2` |
-| `GEMINI_TEMPERATURE` | Model temperature (0.0-1.0) | `0.4` |
-| `GEMINI_ENABLE_CACHING` | Enable context caching | `true` |
-| `GEMINI_DEFAULT_CACHE_TTL` | Default cache time-to-live | `1h` |
-| `GEMINI_ENABLE_THINKING` | Enable thinking mode capability | `true` |
-| `GEMINI_THINKING_BUDGET_LEVEL` | Default thinking budget level (none/low/medium/high) | `low` |
-| `GEMINI_THINKING_BUDGET` | Explicit thinking token budget (0-24576) | `4096` |
+| Variable                       | Description                                          | Default |
+| ------------------------------ | ---------------------------------------------------- | ------- |
+| `GEMINI_TIMEOUT`               | API timeout in seconds                               | `90`    |
+| `GEMINI_MAX_RETRIES`           | Max API retries                                      | `2`     |
+| `GEMINI_TEMPERATURE`           | Model temperature (0.0-1.0)                          | `0.4`   |
+| `GEMINI_ENABLE_CACHING`        | Enable context caching                               | `true`  |
+| `GEMINI_DEFAULT_CACHE_TTL`     | Default cache time-to-live                           | `1h`    |
+| `GEMINI_ENABLE_THINKING`       | Enable thinking mode capability                      | `true`  |
+| `GEMINI_THINKING_BUDGET_LEVEL` | Default thinking budget level (none/low/medium/high) | `low`   |
+| `GEMINI_THINKING_BUDGET`       | Explicit thinking token budget (0-24576)             | `4096`  |
 
 ### Operational Features
 
