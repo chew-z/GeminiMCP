@@ -142,24 +142,24 @@ func configureMaxTokens(ctx context.Context, config *genai.GenerateContentConfig
 func createGenaiContentConfig(ctx context.Context, args map[string]interface{}, config *Config, modelName string) *genai.GenerateContentConfig {
 	logger := getLoggerFromContext(ctx)
 	modelInfo := GetModelByID(modelName)
-	
+
 	// Create the initial config with system prompt
 	systemPrompt := extractSystemPrompt(ctx, args, config.GeminiSystemPrompt)
 	contentConfig := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
 		Temperature:       genai.Ptr(float32(config.GeminiTemperature)),
 	}
-	
+
 	// Configure thinking mode if enabled and supported
 	enableThinking := extractBoolParam(args, "enable_thinking", config.EnableThinking)
 	configureThinking(ctx, contentConfig, args, modelInfo, enableThinking, config.ThinkingBudget)
-	
+
 	// Configure max tokens (75% of context window by default for general queries)
 	configureMaxTokens(ctx, contentConfig, args, modelInfo, 0.75)
-	
+
 	// Log the temperature setting
 	logger.Debug("Using temperature: %v for model %s", config.GeminiTemperature, modelName)
-	
+
 	return contentConfig
 }
 

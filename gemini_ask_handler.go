@@ -50,7 +50,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *internalCallToo
 	// If caching is requested and the model supports it, use caching
 	var cacheID string
 	var cacheErr error
-	
+
 	if useCache && s.config.EnableCaching {
 		// Check if model supports caching
 		model := GetModelByID(modelName)
@@ -155,7 +155,7 @@ func (s *GeminiServer) handleAskGemini(ctx context.Context, req *internalCallToo
 
 	// Process with files if provided
 	if len(filePaths) > 0 {
-		// Add file contents 
+		// Add file contents
 		contents := []*genai.Content{
 			genai.NewContentFromText(query, genai.RoleUser),
 		}
