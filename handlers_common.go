@@ -24,13 +24,7 @@ func extractArgumentBool(args map[string]interface{}, name string, defaultValue 
 	return defaultValue
 }
 
-// extractArgumentFloat extracts a float64 argument from the request parameters
-func extractArgumentFloat(args map[string]interface{}, name string, defaultValue float64) float64 {
-	if val, ok := args[name].(float64); ok {
-		return val
-	}
-	return defaultValue
-}
+// This function has been removed as it was unused after refactoring to use direct handlers with mcp-go types
 
 // extractArgumentStringArray extracts a string array argument from the request parameters
 func extractArgumentStringArray(args map[string]interface{}, name string) []string {

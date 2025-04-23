@@ -6,63 +6,7 @@ import (
 	"google.golang.org/genai"
 )
 
-// extractModelParam extracts and validates the model parameter from the request
-// Returns the specified model if valid, otherwise the default model
-func extractModelParam(ctx context.Context, args map[string]interface{}, defaultModel string) string {
-	logger := getLoggerFromContext(ctx)
-	modelName := defaultModel
-
-	if customModel, ok := args["model"].(string); ok && customModel != "" {
-		// Validate the custom model
-		if err := ValidateModelID(customModel); err != nil {
-			logger.Error("Invalid model requested: %v", err)
-			logger.Warn("Falling back to default model: %s", defaultModel)
-			// Just log but use default if invalid
-		} else {
-			logger.Info("Using request-specific model: %s", customModel)
-			modelName = customModel
-		}
-	}
-
-	return modelName
-}
-
-// extractSystemPrompt extracts the system prompt from the request
-func extractSystemPrompt(ctx context.Context, args map[string]interface{}, defaultPrompt string) string {
-	logger := getLoggerFromContext(ctx)
-	systemPrompt := defaultPrompt
-
-	if customPrompt, ok := args["systemPrompt"].(string); ok && customPrompt != "" {
-		logger.Info("Using request-specific system prompt")
-		systemPrompt = customPrompt
-	}
-
-	return systemPrompt
-}
-
-// extractBoolParam extracts a boolean parameter from the request with a default fallback
-func extractBoolParam(args map[string]interface{}, paramName string, defaultValue bool) bool {
-	if paramValue, ok := args[paramName].(bool); ok {
-		return paramValue
-	}
-	return defaultValue
-}
-
-// extractStringParam extracts a string parameter from the request with a default fallback
-func extractStringParam(args map[string]interface{}, paramName string, defaultValue string) string {
-	if paramValue, ok := args[paramName].(string); ok && paramValue != "" {
-		return paramValue
-	}
-	return defaultValue
-}
-
-// extractNumberParam extracts a number parameter from the request with a default fallback
-func extractNumberParam(args map[string]interface{}, paramName string, defaultValue float64) float64 {
-	if paramValue, ok := args[paramName].(float64); ok {
-		return paramValue
-	}
-	return defaultValue
-}
+// These functions have been removed as they were unused after refactoring to use direct handlers with mcp-go types
 
 // configureThinking configures thinking mode for the request if enabled and supported
 func configureThinking(ctx context.Context, config *genai.GenerateContentConfig, args map[string]interface{}, modelInfo *GeminiModelInfo, enableThinking bool, defaultThinkingBudget int) {
@@ -138,29 +82,6 @@ func configureMaxTokens(ctx context.Context, config *genai.GenerateContentConfig
 	}
 }
 
-// createGenaiContentConfig creates and configures a GenerateContentConfig for Gemini API requests
-func createGenaiContentConfig(ctx context.Context, args map[string]interface{}, config *Config, modelName string) *genai.GenerateContentConfig {
-	logger := getLoggerFromContext(ctx)
-	modelInfo := GetModelByID(modelName)
-
-	// Create the initial config with system prompt
-	systemPrompt := extractSystemPrompt(ctx, args, config.GeminiSystemPrompt)
-	contentConfig := &genai.GenerateContentConfig{
-		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
-		Temperature:       genai.Ptr(float32(config.GeminiTemperature)),
-	}
-
-	// Configure thinking mode if enabled and supported
-	enableThinking := extractBoolParam(args, "enable_thinking", config.EnableThinking)
-	configureThinking(ctx, contentConfig, args, modelInfo, enableThinking, config.ThinkingBudget)
-
-	// Configure max tokens (75% of context window by default for general queries)
-	configureMaxTokens(ctx, contentConfig, args, modelInfo, 0.75)
-
-	// Log the temperature setting
-	logger.Debug("Using temperature: %v for model %s", config.GeminiTemperature, modelName)
-
-	return contentConfig
-}
+// This function has been removed as it was unused after refactoring to use direct handlers with mcp-go types
 
 // This function has been removed after refactoring to use createErrorResult and direct MCP types
