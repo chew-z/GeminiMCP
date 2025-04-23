@@ -128,52 +128,23 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 		return fmt.Errorf("failed to create Gemini service: %w", err)
 	}
 
-	// Create handler for gemini_ask
-	geminiAskHandler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Convert from mark3labs/mcp-go types to internal types
-		internalReq := convertToInternalRequest(&req)
-		resp, err := geminiSvc.handleAskGemini(ctx, internalReq)
-		if err != nil {
-			return nil, err
-		}
-		return convertToMCPResult(resp), nil
-	}
-
+	// Create handler for gemini_ask using direct handler
 	// Register gemini_ask with logger wrapper using shared tool definition
-	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(geminiAskHandler, "gemini_ask", logger))
+	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(geminiSvc.GeminiAskHandler, "gemini_ask", logger))
 	logger.Info("Registered tool: gemini_ask")
 
 	// Use shared tool definition for gemini_search
 
-	// Create handler for gemini_search
-	geminiSearchHandler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Convert from mark3labs/mcp-go types to internal types
-		internalReq := convertToInternalRequest(&req)
-		resp, err := geminiSvc.handleGeminiSearch(ctx, internalReq)
-		if err != nil {
-			return nil, err
-		}
-		return convertToMCPResult(resp), nil
-	}
-
+	// Create handler for gemini_search using direct handler
 	// Register gemini_search with logger wrapper using shared tool definition
-	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(geminiSearchHandler, "gemini_search", logger))
+	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(geminiSvc.GeminiSearchHandler, "gemini_search", logger))
 	logger.Info("Registered tool: gemini_search")
 
 	// Use shared tool definition for gemini_models
 
-	// Create handler for gemini_models
-	geminiModelsHandler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// This handler doesn't need request parameters, so we can call directly
-		resp, err := geminiSvc.handleGeminiModels(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return convertToMCPResult(resp), nil
-	}
-
+	// Create handler for gemini_models using direct handler
 	// Register gemini_models with logger wrapper using shared tool definition
-	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(geminiModelsHandler, "gemini_models", logger))
+	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(geminiSvc.GeminiModelsHandler, "gemini_models", logger))
 	logger.Info("Registered tool: gemini_models")
 
 	// Log file handling configuration
@@ -278,60 +249,15 @@ func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logg
 	}
 }
 
-// registerErrorTools registers error handlers for all supported tools
+// Register error handlers for all tools
 func registerErrorTools(mcpServer *server.MCPServer, errorServer *ErrorGeminiServer, logger Logger) {
-	// Register gemini_ask tool using shared tool definition
+	// Register error handlers for all tools using shared tool definitions
 	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_ask", logger))
-
-	// Register gemini_search tool using shared tool definition
 	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_search", logger))
-
-	// Register gemini_models tool using shared tool definition
 	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_models", logger))
 
 	logger.Info("Registered error handlers for all tools")
 }
 
-// During migration, we need these adapter functions to communicate with the old code
-
-// For now, we'll define our own internal types to match the old protocol types
-type internalCallToolRequest struct {
-	Name      string                 `json:"name"`
-	Arguments map[string]interface{} `json:"arguments,omitempty"`
-}
-
-type internalCallToolResponse struct {
-	IsError bool                  `json:"isError"`
-	Content []internalToolContent `json:"content,omitempty"`
-}
-
-type internalToolContent struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
-}
-
-// convertToInternalRequest converts an mcp.CallToolRequest to our internal request type
-func convertToInternalRequest(mcpReq *mcp.CallToolRequest) *internalCallToolRequest {
-	return &internalCallToolRequest{
-		Name:      mcpReq.Params.Name,
-		Arguments: mcpReq.Params.Arguments,
-	}
-}
-
-// convertToMCPResult converts our internal response to mcp.CallToolResult
-func convertToMCPResult(protoResp *internalCallToolResponse) *mcp.CallToolResult {
-	result := &mcp.CallToolResult{
-		IsError: protoResp.IsError,
-	}
-
-	// Convert content items
-	for _, content := range protoResp.Content {
-		switch content.Type {
-		case "text":
-			result.Content = append(result.Content, mcp.NewTextContent(content.Text))
-			// Note: We only handle text content for now during the migration
-		}
-	}
-
-	return result
-}
+// Note: The adapter functions to communicate with the old code have been removed
+// as they are no longer needed with direct handlers using mcp-go types
