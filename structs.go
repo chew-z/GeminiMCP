@@ -144,50 +144,25 @@ type ErrorGeminiServer struct {
 }
 
 // ListTools implements the ToolHandler interface for ErrorGeminiServer
-// Returns the same tool signature as the normal Gemini server but in error mode
+// Note: This method is no longer needed since tools are registered directly
+// in main.go using the shared definitions from tools.go
 func (s *ErrorGeminiServer) ListTools(ctx context.Context) ([]mcp.Tool, error) {
 	tools := []mcp.Tool{
-		mcp.NewTool(
-			"gemini_ask",
-			mcp.WithDescription("Use Google's Gemini AI model to ask about complex coding problems"),
-			mcp.WithString("query", mcp.Required(), mcp.Description("The coding problem that we are asking Gemini AI to work on [question + code]")),
-			mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
-			mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
-			mcp.WithArray("file_paths", mcp.Description("Optional: Paths to files to include in the request context")),
-			mcp.WithBoolean("use_cache", mcp.Description("Optional: Whether to try using a cache for this request (only works with compatible models)")),
-			mcp.WithString("cache_ttl", mcp.Description("Optional: TTL for cache if created (e.g., '10m', '1h'). Default is 10 minutes")),
-			mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (only works with Pro models)")),
-			mcp.WithNumber("thinking_budget", mcp.Description("Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)")),
-			mcp.WithString("thinking_budget_level", mcp.Description("Optional: Predefined thinking budget level (none, low, medium, high)")),
-			mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
-		),
-		mcp.NewTool(
-			"gemini_search",
-			mcp.WithDescription("Use Google's Gemini AI model with Google Search to answer questions with grounded information"),
-			mcp.WithString("query", mcp.Required(), mcp.Description("The question to ask Gemini using Google Search for grounding")),
-			mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
-			mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (when supported)")),
-			mcp.WithNumber("thinking_budget", mcp.Description("Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)")),
-			mcp.WithString("thinking_budget_level", mcp.Description("Optional: Predefined thinking budget level (none, low, medium, high)")),
-			mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
-			mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
-		),
-		mcp.NewTool(
-			"gemini_models",
-			mcp.WithDescription("List available Gemini models with descriptions"),
-		),
+		GeminiAskTool,
+		GeminiSearchTool,
+		GeminiModelsTool,
 	}
-
 	return tools, nil
 }
 
 // CallTool implements the ToolHandler interface for ErrorGeminiServer
-// Always returns the initialization error regardless of which tool is called
+// Note: This method is no longer needed since handlers are registered directly
+// in main.go. It's kept for potential backwards compatibility.
 func (s *ErrorGeminiServer) CallTool(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Log which tool was attempted, if a logger is in the context
 	if loggerValue := ctx.Value(loggerKey); loggerValue != nil {
 		if logger, ok := loggerValue.(Logger); ok {
-			logger.Info("Tool '%s' called in error mode", req.Params.Name)
+			logger.Info("Tool '%s' called in error mode via deprecated CallTool method", req.Params.Name)
 		}
 	}
 

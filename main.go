@@ -128,22 +128,6 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 		return fmt.Errorf("failed to create Gemini service: %w", err)
 	}
 
-	// Define and register gemini_ask tool
-	geminiAskTool := mcp.NewTool(
-		"gemini_ask",
-		mcp.WithDescription("Use Google's Gemini AI model to ask about complex coding problems"),
-		mcp.WithString("query", mcp.Required(), mcp.Description("The coding problem that we are asking Gemini AI to work on [question + code]")),
-		mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
-		mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
-		mcp.WithArray("file_paths", mcp.Description("Optional: Paths to files to include in the request context")),
-		mcp.WithBoolean("use_cache", mcp.Description("Optional: Whether to try using a cache for this request (only works with compatible models)")),
-		mcp.WithString("cache_ttl", mcp.Description("Optional: TTL for cache if created (e.g., '10m', '1h'). Default is 10 minutes")),
-		mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (only works with Pro models)")),
-		mcp.WithNumber("thinking_budget", mcp.Description("Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)")),
-		mcp.WithString("thinking_budget_level", mcp.Description("Optional: Predefined thinking budget level (none, low, medium, high)")),
-		mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
-	)
-
 	// Create handler for gemini_ask
 	geminiAskHandler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// Convert from mark3labs/mcp-go types to internal types
@@ -155,22 +139,11 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 		return convertToMCPResult(resp), nil
 	}
 
-	// Register gemini_ask with logger wrapper
-	mcpServer.AddTool(geminiAskTool, wrapHandlerWithLogger(geminiAskHandler, "gemini_ask", logger))
+	// Register gemini_ask with logger wrapper using shared tool definition
+	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(geminiAskHandler, "gemini_ask", logger))
 	logger.Info("Registered tool: gemini_ask")
 
-	// Define and register gemini_search tool
-	geminiSearchTool := mcp.NewTool(
-		"gemini_search",
-		mcp.WithDescription("Use Google's Gemini AI model with Google Search to answer questions with grounded information"),
-		mcp.WithString("query", mcp.Required(), mcp.Description("The question to ask Gemini using Google Search for grounding")),
-		mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
-		mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (when supported)")),
-		mcp.WithNumber("thinking_budget", mcp.Description("Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)")),
-		mcp.WithString("thinking_budget_level", mcp.Description("Optional: Predefined thinking budget level (none, low, medium, high)")),
-		mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
-		mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
-	)
+	// Use shared tool definition for gemini_search
 
 	// Create handler for gemini_search
 	geminiSearchHandler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -183,15 +156,11 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 		return convertToMCPResult(resp), nil
 	}
 
-	// Register gemini_search with logger wrapper
-	mcpServer.AddTool(geminiSearchTool, wrapHandlerWithLogger(geminiSearchHandler, "gemini_search", logger))
+	// Register gemini_search with logger wrapper using shared tool definition
+	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(geminiSearchHandler, "gemini_search", logger))
 	logger.Info("Registered tool: gemini_search")
 
-	// Define and register gemini_models tool
-	geminiModelsTool := mcp.NewTool(
-		"gemini_models",
-		mcp.WithDescription("List available Gemini models with descriptions"),
-	)
+	// Use shared tool definition for gemini_models
 
 	// Create handler for gemini_models
 	geminiModelsHandler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -203,8 +172,8 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 		return convertToMCPResult(resp), nil
 	}
 
-	// Register gemini_models with logger wrapper
-	mcpServer.AddTool(geminiModelsTool, wrapHandlerWithLogger(geminiModelsHandler, "gemini_models", logger))
+	// Register gemini_models with logger wrapper using shared tool definition
+	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(geminiModelsHandler, "gemini_models", logger))
 	logger.Info("Registered tool: gemini_models")
 
 	// Log file handling configuration
@@ -311,43 +280,14 @@ func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logg
 
 // registerErrorTools registers error handlers for all supported tools
 func registerErrorTools(mcpServer *server.MCPServer, errorServer *ErrorGeminiServer, logger Logger) {
-	// Register gemini_ask tool
-	geminiAskTool := mcp.NewTool(
-		"gemini_ask",
-		mcp.WithDescription("Use Google's Gemini AI model to ask about complex coding problems"),
-		mcp.WithString("query", mcp.Required(), mcp.Description("The coding problem that we are asking Gemini AI to work on [question + code]")),
-		mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
-		mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
-		mcp.WithArray("file_paths", mcp.Description("Optional: Paths to files to include in the request context")),
-		mcp.WithBoolean("use_cache", mcp.Description("Optional: Whether to try using a cache for this request (only works with compatible models)")),
-		mcp.WithString("cache_ttl", mcp.Description("Optional: TTL for cache if created (e.g., '10m', '1h'). Default is 10 minutes")),
-		mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (only works with Pro models)")),
-		mcp.WithNumber("thinking_budget", mcp.Description("Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)")),
-		mcp.WithString("thinking_budget_level", mcp.Description("Optional: Predefined thinking budget level (none, low, medium, high)")),
-		mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
-	)
-	mcpServer.AddTool(geminiAskTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_ask", logger))
+	// Register gemini_ask tool using shared tool definition
+	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_ask", logger))
 
-	// Register gemini_search tool
-	geminiSearchTool := mcp.NewTool(
-		"gemini_search",
-		mcp.WithDescription("Use Google's Gemini AI model with Google Search to answer questions with grounded information"),
-		mcp.WithString("query", mcp.Required(), mcp.Description("The question to ask Gemini using Google Search for grounding")),
-		mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
-		mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (when supported)")),
-		mcp.WithNumber("thinking_budget", mcp.Description("Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)")),
-		mcp.WithString("thinking_budget_level", mcp.Description("Optional: Predefined thinking budget level (none, low, medium, high)")),
-		mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
-		mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
-	)
-	mcpServer.AddTool(geminiSearchTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_search", logger))
+	// Register gemini_search tool using shared tool definition
+	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_search", logger))
 
-	// Register gemini_models tool
-	geminiModelsTool := mcp.NewTool(
-		"gemini_models",
-		mcp.WithDescription("List available Gemini models with descriptions"),
-	)
-	mcpServer.AddTool(geminiModelsTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_models", logger))
+	// Register gemini_models tool using shared tool definition
+	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_models", logger))
 
 	logger.Info("Registered error handlers for all tools")
 }
