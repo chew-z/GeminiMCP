@@ -38,8 +38,3 @@ func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error)
 		cacheStore: cacheStore,
 	}, nil
 }
-
-// Close closes the Gemini client connection (client doesn't need to be closed in the new API)
-func (s *GeminiServer) Close() {
-	// No need to close the client in the new API
-}

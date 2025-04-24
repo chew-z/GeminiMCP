@@ -96,12 +96,15 @@ type CacheStore struct {
 
 // GeminiModelInfo holds information about a Gemini model
 type GeminiModelInfo struct {
-	ID                string `json:"id"`
-	Name              string `json:"name"`
-	Description       string `json:"description"`
-	SupportsCaching   bool   `json:"supports_caching"`    // Whether this model supports caching
-	SupportsThinking  bool   `json:"supports_thinking"`   // Whether this model supports thinking mode
-	ContextWindowSize int    `json:"context_window_size"` // Maximum context window size in tokens
+	ID                     string `json:"id"`
+	Name                   string `json:"name"`
+	Description            string `json:"description"`
+	SupportsCaching        bool   `json:"supports_caching"`    // Whether this model supports caching
+	SupportsThinking       bool   `json:"supports_thinking"`   // Whether this model supports thinking mode
+	ContextWindowSize      int    `json:"context_window_size"` // Maximum context window size in tokens
+	PreferredForThinking   bool   `json:"preferred_for_thinking"`   // Whether this model is preferred for thinking tasks
+	PreferredForCaching    bool   `json:"preferred_for_caching"`    // Whether this model is preferred for repeated tasks with caching
+	PreferredForSearch     bool   `json:"preferred_for_search"`     // Whether this model is preferred for search tasks
 }
 
 // FileUploadRequest represents a request to upload a file
