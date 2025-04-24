@@ -82,96 +82,96 @@ func fallbackGeminiModels() []GeminiModelInfo {
 
 		// Gemini 2.5 Models (Preview/Experimental)
 		{
-			ID:                     "gemini-2.5-pro-exp-03-25",
-			Name:                   "Gemini 2.5 Pro Exp 03 25",
-			Description:            "Preview/Experimental Pro model with advanced reasoning capabilities (preferred for thinking tasks)",
-			SupportsCaching:        false,
-			SupportsThinking:       true, // Confirmed to work with thinking mode
-			ContextWindowSize:      1048576,
-			PreferredForThinking:   true,
-			PreferredForCaching:    false,
-			PreferredForSearch:     false,
+			ID:                   "gemini-2.5-pro-exp-03-25",
+			Name:                 "Gemini 2.5 Pro Exp 03 25",
+			Description:          "Preview/Experimental Pro model with advanced reasoning capabilities (preferred for thinking tasks)",
+			SupportsCaching:      false,
+			SupportsThinking:     true, // Confirmed to work with thinking mode
+			ContextWindowSize:    1048576,
+			PreferredForThinking: true,
+			PreferredForCaching:  false,
+			PreferredForSearch:   false,
 		},
 		{
-			ID:                     "gemini-2.5-pro-preview-03-25",
-			Name:                   "Gemini 2.5 Pro Preview 03 25",
-			Description:            "Preview/Experimental Pro model with advanced reasoning capabilities (best thinking mode support)",
-			SupportsCaching:        false,
-			SupportsThinking:       true, // Confirmed to work with thinking mode
-			ContextWindowSize:      1048576,
-			PreferredForThinking:   false,
-			PreferredForCaching:    false,
-			PreferredForSearch:     true,
+			ID:                   "gemini-2.5-pro-preview-03-25",
+			Name:                 "Gemini 2.5 Pro Preview 03 25",
+			Description:          "Preview/Experimental Pro model with advanced reasoning capabilities (best thinking mode support)",
+			SupportsCaching:      false,
+			SupportsThinking:     true, // Confirmed to work with thinking mode
+			ContextWindowSize:    1048576,
+			PreferredForThinking: false,
+			PreferredForCaching:  false,
+			PreferredForSearch:   false,
 		},
 		{
-			ID:                     "gemini-2.5-flash-preview-04-17",
-			Name:                   "Gemini 2.5 Flash Preview 04 17",
-			Description:            "Preview/Experimental Flash model optimized for efficiency and speed",
-			SupportsCaching:        false,
-			SupportsThinking:       false,
-			ContextWindowSize:      32768,
-			PreferredForThinking:   false,
-			PreferredForCaching:    false,
-			PreferredForSearch:     true,
+			ID:                   "gemini-2.5-flash-preview-04-17",
+			Name:                 "Gemini 2.5 Flash Preview 04 17",
+			Description:          "Preview/Experimental Flash model optimized for efficiency and speed",
+			SupportsCaching:      false,
+			SupportsThinking:     false,
+			ContextWindowSize:    32768,
+			PreferredForThinking: false,
+			PreferredForCaching:  false,
+			PreferredForSearch:   true,
 		},
 
 		// Gemini 2.0 Models (core models)
 		{
-			ID:                     "gemini-2.0-flash",
-			Name:                   "Gemini 2.0 Flash",
-			Description:            "Flash model optimized for efficiency and speed",
-			SupportsCaching:        false,
-			SupportsThinking:       false,
-			ContextWindowSize:      32768,
-			PreferredForThinking:   false,
-			PreferredForCaching:    false,
-			PreferredForSearch:     false,
+			ID:                   "gemini-2.0-flash",
+			Name:                 "Gemini 2.0 Flash",
+			Description:          "Flash model optimized for efficiency and speed",
+			SupportsCaching:      false,
+			SupportsThinking:     false,
+			ContextWindowSize:    32768,
+			PreferredForThinking: false,
+			PreferredForCaching:  false,
+			PreferredForSearch:   false,
 		},
 		{
-			ID:                     "gemini-2.0-flash-001",
-			Name:                   "Gemini 2.0 Flash 001",
-			Description:            "Flash model optimized for efficiency and speed (preferred for repeated programming tasks with caching)",
-			SupportsCaching:        true,
-			SupportsThinking:       false,
-			ContextWindowSize:      32768,
-			PreferredForThinking:   false,
-			PreferredForCaching:    true,
-			PreferredForSearch:     false,
+			ID:                   "gemini-2.0-flash-001",
+			Name:                 "Gemini 2.0 Flash 001",
+			Description:          "Flash model optimized for efficiency and speed (preferred for repeated programming tasks with caching)",
+			SupportsCaching:      true,
+			SupportsThinking:     false,
+			ContextWindowSize:    32768,
+			PreferredForThinking: false,
+			PreferredForCaching:  true,
+			PreferredForSearch:   false,
 		},
 		{
-			ID:                     "gemini-2.0-flash-lite",
-			Name:                   "Gemini 2.0 Flash Lite",
-			Description:            "Flash model optimized for efficiency and speed",
-			SupportsCaching:        false,
-			SupportsThinking:       false,
-			ContextWindowSize:      32768,
-			PreferredForThinking:   false,
-			PreferredForCaching:    false,
-			PreferredForSearch:     false,
+			ID:                   "gemini-2.0-flash-lite",
+			Name:                 "Gemini 2.0 Flash Lite",
+			Description:          "Flash model optimized for efficiency and speed",
+			SupportsCaching:      false,
+			SupportsThinking:     false,
+			ContextWindowSize:    32768,
+			PreferredForThinking: false,
+			PreferredForCaching:  false,
+			PreferredForSearch:   false,
 		},
 
 		// Latest Preview/Experimental models
 		{
-			ID:                     "gemini-2.0-flash-exp",
-			Name:                   "Gemini 2.0 Flash Exp",
-			Description:            "Preview/Experimental Flash model optimized for efficiency and speed",
-			SupportsCaching:        false,
-			SupportsThinking:       false,
-			ContextWindowSize:      32768,
-			PreferredForThinking:   false,
-			PreferredForCaching:    false,
-			PreferredForSearch:     false,
+			ID:                   "gemini-2.0-flash-exp",
+			Name:                 "Gemini 2.0 Flash Exp",
+			Description:          "Preview/Experimental Flash model optimized for efficiency and speed",
+			SupportsCaching:      false,
+			SupportsThinking:     false,
+			ContextWindowSize:    32768,
+			PreferredForThinking: false,
+			PreferredForCaching:  false,
+			PreferredForSearch:   false,
 		},
 		{
-			ID:                     "gemini-2.0-pro-exp",
-			Name:                   "Gemini 2.0 Pro Exp",
-			Description:            "Preview/Experimental Pro model with advanced reasoning capabilities",
-			SupportsCaching:        false,
-			SupportsThinking:       true,
-			ContextWindowSize:      1048576,
-			PreferredForThinking:   false,
-			PreferredForCaching:    false,
-			PreferredForSearch:     false,
+			ID:                   "gemini-2.0-pro-exp",
+			Name:                 "Gemini 2.0 Pro Exp",
+			Description:          "Preview/Experimental Pro model with advanced reasoning capabilities",
+			SupportsCaching:      false,
+			SupportsThinking:     true,
+			ContextWindowSize:    1048576,
+			PreferredForThinking: false,
+			PreferredForCaching:  false,
+			PreferredForSearch:   false,
 		},
 	}
 }
@@ -248,10 +248,10 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 
 			// Skip embedding models and visual models
 			idLower := strings.ToLower(id)
-			if strings.Contains(idLower, "embedding") || 
-			   strings.Contains(idLower, "vision") || 
-			   strings.Contains(idLower, "visual") || 
-			   strings.Contains(idLower, "image") {
+			if strings.Contains(idLower, "embedding") ||
+				strings.Contains(idLower, "vision") ||
+				strings.Contains(idLower, "visual") ||
+				strings.Contains(idLower, "image") {
 				logger.Debug("Skipping embedding/visual model: %s", id)
 				continue
 			}
@@ -310,15 +310,15 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 
 			// Create new model info
 			modelInfo := GeminiModelInfo{
-				ID:                     id,
-				Name:                   name,
-				Description:            description,
-				SupportsCaching:        supportsCaching,
-				SupportsThinking:       supportsThinking,
-				ContextWindowSize:      contextWindowSize,
-				PreferredForThinking:   false,
-				PreferredForCaching:    false,
-				PreferredForSearch:     false,
+				ID:                   id,
+				Name:                 name,
+				Description:          description,
+				SupportsCaching:      supportsCaching,
+				SupportsThinking:     supportsThinking,
+				ContextWindowSize:    contextWindowSize,
+				PreferredForThinking: false,
+				PreferredForCaching:  false,
+				PreferredForSearch:   false,
 			}
 
 			// Check if this is a predefined model
@@ -326,7 +326,7 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 				// Keep the predefined description
 				logger.Debug("Using predefined description for model: %s", id)
 				modelInfo.Description = predefinedModels[idx].Description
-				
+
 				// Keep predefined capabilities if they differ
 				if predefinedModels[idx].SupportsCaching != modelInfo.SupportsCaching {
 					modelInfo.SupportsCaching = predefinedModels[idx].SupportsCaching
@@ -340,7 +340,7 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 					modelInfo.ContextWindowSize = predefinedModels[idx].ContextWindowSize
 					logger.Debug("Using predefined context window size for model: %s", id)
 				}
-				
+
 				// Keep predefined preferences
 				modelInfo.PreferredForThinking = predefinedModels[idx].PreferredForThinking
 				modelInfo.PreferredForCaching = predefinedModels[idx].PreferredForCaching

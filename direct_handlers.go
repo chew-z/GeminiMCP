@@ -465,104 +465,70 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	logger.Info("Handling gemini_models request with direct handler")
 
 	// Get the available models
-	var models []GeminiModelInfo
-
-	// Try to fetch models directly from the API if we have an API key
-	if s.config.GeminiAPIKey != "" {
-		logger.Info("Fetching models directly from API for most current list...")
-
-		// Create a temporary client for this request
-		clientConfig := &genai.ClientConfig{
-			APIKey: s.config.GeminiAPIKey,
+	models := GetAvailableGeminiModels()
+	
+	// Filter models (remove embedding/visual models)
+	var filteredModels []GeminiModelInfo
+	for _, model := range models {
+		// Skip embedding and visual models
+		idLower := strings.ToLower(model.ID)
+		if strings.Contains(idLower, "embedding") || 
+		   strings.Contains(idLower, "vision") || 
+		   strings.Contains(idLower, "visual") || 
+		   strings.Contains(idLower, "image") {
+			continue
 		}
+		filteredModels = append(filteredModels, model)
+	}
 
-		tempClient, err := genai.NewClient(ctx, clientConfig)
-		if err != nil {
-			logger.Warn("Could not create temporary client for model listing: %v. Will use cached list.", err)
+	// Organize models by preference and family
+	var (
+		preferredThinkingModels []GeminiModelInfo
+		preferredSearchModels   []GeminiModelInfo
+		preferredCachingModels  []GeminiModelInfo
+		gemini25Models          []GeminiModelInfo
+		gemini20Models          []GeminiModelInfo
+		gemini15Models          []GeminiModelInfo
+		otherModels             []GeminiModelInfo
+	)
+
+	// Sort models into categories
+	for _, model := range filteredModels {
+		idLower := strings.ToLower(model.ID)
+
+		// First categorize by preference
+		if model.PreferredForThinking {
+			preferredThinkingModels = append(preferredThinkingModels, model)
+			continue
+		} else if model.PreferredForSearch {
+			preferredSearchModels = append(preferredSearchModels, model)
+			continue
+		} else if model.PreferredForCaching {
+			preferredCachingModels = append(preferredCachingModels, model)
+			continue
+		}
+		
+		// Then categorize by version
+		if strings.Contains(idLower, "2.5") {
+			gemini25Models = append(gemini25Models, model)
+		} else if strings.Contains(idLower, "2.0") {
+			gemini20Models = append(gemini20Models, model)
+		} else if strings.Contains(idLower, "1.5") {
+			gemini15Models = append(gemini15Models, model)
 		} else {
-			// Try to fetch models directly
-			var fetchedModels []GeminiModelInfo
-			modelCount := 0
-
-			// Iterate through all available models
-			for model, err := range tempClient.Models.All(ctx) {
-				modelCount++
-				if err != nil {
-					logger.Warn("Error while fetching model: %v", err)
-					continue
-				}
-
-				// Look for Gemini models
-				modelName := strings.ToLower(model.Name)
-				if strings.Contains(modelName, "gemini") {
-					id := model.Name
-					if strings.HasPrefix(id, "models/") {
-						id = strings.TrimPrefix(id, "models/")
-					}
-
-					logger.Debug("Found model: %s", id)
-
-					// Determine capabilities based on model type
-					supportsCaching := strings.HasSuffix(id, "-001")
-					supportsThinking := strings.Contains(strings.ToLower(id), "pro")
-					contextWindowSize := 32768 // Default for Flash models
-
-					if supportsThinking {
-						contextWindowSize = 1048576 // Pro models have 1M context
-					}
-
-					// Create user-friendly name
-					name := strings.TrimPrefix(id, "gemini-")
-					name = strings.ReplaceAll(name, "-", " ")
-					name = strings.Title(name)
-					name = "Gemini " + name
-
-					// Create appropriate description
-					description := "Google Gemini model"
-					if strings.Contains(strings.ToLower(id), "pro") {
-						description = "Pro model with advanced reasoning capabilities"
-					} else if strings.Contains(strings.ToLower(id), "flash") {
-						description = "Flash model optimized for efficiency and speed"
-					}
-
-					// Add preview designation if applicable
-					if strings.Contains(strings.ToLower(id), "preview") || strings.Contains(strings.ToLower(id), "exp") {
-						description = "Preview/Experimental " + description
-					}
-
-					// Add the model to our list
-					fetchedModels = append(fetchedModels, GeminiModelInfo{
-						ID:                id,
-						Name:              name,
-						Description:       description,
-						SupportsCaching:   supportsCaching,
-						SupportsThinking:  supportsThinking,
-						ContextWindowSize: contextWindowSize,
-					})
-				}
-			}
-
-			if len(fetchedModels) > 0 {
-				// Use the directly fetched models for this response
-				models = fetchedModels
-				logger.Info("Successfully fetched %d models directly from API for display", len(models))
-
-				// Also update the store for future use
-				modelStore.Lock()
-				modelStore.models = fetchedModels
-				modelStore.Unlock()
-			} else {
-				logger.Warn("No models found from direct API call (from %d total). Using cached list.", modelCount)
-				models = GetAvailableGeminiModels()
-			}
+			otherModels = append(otherModels, model)
 		}
 	}
 
-	// Fallback if we couldn't get models directly
-	if len(models) == 0 {
-		models = GetAvailableGeminiModels()
-		logger.Info("Using cached model list with %d models", len(models))
-	}
+	// Create a combined, ordered list with preferences first, then by newest version
+	orderedModels := make([]GeminiModelInfo, 0)
+	orderedModels = append(orderedModels, preferredThinkingModels...)
+	orderedModels = append(orderedModels, preferredSearchModels...)
+	orderedModels = append(orderedModels, preferredCachingModels...)
+	orderedModels = append(orderedModels, gemini25Models...)
+	orderedModels = append(orderedModels, gemini20Models...)
+	orderedModels = append(orderedModels, gemini15Models...)
+	orderedModels = append(orderedModels, otherModels...)
 
 	// Create formatted response using strings.Builder
 	var formattedContent strings.Builder
@@ -578,9 +544,17 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+	
+	// Write recommended models section first
+	if len(preferredThinkingModels) > 0 || len(preferredSearchModels) > 0 || len(preferredCachingModels) > 0 {
+		if err := write("## Recommended Models\n\n"); err != nil {
+			logger.Error("Error writing to response: %v", err)
+			return createErrorResult("Error generating model list"), nil
+		}
+	}
 
 	// Write each model's information
-	for _, model := range models {
+	for _, model := range orderedModels {
 		if err := write("## %s\n", model.Name); err != nil {
 			logger.Error("Error writing to response: %v", err)
 			return createErrorResult("Error generating model list"), nil
@@ -594,6 +568,24 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		if err := write("- Description: %s\n", model.Description); err != nil {
 			logger.Error("Error writing to response: %v", err)
 			return createErrorResult("Error generating model list"), nil
+		}
+
+		// Add preference information if applicable
+		if model.PreferredForThinking {
+			if err := write("- Recommended for: Complex reasoning tasks with thinking mode\n"); err != nil {
+				logger.Error("Error writing to response: %v", err)
+				return createErrorResult("Error generating model list"), nil
+			}
+		} else if model.PreferredForSearch {
+			if err := write("- Recommended for: Search queries and web browsing\n"); err != nil {
+				logger.Error("Error writing to response: %v", err)
+				return createErrorResult("Error generating model list"), nil
+			}
+		} else if model.PreferredForCaching {
+			if err := write("- Recommended for: Repeated programming tasks with caching\n"); err != nil {
+				logger.Error("Error writing to response: %v", err)
+				return createErrorResult("Error generating model list"), nil
+			}
 		}
 
 		// Add caching support info
@@ -626,7 +618,23 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	if err := write("```json\n// For gemini_ask\n{\n  \"query\": \"Your question here\",\n  \"model\": \"gemini-1.5-pro-001\",\n  \"use_cache\": true\n}\n\n// For gemini_search\n{\n  \"query\": \"Your search question here\",\n  \"model\": \"gemini-2.5-pro-exp-03-25\",\n  \"enable_thinking\": true\n}\n```\n"); err != nil {
+	// Create examples with preferred models
+	thinkingModelID := "gemini-2.5-pro-exp-03-25" // Default
+	if len(preferredThinkingModels) > 0 {
+		thinkingModelID = preferredThinkingModels[0].ID
+	}
+
+	cachingModelID := "gemini-2.0-flash-001" // Default
+	if len(preferredCachingModels) > 0 {
+		cachingModelID = preferredCachingModels[0].ID
+	}
+
+	searchModelID := "gemini-2.5-pro-preview-03-25" // Default
+	if len(preferredSearchModels) > 0 {
+		searchModelID = preferredSearchModels[0].ID
+	}
+
+	if err := write("```json\n// For gemini_ask with thinking\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"%s\",\n  \"enable_thinking\": true\n}\n\n// For gemini_ask with caching\n{\n  \"query\": \"Your programming question here\",\n  \"model\": \"%s\",\n  \"use_cache\": true\n}\n\n// For gemini_search\n{\n  \"query\": \"Your search question here\",\n  \"model\": \"%s\"\n}\n```\n", thinkingModelID, cachingModelID, searchModelID); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
@@ -684,7 +692,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	}
 
 	// Add example usage for thinking mode
-	if err := write("Example:\n\n```json\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"gemini-1.5-pro\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\"\n}\n```\n\nOr with explicit budget:\n\n```json\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"gemini-1.5-pro\",\n  \"enable_thinking\": true,\n  \"thinking_budget\": 8192\n}\n```\n"); err != nil {
+	if err := write("Example:\n\n```json\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"%s\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\"\n}\n```\n\nOr with explicit budget:\n\n```json\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"%s\",\n  \"enable_thinking\": true,\n  \"thinking_budget\": 8192\n}\n```\n", thinkingModelID, thinkingModelID); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
