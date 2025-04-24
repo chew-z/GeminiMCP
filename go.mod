@@ -4,8 +4,8 @@ go 1.24.2
 
 require (
 	github.com/joho/godotenv v1.5.1
-	github.com/mark3labs/mcp-go v0.23.0
-	google.golang.org/genai v1.1.0
+	github.com/mark3labs/mcp-go v0.23.1
+	google.golang.org/genai v1.2.0
 )
 
 require (
