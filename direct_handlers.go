@@ -634,7 +634,33 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		searchModelID = preferredSearchModels[0].ID
 	}
 
-	if err := write("```json\n// For gemini_ask with thinking\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"%s\",\n  \"enable_thinking\": true\n}\n\n// For gemini_ask with caching\n{\n  \"query\": \"Your programming question here\",\n  \"model\": \"%s\",\n  \"use_cache\": true\n}\n\n// For gemini_search\n{\n  \"query\": \"Your search question here\",\n  \"model\": \"%s\"\n}\n```\n", thinkingModelID, cachingModelID, searchModelID); err != nil {
+	if err := write("```json\n// For gemini_ask with thinking\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"%s\",\n  \"enable_thinking\": true\n}\n\n// For gemini_ask with caching\n{\n  \"query\": \"Your programming question here\",\n  \"model\": \"%s\",\n  \"use_cache\": true\n}\n\n// For gemini_ask with file attachments\n{\n  \"query\": \"Analyze this code and suggest improvements\",\n  \"model\": \"%s\",\n  \"file_paths\": [\"/path/to/your/file.go\"]\n}\n\n// For gemini_search\n{\n  \"query\": \"Your search question here\",\n  \"model\": \"%s\"\n}\n```\n", thinkingModelID, cachingModelID, thinkingModelID, searchModelID); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	// Add Advanced Usage Examples section
+	if err := write("\n## Advanced Usage Examples\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("### Combining File Attachments with Caching\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("For programming tasks, you can attach files to provide context and use caching to make follow-up queries more efficient:\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("```json\n{\n  \"query\": \"Explain the main data structures in these files and how they interact\",\n  \"model\": \"%s\",\n  \"file_paths\": [\n    \"/path/to/your/code.go\",\n    \"/path/to/your/structs.go\"\n  ],\n  \"use_cache\": true,\n  \"cache_ttl\": \"30m\"\n}\n```\n", cachingModelID); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("\nThis is particularly useful when:\n\n- Working with complex codebases where context from multiple files is needed\n- Planning to ask multiple follow-up questions about the same code\n- Debugging issues that require file context\n- Code review scenarios where you need to discuss specific implementation details\n\nThe attached files are analyzed once and stored in the cache, making subsequent queries much faster.\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
