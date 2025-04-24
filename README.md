@@ -41,7 +41,7 @@ Add this server to any MCP-compatible client like Claude Desktop by adding to yo
         "command": "/Users/<user>/Path/to/bin/mcp-gemini",
         "env": {
             "GEMINI_API_KEY": "YOUR_API_KEY_HERE",
-            "GEMINI_MODEL": "gemini-2.5-pro-preview-03-25",
+            "GEMINI_MODEL": "gemini-2.5-pro-exp-03-25",
             "GEMINI_SEARCH_MODEL": "gemini-2.5-flash-preview-04-17",
             "GEMINI_SYSTEM_PROMPT": "You are a senior developer. Your job is to do a thorough code review of this code...",
             "GEMINI_SEARCH_SYSTEM_PROMPT": "You are a search assistant. Your job is to find the most relevant information about this topic..."
@@ -71,7 +71,7 @@ Say to your LLM:
 
 > _Please use the gemini_models tool to show me the list of available Gemini models._
 
-The LLM will invoke the **`gemini_models`** tool and return the list of available models, their capabilities, and caching support status.
+The LLM will invoke the **`gemini_models`** tool and return the list of available models, organized by preference and capability. The output prioritizes recommended models for specific tasks, then organizes remaining models by version (newest to oldest).
 
 ### Code Analysis with **`gemini_ask`**
 
@@ -139,6 +139,20 @@ With this simple prompt, the LLM will:
 
 This approach makes it easy to have an extended conversation about your codebase without complex configuration.
 
+### Combined File Attachments with Caching
+
+For programming tasks, you can directly use the file attachments feature with caching to create a more efficient workflow:
+
+> _Use gemini_ask with model gemini-2.0-flash-001 to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
+
+The server has special optimizations for this use case, particularly useful when:
+- Working with complex codebases requiring multiple files for context
+- Planning to ask follow-up questions about the same code
+- Debugging issues that require file context
+- Code review scenarios discussing implementation details
+
+When combining file attachments with caching, files are analyzed once and stored in the cache, making subsequent queries much faster and more cost-effective.
+
 ### Managing Multiple Caches and Reducing Costs
 
 During a conversation, you can create and use multiple caches for different sets of files or contexts:
@@ -185,6 +199,34 @@ For code analysis, general queries, and creative tasks with optional file contex
         "file_paths": ["main.go", "config.go"],
         "use_cache": true,
         "cache_ttl": "1h"
+    }
+}
+```
+
+Simple code analysis with file attachments:
+
+```json
+{
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Analyze this code and suggest improvements",
+        "model": "gemini-2.5-pro-exp-03-25",
+        "file_paths": ["models.go"]
+    }
+}
+```
+
+Combining file attachments with caching for repeated queries:
+
+```json
+{
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Explain the main data structures in these files and how they interact",
+        "model": "gemini-2.0-flash-001",
+        "file_paths": ["models.go", "structs.go"],
+        "use_cache": true,
+        "cache_ttl": "30m"
     }
 }
 ```
@@ -245,15 +287,17 @@ Returns comprehensive model information including:
 
 ### Model Management
 
-The server dynamically fetches available Gemini models from the Google API at startup. Common models include:
+The server dynamically fetches available Gemini models from the Google API at startup, preserving pre-defined descriptions and filtering out non-relevant models like embedding and visual models. Models are organized by preference and capability:
 
-| Model ID                   | Description                             | Caching Support |
-| -------------------------- | --------------------------------------- | --------------- |
-| `gemini-2.5-pro-exp-03-25` | State-of-the-art thinking model         | No              |
-| `gemini-2.0-flash-001`     | Optimized for speed with version suffix | Yes             |
-| `gemini-1.5-pro-001`       | Previous generation with stability      | Yes             |
+#### Recommended Models for Specific Tasks
 
-Use the `gemini_models` tool for a complete, up-to-date list.
+| Model ID                      | Description                                        | Recommended For                          |
+| ----------------------------- | -------------------------------------------------- | ---------------------------------------- |
+| `gemini-2.5-pro-exp-03-25`    | Advanced Pro model with superior thinking support  | Complex reasoning with thinking mode     |
+| `gemini-2.0-flash-001`        | Cacheable Flash model optimized for repeated tasks | Programming tasks with caching          |
+| `gemini-2.5-flash-preview-04-17` | Fast Flash model with excellent search capabilities | Search queries and web browsing         |
+
+Models are organized by preference first, then by version (newest to oldest) when displayed in the `gemini_models` tool output. Use the `gemini_models` tool for a complete, up-to-date list.
 
 ### Caching System
 
@@ -430,6 +474,11 @@ go test -v
 
 ## Recent Changes
 
+- **Improved Model Management**: Enhanced model handling with preference-based organization, filtering of embedding/visual models, and preservation of custom descriptions
+- **Model Task Preferences**: Added model recommendations for specific tasks (thinking, caching, search)
+- **Advanced Usage Examples**: Added documentation for combining file attachments with caching for programming tasks
+- **File Context Optimizations**: Improved handling of file content with caching for more efficient follow-up queries
+- **Model Display Organization**: Reorganized model output to prioritize recommended models and newer versions
 - **Thinking Budget Control**: Added configurable thinking budget levels and explicit token control for fine-tuning reasoning depth
 - **Model Selection for Search**: Added support for custom model selection in the `gemini_search` tool
 - **Enhanced Thinking Mode Support**: Added thinking capability across compatible models, enabling more detailed reasoning processes
