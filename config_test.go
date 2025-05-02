@@ -32,7 +32,7 @@ func TestNewConfig(t *testing.T) {
 
 	t.Run("valid API key creates config", func(t *testing.T) {
 		os.Setenv("GEMINI_API_KEY", "test-api-key")
-		os.Setenv("GEMINI_MODEL", "gemini-1.5-pro") // Use a valid model from models.go
+		os.Setenv("GEMINI_MODEL", "gemini-2.5-pro-preview-03-25") // Use a valid model from models.go
 
 		config, err := NewConfig()
 
@@ -45,8 +45,8 @@ func TestNewConfig(t *testing.T) {
 		if config.GeminiAPIKey != "test-api-key" {
 			t.Errorf("Expected API key 'test-api-key', got '%s'", config.GeminiAPIKey)
 		}
-		if config.GeminiModel != "gemini-1.5-pro" {
-			t.Errorf("Expected model 'gemini-1.5-pro', got '%s'", config.GeminiModel)
+		if config.GeminiModel != "gemini-2.5-pro-preview-03-25" {
+			t.Errorf("Expected model 'gemini-2.5-pro-preview-03-25', got '%s'", config.GeminiModel)
 		}
 		if config.HTTPTimeout != 90*time.Second {
 			t.Errorf("Expected timeout of 90s, got %v", config.HTTPTimeout)
@@ -65,8 +65,8 @@ func TestNewConfig(t *testing.T) {
 		if config == nil {
 			t.Fatal("Expected config to be created, got nil")
 		}
-		if config.GeminiModel != "gemini-1.5-pro" {
-			t.Errorf("Expected default model 'gemini-1.5-pro', got '%s'", config.GeminiModel)
+		if config.GeminiModel != "gemini-2.5-pro-preview-03-25" {
+			t.Errorf("Expected default model 'gemini-2.5-pro-preview-03-25', got '%s'", config.GeminiModel)
 		}
 	})
 

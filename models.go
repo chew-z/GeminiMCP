@@ -13,11 +13,27 @@ import (
 // GeminiModelInfo struct definition moved to structs.go
 
 // GetModelByID returns a specific model by ID, or nil if not found
+// It handles both base model IDs and version IDs
 func GetModelByID(modelID string) *GeminiModelInfo {
 	models := GetAvailableGeminiModels()
+	
+	// First check exact match with base model ID
 	for _, model := range models {
 		if model.ID == modelID {
 			return &model
+		}
+		
+		// Check if it matches any version ID
+		for _, version := range model.Versions {
+			if version.ID == modelID {
+				// Create a copy of the model
+				modelCopy := model
+				// Override ID with version ID
+				modelCopy.ID = version.ID
+				// Override SupportsCaching from the version's value
+				modelCopy.SupportsCaching = version.SupportsCaching
+				return &modelCopy
+			}
 		}
 	}
 	return nil
@@ -26,6 +42,7 @@ func GetModelByID(modelID string) *GeminiModelInfo {
 // GetPreferredModelForTask returns the first model marked as preferred for a specific task
 // taskType can be "thinking", "caching", or "search"
 // If no preferred model is found, returns nil
+// For caching tasks, it returns a model with appropriate version that supports caching
 func GetPreferredModelForTask(taskType string) *GeminiModelInfo {
 	models := GetAvailableGeminiModels()
 	for _, model := range models {
@@ -36,10 +53,27 @@ func GetPreferredModelForTask(taskType string) *GeminiModelInfo {
 			}
 		case "caching":
 			if model.PreferredForCaching {
+				// For caching tasks, we need a version that supports caching
+				for _, version := range model.Versions {
+					if version.SupportsCaching {
+						// Return a model copy with the version ID
+						modelCopy := model
+						modelCopy.ID = version.ID
+						modelCopy.SupportsCaching = true
+						return &modelCopy
+					}
+				}
+				// If we reach here, this model is preferred for caching but has no caching versions
 				return &model
 			}
 		case "search":
 			if model.PreferredForSearch {
+				// For search tasks, prefer the first version if available (typically the newest)
+				if len(model.Versions) > 0 {
+					modelCopy := model
+					modelCopy.ID = model.Versions[0].ID
+					return &modelCopy
+				}
 				return &model
 			}
 		}
@@ -80,98 +114,114 @@ func ValidateModelID(modelID string) error {
 func fallbackGeminiModels() []GeminiModelInfo {
 	return []GeminiModelInfo{
 
-		// Gemini 2.5 Models (Preview/Experimental)
+		// Gemini 2.5 Pro Models (Preview/Experimental)
 		{
-			ID:                   "gemini-2.5-pro-exp-03-25",
-			Name:                 "Gemini 2.5 Pro Exp 03 25",
-			Description:          "Preview/Experimental Pro model with advanced reasoning capabilities (preferred for thinking tasks)",
-			SupportsCaching:      false,
+			ID:                   "gemini-2.5-pro",
+			Name:                 "Gemini 2.5 Pro",
+			Description:          "Preview/Experimental Pro model with advanced reasoning capabilities",
+			SupportsCaching:      false, // Base model doesn't support caching, versions do
 			SupportsThinking:     true, // Confirmed to work with thinking mode
 			ContextWindowSize:    1048576,
 			PreferredForThinking: true,
-			PreferredForCaching:  false,
+			PreferredForCaching:  true,
 			PreferredForSearch:   false,
+			Versions: []ModelVersion{
+				{
+					ID:              "gemini-2.5-pro-exp-03-25",
+					Name:            "Gemini 2.5 Pro Exp 03 25",
+					SupportsCaching: true,
+				},
+				{
+					ID:              "gemini-2.5-pro-preview-03-25",
+					Name:            "Gemini 2.5 Pro Preview 03 25",
+					SupportsCaching: true,
+				},
+			},
 		},
+
+		// Gemini 2.5 Flash Model
 		{
-			ID:                   "gemini-2.5-pro-preview-03-25",
-			Name:                 "Gemini 2.5 Pro Preview 03 25",
-			Description:          "Preview/Experimental Pro model with advanced reasoning capabilities (best thinking mode support)",
-			SupportsCaching:      false,
-			SupportsThinking:     true, // Confirmed to work with thinking mode
-			ContextWindowSize:    1048576,
-			PreferredForThinking: false,
-			PreferredForCaching:  false,
-			PreferredForSearch:   false,
-		},
-		{
-			ID:                   "gemini-2.5-flash-preview-04-17",
-			Name:                 "Gemini 2.5 Flash Preview 04 17",
+			ID:                   "gemini-2.5-flash",
+			Name:                 "Gemini 2.5 Flash",
 			Description:          "Preview/Experimental Flash model optimized for efficiency and speed",
-			SupportsCaching:      false,
+			SupportsCaching:      false, // Base model doesn't support caching, versions do
 			SupportsThinking:     false,
 			ContextWindowSize:    32768,
 			PreferredForThinking: false,
 			PreferredForCaching:  false,
 			PreferredForSearch:   true,
+			Versions: []ModelVersion{
+				{
+					ID:              "gemini-2.5-flash-preview-04-17",
+					Name:            "Gemini 2.5 Flash Preview 04 17",
+					SupportsCaching: true,
+				},
+			},
 		},
 
-		// Gemini 2.0 Models (core models)
+		// Gemini 2.0 Flash Models
 		{
 			ID:                   "gemini-2.0-flash",
 			Name:                 "Gemini 2.0 Flash",
 			Description:          "Flash model optimized for efficiency and speed",
-			SupportsCaching:      false,
-			SupportsThinking:     false,
-			ContextWindowSize:    32768,
-			PreferredForThinking: false,
-			PreferredForCaching:  false,
-			PreferredForSearch:   false,
-		},
-		{
-			ID:                   "gemini-2.0-flash-001",
-			Name:                 "Gemini 2.0 Flash 001",
-			Description:          "Flash model optimized for efficiency and speed (preferred for repeated programming tasks with caching)",
-			SupportsCaching:      true,
+			SupportsCaching:      false, // Base model doesn't directly support caching
 			SupportsThinking:     false,
 			ContextWindowSize:    32768,
 			PreferredForThinking: false,
 			PreferredForCaching:  true,
 			PreferredForSearch:   false,
+			Versions: []ModelVersion{
+				{
+					ID:              "gemini-2.0-flash-001",
+					Name:            "Gemini 2.0 Flash 001",
+					SupportsCaching: true,
+				},
+				{
+					ID:              "gemini-2.0-flash-exp",
+					Name:            "Gemini 2.0 Flash Exp",
+					SupportsCaching: false,
+				},
+			},
 		},
+
+		// Gemini 2.0 Flash Lite Model
 		{
 			ID:                   "gemini-2.0-flash-lite",
 			Name:                 "Gemini 2.0 Flash Lite",
-			Description:          "Flash model optimized for efficiency and speed",
-			SupportsCaching:      false,
+			Description:          "Flash lite model optimized for efficiency and speed",
+			SupportsCaching:      false, // Base model doesn't directly support caching
 			SupportsThinking:     false,
 			ContextWindowSize:    32768,
 			PreferredForThinking: false,
 			PreferredForCaching:  false,
 			PreferredForSearch:   false,
+			Versions: []ModelVersion{
+				{
+					ID:              "gemini-2.0-flash-lite-001",
+					Name:            "Gemini 2.0 Flash Lite 001",
+					SupportsCaching: true,
+				},
+			},
 		},
 
-		// Latest Preview/Experimental models
+		// Gemini 2.0 Pro Models
 		{
-			ID:                   "gemini-2.0-flash-exp",
-			Name:                 "Gemini 2.0 Flash Exp",
-			Description:          "Preview/Experimental Flash model optimized for efficiency and speed",
-			SupportsCaching:      false,
-			SupportsThinking:     false,
-			ContextWindowSize:    32768,
-			PreferredForThinking: false,
-			PreferredForCaching:  false,
-			PreferredForSearch:   false,
-		},
-		{
-			ID:                   "gemini-2.0-pro-exp",
-			Name:                 "Gemini 2.0 Pro Exp",
-			Description:          "Preview/Experimental Pro model with advanced reasoning capabilities",
-			SupportsCaching:      false,
+			ID:                   "gemini-2.0-pro",
+			Name:                 "Gemini 2.0 Pro",
+			Description:          "Pro model with advanced reasoning capabilities",
+			SupportsCaching:      false, // Base model doesn't support caching
 			SupportsThinking:     true,
 			ContextWindowSize:    1048576,
 			PreferredForThinking: false,
 			PreferredForCaching:  false,
 			PreferredForSearch:   false,
+			Versions: []ModelVersion{
+				{
+					ID:              "gemini-2.0-pro-exp",
+					Name:            "Gemini 2.0 Pro Exp",
+					SupportsCaching: false,
+				},
+			},
 		},
 	}
 }
@@ -224,6 +274,9 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 	// Track total models found for better diagnostics
 	modelCount := 0
 
+	// Map to store base models and their versions
+	baseModels := make(map[string]*GeminiModelInfo)
+
 	// Fetch models from API
 	logger.Debug("Starting model fetch from Gemini API...")
 	for model, err := range client.Models.All(ctx) {
@@ -268,6 +321,33 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 			}
 			name = "Gemini " + name
 
+			// Determine if this is a base model or a version
+			isVersionModel := strings.HasSuffix(id, "-001") || 
+				strings.Contains(id, "preview") || 
+				strings.Contains(id, "exp") ||
+				strings.Contains(id, "stable")
+
+			// Extract base model ID
+			baseModelID := id
+			if isVersionModel {
+				// Remove version-specific suffixes to get the base model ID
+				baseModelID = strings.TrimSuffix(baseModelID, "-001")
+				
+				// Handle special cases for preview/experimental models
+				if strings.Contains(baseModelID, "-preview-") {
+					parts := strings.Split(baseModelID, "-preview-")
+					if len(parts) > 0 {
+						baseModelID = parts[0]
+					}
+				}
+				if strings.Contains(baseModelID, "-exp-") {
+					parts := strings.Split(baseModelID, "-exp-")
+					if len(parts) > 0 {
+						baseModelID = parts[0]
+					}
+				}
+			}
+
 			// Create description and capability properties based on model type
 			description := "Google Gemini model"
 			supportsThinking := false
@@ -308,65 +388,126 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 				}
 			}
 
-			// Create new model info
-			modelInfo := GeminiModelInfo{
-				ID:                   id,
-				Name:                 name,
-				Description:          description,
-				SupportsCaching:      supportsCaching,
-				SupportsThinking:     supportsThinking,
-				ContextWindowSize:    contextWindowSize,
-				PreferredForThinking: false,
-				PreferredForCaching:  false,
-				PreferredForSearch:   false,
-			}
-
-			// Check if this is a predefined model
-			if idx, exists := predefinedModelMap[id]; exists {
-				// Keep the predefined description
-				logger.Debug("Using predefined description for model: %s", id)
-				modelInfo.Description = predefinedModels[idx].Description
-
-				// Keep predefined capabilities if they differ
-				if predefinedModels[idx].SupportsCaching != modelInfo.SupportsCaching {
-					modelInfo.SupportsCaching = predefinedModels[idx].SupportsCaching
-					logger.Debug("Using predefined caching capability for model: %s", id)
-				}
-				if predefinedModels[idx].SupportsThinking != modelInfo.SupportsThinking {
-					modelInfo.SupportsThinking = predefinedModels[idx].SupportsThinking
-					logger.Debug("Using predefined thinking capability for model: %s", id)
-				}
-				if predefinedModels[idx].ContextWindowSize != modelInfo.ContextWindowSize {
-					modelInfo.ContextWindowSize = predefinedModels[idx].ContextWindowSize
-					logger.Debug("Using predefined context window size for model: %s", id)
+			// For version models, create a ModelVersion
+			if isVersionModel {
+				// Create model version
+				modelVersion := ModelVersion{
+					ID:              id,
+					Name:            name,
+					SupportsCaching: supportsCaching,
 				}
 
-				// Keep predefined preferences
-				modelInfo.PreferredForThinking = predefinedModels[idx].PreferredForThinking
-				modelInfo.PreferredForCaching = predefinedModels[idx].PreferredForCaching
-				modelInfo.PreferredForSearch = predefinedModels[idx].PreferredForSearch
-				logger.Debug("Using predefined task preferences for model: %s", id)
+				// Add or update the base model
+				baseModel, exists := baseModels[baseModelID]
+				if !exists {
+					// Create base model
+					baseName := "Gemini " + strings.TrimPrefix(baseModelID, "gemini-")
+					baseName = strings.ReplaceAll(baseName, "-", " ")
+					baseName = strings.Title(baseName)
+
+					baseModel = &GeminiModelInfo{
+						ID:                   baseModelID,
+						Name:                 baseName,
+						Description:          description,
+						SupportsCaching:      false, // Base model doesn't directly support caching
+						SupportsThinking:     supportsThinking,
+						ContextWindowSize:    contextWindowSize,
+						PreferredForThinking: false,
+						PreferredForCaching:  false,
+						PreferredForSearch:   false,
+						Versions:             []ModelVersion{modelVersion},
+					}
+					baseModels[baseModelID] = baseModel
+				} else {
+					// Add version to existing base model
+					baseModel.Versions = append(baseModel.Versions, modelVersion)
+				}
 			} else {
-				// For non-predefined models, set preferences based on model characteristics
-				if id == "gemini-2.5-pro-exp-03-25" {
-					modelInfo.Description += " (Preferred for advanced thinking tasks)"
-					modelInfo.PreferredForThinking = true
-					logger.Debug("Marking model %s as preferred for thinking tasks", id)
-				} else if id == "gemini-2.0-flash-001" {
-					modelInfo.Description += " (Preferred for repeated programming tasks with caching)"
-					modelInfo.PreferredForCaching = true
-					logger.Debug("Marking model %s as preferred for caching", id)
-				} else if strings.Contains(idLower, "2.5") && strings.Contains(idLower, "flash") {
-					// Mark newer flash models as preferred for search
-					modelInfo.PreferredForSearch = true
-					logger.Debug("Marking model %s as preferred for search", id)
+				// This is a base model without a version specified
+				// Check if we already have it
+				baseModel, exists := baseModels[id]
+				if !exists {
+					// Create base model
+					baseModel = &GeminiModelInfo{
+						ID:                   id,
+						Name:                 name,
+						Description:          description,
+						SupportsCaching:      supportsCaching,
+						SupportsThinking:     supportsThinking,
+						ContextWindowSize:    contextWindowSize,
+						PreferredForThinking: false,
+						PreferredForCaching:  false,
+						PreferredForSearch:   false,
+						Versions:             []ModelVersion{},
+					}
+					baseModels[id] = baseModel
 				}
 			}
+		}  
+	}
 
-			// Add model to list
-			mergedModels = append(mergedModels, modelInfo)
-			logger.Debug("Found Gemini model: %s", id)
+	// Convert the map of base models to a slice
+	for _, baseModel := range baseModels {
+		// Check if this is a predefined model
+		if idx, exists := predefinedModelMap[baseModel.ID]; exists {
+			// Keep the predefined description
+			logger.Debug("Using predefined description for model: %s", baseModel.ID)
+			baseModel.Description = predefinedModels[idx].Description
+
+			// Keep predefined capabilities if they differ
+			if predefinedModels[idx].SupportsCaching != baseModel.SupportsCaching {
+				baseModel.SupportsCaching = predefinedModels[idx].SupportsCaching
+				logger.Debug("Using predefined caching capability for model: %s", baseModel.ID)
+			}
+			if predefinedModels[idx].SupportsThinking != baseModel.SupportsThinking {
+				baseModel.SupportsThinking = predefinedModels[idx].SupportsThinking
+				logger.Debug("Using predefined thinking capability for model: %s", baseModel.ID)
+			}
+			if predefinedModels[idx].ContextWindowSize != baseModel.ContextWindowSize {
+				baseModel.ContextWindowSize = predefinedModels[idx].ContextWindowSize
+				logger.Debug("Using predefined context window size for model: %s", baseModel.ID)
+			}
+
+			// Keep predefined preferences
+			baseModel.PreferredForThinking = predefinedModels[idx].PreferredForThinking
+			baseModel.PreferredForCaching = predefinedModels[idx].PreferredForCaching
+			baseModel.PreferredForSearch = predefinedModels[idx].PreferredForSearch
+			logger.Debug("Using predefined task preferences for model: %s", baseModel.ID)
+
+			// Merge versions from predefined model if applicable
+			if len(predefinedModels[idx].Versions) > 0 {
+				// Create a map of existing versions
+				existingVersions := make(map[string]bool)
+				for _, v := range baseModel.Versions {
+					existingVersions[v.ID] = true
+				}
+
+				// Add missing versions from predefined model
+				for _, v := range predefinedModels[idx].Versions {
+					if !existingVersions[v.ID] {
+						baseModel.Versions = append(baseModel.Versions, v)
+						logger.Debug("Added predefined version %s to model %s", v.ID, baseModel.ID)
+					}
+				}
+			}
+		} else {
+			// For non-predefined models, set preferences based on model characteristics
+			if baseModel.ID == "gemini-2.5-pro" {
+				baseModel.PreferredForThinking = true
+				logger.Debug("Marking model %s as preferred for thinking tasks", baseModel.ID)
+			} else if baseModel.ID == "gemini-2.0-flash" {
+				baseModel.PreferredForCaching = true
+				logger.Debug("Marking model %s as preferred for caching", baseModel.ID)
+			} else if baseModel.ID == "gemini-2.5-flash" {
+				// Mark newer flash models as preferred for search
+				baseModel.PreferredForSearch = true
+				logger.Debug("Marking model %s as preferred for search", baseModel.ID)
+			}
 		}
+
+		// Add model to merged models list
+		mergedModels = append(mergedModels, *baseModel)
+		logger.Debug("Added model to merged list: %s", baseModel.ID)
 	}
 
 	// If we got models, update the store
