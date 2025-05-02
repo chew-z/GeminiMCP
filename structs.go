@@ -94,25 +94,25 @@ type CacheStore struct {
 	cacheInfo map[string]*CacheInfo // Map of ID -> CacheInfo
 }
 
-// ModelVersion represents a specific version of a Gemini model
+// ModelVersion represents an actual API-addressable Gemini model
 type ModelVersion struct {
-	ID              string `json:"id"`               // The version ID (e.g., "gemini-2.0-flash-001")
-	Name            string `json:"name"`             // Human-readable name of the version
+	ID              string `json:"id"`               // The version ID used by the API (e.g., "gemini-2.5-pro-exp-03-25")
+	Name            string `json:"name"`             // Human-readable name
 	SupportsCaching bool   `json:"supports_caching"` // Whether this version supports caching
+	IsPreferred     bool   `json:"is_preferred"`     // Whether this is the preferred version of the model family
 }
 
-// GeminiModelInfo holds information about a Gemini model
+// GeminiModelInfo represents a family of related models
 type GeminiModelInfo struct {
-	ID                   string         `json:"id"`                     // Base model ID
-	Name                 string         `json:"name"`                   // Human-readable name
-	Description          string         `json:"description"`            // Description of the model
-	SupportsCaching      bool           `json:"supports_caching"`       // Whether this model version supports caching
-	SupportsThinking     bool           `json:"supports_thinking"`      // Whether this model supports thinking mode
+	FamilyID             string         `json:"family_id"`              // Model family identifier (e.g., "gemini-2.5-pro")
+	Name                 string         `json:"name"`                   // Human-readable family name
+	Description          string         `json:"description"`            // Description of the model family
+	SupportsThinking     bool           `json:"supports_thinking"`      // Whether this model family supports thinking mode
 	ContextWindowSize    int            `json:"context_window_size"`    // Maximum context window size in tokens
-	PreferredForThinking bool           `json:"preferred_for_thinking"` // Whether this model is preferred for thinking tasks
-	PreferredForCaching  bool           `json:"preferred_for_caching"`  // Whether this model is preferred for repeated tasks with caching
-	PreferredForSearch   bool           `json:"preferred_for_search"`   // Whether this model is preferred for search tasks
-	Versions             []ModelVersion `json:"versions,omitempty"`     // Available versions of this model
+	PreferredForThinking bool           `json:"preferred_for_thinking"` // Whether this family is preferred for thinking tasks
+	PreferredForCaching  bool           `json:"preferred_for_caching"`  // Whether this family is preferred for caching tasks
+	PreferredForSearch   bool           `json:"preferred_for_search"`   // Whether this family is preferred for search tasks
+	Versions             []ModelVersion `json:"versions"`               // Available versions of this model family
 }
 
 // FileUploadRequest represents a request to upload a file

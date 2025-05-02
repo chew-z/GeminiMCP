@@ -12,80 +12,72 @@ import (
 
 // GeminiModelInfo struct definition moved to structs.go
 
-// GetModelByID returns a specific model by ID, or nil if not found
-// It handles both base model IDs and version IDs
+// GetModelByID returns model info for either a family ID or a version ID
 func GetModelByID(modelID string) *GeminiModelInfo {
 	models := GetAvailableGeminiModels()
 	
-	// First check exact match with base model ID
+	// Check if it's a family ID
 	for _, model := range models {
-		if model.ID == modelID {
+		if model.FamilyID == modelID {
 			return &model
 		}
 		
-		// Check if it matches any version ID
+		// Check if it's a version ID
 		for _, version := range model.Versions {
 			if version.ID == modelID {
-				// Create a copy of the model
-				modelCopy := model
-				// Override ID with version ID
-				modelCopy.ID = version.ID
-				// Override SupportsCaching from the version's value
-				modelCopy.SupportsCaching = version.SupportsCaching
-				return &modelCopy
+				return &model // Return the family for this version
 			}
 		}
 	}
 	return nil
 }
 
-// GetPreferredModelForTask returns the first model marked as preferred for a specific task
-// taskType can be "thinking", "caching", or "search"
-// If no preferred model is found, returns nil
-// For caching tasks, it returns a model with appropriate version that supports caching
-func GetPreferredModelForTask(taskType string) *GeminiModelInfo {
-	models := GetAvailableGeminiModels()
-	for _, model := range models {
-		switch taskType {
-		case "thinking":
-			if model.PreferredForThinking {
-				return &model
-			}
-		case "caching":
-			if model.PreferredForCaching {
-				// For caching tasks, we need a version that supports caching
-				for _, version := range model.Versions {
-					if version.SupportsCaching {
-						// Return a model copy with the version ID
-						modelCopy := model
-						modelCopy.ID = version.ID
-						modelCopy.SupportsCaching = true
-						return &modelCopy
-					}
-				}
-				// If we reach here, this model is preferred for caching but has no caching versions
-				return &model
-			}
-		case "search":
-			if model.PreferredForSearch {
-				// For search tasks, prefer the first version if available (typically the newest)
-				if len(model.Versions) > 0 {
-					modelCopy := model
-					modelCopy.ID = model.Versions[0].ID
-					return &modelCopy
-				}
-				return &model
+// GetModelVersion returns the specific version info for a model ID
+func GetModelVersion(modelID string) *ModelVersion {
+	for _, model := range GetAvailableGeminiModels() {
+		for i, version := range model.Versions {
+			if version.ID == modelID {
+				return &model.Versions[i]
 			}
 		}
 	}
 	return nil
+}
+
+// ResolveModelID converts a model family ID or version ID to an actual API-usable version ID
+// If the provided ID is already a version ID, it returns it unchanged
+// If it's a family ID, it returns the ID of the preferred or first version
+func ResolveModelID(modelID string) string {
+	// First check if this is already a specific version ID
+	if GetModelVersion(modelID) != nil {
+		return modelID // Already a valid version ID
+	}
+	
+	// It might be a family ID, try to find the best version
+	model := GetModelByID(modelID)
+	if model != nil {
+		// Find preferred version first
+		for _, version := range model.Versions {
+			if version.IsPreferred {
+				return version.ID
+			}
+		}
+		
+		// Otherwise return the first version
+		if len(model.Versions) > 0 {
+			return model.Versions[0].ID
+		}
+	}
+	
+	// If we get here, it's an unknown ID, return it unchanged
+	return modelID
 }
 
 // ValidateModelID checks if a model ID is in the list of available models
 // Returns nil if valid, error otherwise
 func ValidateModelID(modelID string) error {
-	// First check if it's in our known models list
-	if GetModelByID(modelID) != nil {
+	// First check if it's a known version ID or family ID
+	if GetModelVersion(modelID) != nil || GetModelByID(modelID) != nil {
 		return nil
 	}
 
@@ -103,23 +95,57 @@ func ValidateModelID(modelID string) error {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Unknown model ID: %s. Known models are:", modelID))
 	for _, model := range GetAvailableGeminiModels() {
-		sb.WriteString(fmt.Sprintf("\n- %s: %s", model.ID, model.Name))
+		sb.WriteString(fmt.Sprintf("\n- %s: %s", model.FamilyID, model.Name))
+		for _, version := range model.Versions {
+			sb.WriteString(fmt.Sprintf("\n  - %s: %s", version.ID, version.Name))
+		}
 	}
 	sb.WriteString("\n\nHowever, we will attempt to use this model anyway. It may be a new or preview model.")
 
 	return errors.New(sb.String())
 }
 
+// GetPreferredModelForTask returns the best version ID for a specific task
+// taskType can be "thinking", "caching", or "search"
+// If no preferred model is found, returns an empty string
+func GetPreferredModelForTask(taskType string) string {
+	models := GetAvailableGeminiModels()
+	for _, model := range models {
+		switch taskType {
+		case "thinking":
+			if model.PreferredForThinking {
+				// Use the ResolveModelID function to get a specific version ID
+				return ResolveModelID(model.FamilyID)
+			}
+		case "caching":
+			if model.PreferredForCaching {
+				// For caching tasks, we need a version that supports caching
+				for _, version := range model.Versions {
+					if version.SupportsCaching {
+						return version.ID
+					}
+				}
+				// If no version supports caching, use the default version
+				return ResolveModelID(model.FamilyID)
+			}
+		case "search":
+			if model.PreferredForSearch {
+				// For search tasks, use the preferred version
+				return ResolveModelID(model.FamilyID)
+			}
+		}
+	}
+	return ""
+}
+
 // fallbackGeminiModels provides a list of default Gemini models to use if API fetching fails
 func fallbackGeminiModels() []GeminiModelInfo {
 	return []GeminiModelInfo{
-
 		// Gemini 2.5 Pro Models (Preview/Experimental)
 		{
-			ID:                   "gemini-2.5-pro",
+			FamilyID:             "gemini-2.5-pro",
 			Name:                 "Gemini 2.5 Pro",
 			Description:          "Preview/Experimental Pro model with advanced reasoning capabilities",
-			SupportsCaching:      false, // Base model doesn't support caching, versions do
 			SupportsThinking:     true, // Confirmed to work with thinking mode
 			ContextWindowSize:    1048576,
 			PreferredForThinking: true,
@@ -130,21 +156,22 @@ func fallbackGeminiModels() []GeminiModelInfo {
 					ID:              "gemini-2.5-pro-exp-03-25",
 					Name:            "Gemini 2.5 Pro Exp 03 25",
 					SupportsCaching: true,
+					IsPreferred:     true,
 				},
 				{
 					ID:              "gemini-2.5-pro-preview-03-25",
 					Name:            "Gemini 2.5 Pro Preview 03 25",
 					SupportsCaching: true,
+					IsPreferred:     false,
 				},
 			},
 		},
 
 		// Gemini 2.5 Flash Model
 		{
-			ID:                   "gemini-2.5-flash",
+			FamilyID:             "gemini-2.5-flash",
 			Name:                 "Gemini 2.5 Flash",
 			Description:          "Preview/Experimental Flash model optimized for efficiency and speed",
-			SupportsCaching:      false, // Base model doesn't support caching, versions do
 			SupportsThinking:     false,
 			ContextWindowSize:    32768,
 			PreferredForThinking: false,
@@ -155,16 +182,16 @@ func fallbackGeminiModels() []GeminiModelInfo {
 					ID:              "gemini-2.5-flash-preview-04-17",
 					Name:            "Gemini 2.5 Flash Preview 04 17",
 					SupportsCaching: true,
+					IsPreferred:     true,
 				},
 			},
 		},
 
 		// Gemini 2.0 Flash Models
 		{
-			ID:                   "gemini-2.0-flash",
+			FamilyID:             "gemini-2.0-flash",
 			Name:                 "Gemini 2.0 Flash",
 			Description:          "Flash model optimized for efficiency and speed",
-			SupportsCaching:      false, // Base model doesn't directly support caching
 			SupportsThinking:     false,
 			ContextWindowSize:    32768,
 			PreferredForThinking: false,
@@ -175,21 +202,22 @@ func fallbackGeminiModels() []GeminiModelInfo {
 					ID:              "gemini-2.0-flash-001",
 					Name:            "Gemini 2.0 Flash 001",
 					SupportsCaching: true,
+					IsPreferred:     true,
 				},
 				{
 					ID:              "gemini-2.0-flash-exp",
 					Name:            "Gemini 2.0 Flash Exp",
 					SupportsCaching: false,
+					IsPreferred:     false,
 				},
 			},
 		},
 
 		// Gemini 2.0 Flash Lite Model
 		{
-			ID:                   "gemini-2.0-flash-lite",
+			FamilyID:             "gemini-2.0-flash-lite",
 			Name:                 "Gemini 2.0 Flash Lite",
 			Description:          "Flash lite model optimized for efficiency and speed",
-			SupportsCaching:      false, // Base model doesn't directly support caching
 			SupportsThinking:     false,
 			ContextWindowSize:    32768,
 			PreferredForThinking: false,
@@ -200,16 +228,16 @@ func fallbackGeminiModels() []GeminiModelInfo {
 					ID:              "gemini-2.0-flash-lite-001",
 					Name:            "Gemini 2.0 Flash Lite 001",
 					SupportsCaching: true,
+					IsPreferred:     true,
 				},
 			},
 		},
 
 		// Gemini 2.0 Pro Models
 		{
-			ID:                   "gemini-2.0-pro",
+			FamilyID:             "gemini-2.0-pro",
 			Name:                 "Gemini 2.0 Pro",
 			Description:          "Pro model with advanced reasoning capabilities",
-			SupportsCaching:      false, // Base model doesn't support caching
 			SupportsThinking:     true,
 			ContextWindowSize:    1048576,
 			PreferredForThinking: false,
@@ -220,10 +248,32 @@ func fallbackGeminiModels() []GeminiModelInfo {
 					ID:              "gemini-2.0-pro-exp",
 					Name:            "Gemini 2.0 Pro Exp",
 					SupportsCaching: false,
+					IsPreferred:     true,
 				},
 			},
 		},
 	}
+}
+
+// This function has been updated to identify base model IDs from version IDs
+func extractBaseModelID(versionID string) string {
+	// Handle special cases for preview/experimental models
+	if strings.Contains(versionID, "-preview-") {
+		parts := strings.Split(versionID, "-preview-")
+		if len(parts) > 0 {
+			return parts[0]
+		}
+	} else if strings.Contains(versionID, "-exp-") {
+		parts := strings.Split(versionID, "-exp-")
+		if len(parts) > 0 {
+			return parts[0]
+		}
+	}
+
+	// Remove version-specific suffixes
+	baseModelID := strings.TrimSuffix(versionID, "-001")
+
+	return baseModelID
 }
 
 // modelStore handles storing and retrieving models
@@ -231,8 +281,6 @@ var modelStore struct {
 	sync.RWMutex
 	models []GeminiModelInfo
 }
-
-// FetchGeminiModels fetches available models from the Gemini API
 // and updates the model store
 func FetchGeminiModels(ctx context.Context, apiKey string) error {
 	// Create a new client for fetching models
@@ -265,7 +313,7 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 	// Create a map of predefined model IDs to their indices
 	predefinedModelMap := make(map[string]int)
 	for i, model := range predefinedModels {
-		predefinedModelMap[model.ID] = i
+		predefinedModelMap[model.FamilyID] = i
 	}
 
 	// Create a slice to store fetched models
@@ -429,10 +477,9 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 				if !exists {
 					// Create base model
 					baseModel = &GeminiModelInfo{
-						ID:                   id,
+						FamilyID:             id,
 						Name:                 name,
 						Description:          description,
-						SupportsCaching:      supportsCaching,
 						SupportsThinking:     supportsThinking,
 						ContextWindowSize:    contextWindowSize,
 						PreferredForThinking: false,

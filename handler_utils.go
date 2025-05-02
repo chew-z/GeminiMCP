@@ -18,7 +18,7 @@ func configureThinking(ctx context.Context, config *genai.GenerateContentConfig,
 
 	if modelInfo == nil || !modelInfo.SupportsThinking {
 		if modelInfo != nil {
-			logger.Warn("Thinking mode requested but model %s doesn't support it", modelInfo.ID)
+			logger.Warn("Thinking mode requested but model %s doesn't support it", modelInfo.FamilyID)
 		} else {
 			logger.Warn("Thinking mode requested but unknown if model supports it")
 		}
@@ -53,7 +53,7 @@ func configureThinking(ctx context.Context, config *genai.GenerateContentConfig,
 	}
 
 	config.ThinkingConfig = thinkingConfig
-	logger.Info("Thinking mode enabled with model %s", modelInfo.ID)
+	logger.Info("Thinking mode enabled with model %s", modelInfo.FamilyID)
 }
 
 // configureMaxTokens configures the maximum output tokens for the request

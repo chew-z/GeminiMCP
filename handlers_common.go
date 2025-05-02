@@ -52,6 +52,13 @@ func createModelConfig(ctx context.Context, params map[string]interface{}, confi
 		return nil, "", fmt.Errorf("invalid model specified: %v", err)
 	}
 
+	// Resolve model ID to ensure we use a valid API-addressable version
+	resolvedModelID := ResolveModelID(modelName)
+	if resolvedModelID != modelName {
+		logger.Info("Resolved model ID from '%s' to '%s'", modelName, resolvedModelID)
+		modelName = resolvedModelID
+	}
+
 	// Extract system prompt
 	systemPrompt := extractArgumentString(params, "systemPrompt", config.GeminiSystemPrompt)
 
