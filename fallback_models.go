@@ -21,8 +21,8 @@ func fallbackGeminiModels() []GeminiModelInfo {
 					IsPreferred:     true,
 				},
 				{
-					ID:              "gemini-2.5-pro-preview-03-25",
-					Name:            "Gemini 2.5 Pro Preview 03 25",
+					ID:              "gemini-2.5-pro-preview-05-06",
+					Name:            "Gemini 2.5 Pro Preview 05 06",
 					SupportsCaching: true,
 					IsPreferred:     false,
 				},

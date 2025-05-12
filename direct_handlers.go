@@ -466,16 +466,16 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 
 	// Get the available models
 	models := GetAvailableGeminiModels()
-	
+
 	// Filter models (remove embedding/visual models)
 	var filteredModels []GeminiModelInfo
 	for _, model := range models {
 		// Skip embedding and visual models
 		familyIDLower := strings.ToLower(model.FamilyID)
-		if strings.Contains(familyIDLower, "embedding") || 
-		   strings.Contains(familyIDLower, "vision") || 
-		   strings.Contains(familyIDLower, "visual") || 
-		   strings.Contains(familyIDLower, "image") {
+		if strings.Contains(familyIDLower, "embedding") ||
+			strings.Contains(familyIDLower, "vision") ||
+			strings.Contains(familyIDLower, "visual") ||
+			strings.Contains(familyIDLower, "image") {
 			continue
 		}
 		filteredModels = append(filteredModels, model)
@@ -507,7 +507,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 			preferredCachingModels = append(preferredCachingModels, model)
 			continue
 		}
-		
+
 		// Then categorize by version
 		if strings.Contains(familyIDLower, "2.5") {
 			gemini25Models = append(gemini25Models, model)
@@ -544,7 +544,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	
+
 	// Write recommended models section first
 	if len(preferredThinkingModels) > 0 || len(preferredSearchModels) > 0 || len(preferredCachingModels) > 0 {
 		if err := write("## Recommended Models\n\n"); err != nil {
@@ -612,7 +612,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 				if version.IsPreferred {
 					preferredStr = " (preferred)"
 				}
-				if err := write("  - `%s`: %s%s - Supports Caching: %v\n", 
+				if err := write("  - `%s`: %s%s - Supports Caching: %v\n",
 					version.ID, version.Name, preferredStr, version.SupportsCaching); err != nil {
 					logger.Error("Error writing to response: %v", err)
 					return createErrorResult("Error generating model list"), nil
@@ -655,7 +655,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	searchFamilyID := "gemini-2.5-flash"
 
 	// Create example with both family ID and resolved version ID
-	if err := write("```json\n// Using family ID (automatically selects preferred version)\n{\n  \"query\": \"Your question here\",\n  \"model\": \"%s\"  // Resolves to %s\n}\n\n// Using specific version ID directly\n{\n  \"query\": \"Your question here\",\n  \"model\": \"%s\"\n}\n```\n", 
+	if err := write("```json\n// Using family ID (automatically selects preferred version)\n{\n  \"query\": \"Your question here\",\n  \"model\": \"%s\"  // Resolves to %s\n}\n\n// Using specific version ID directly\n{\n  \"query\": \"Your question here\",\n  \"model\": \"%s\"\n}\n```\n",
 		thinkingFamilyID, thinkingVersionID, thinkingVersionID); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
@@ -667,7 +667,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	if err := write("```json\n// For complex reasoning with thinking\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"%s\",\n  \"enable_thinking\": true\n}\n\n// For programming tasks with caching\n{\n  \"query\": \"Your programming question here\",\n  \"model\": \"%s\",\n  \"use_cache\": true\n}\n\n// For search queries\n{\n  \"query\": \"Your search question here\",\n  \"model\": \"%s\"\n}\n```\n", 
+	if err := write("```json\n// For complex reasoning with thinking\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"%s\",\n  \"enable_thinking\": true\n}\n\n// For programming tasks with caching\n{\n  \"query\": \"Your programming question here\",\n  \"model\": \"%s\",\n  \"use_cache\": true\n}\n\n// For search queries\n{\n  \"query\": \"Your search question here\",\n  \"model\": \"%s\"\n}\n```\n",
 		thinkingFamilyID, cachingFamilyID, searchFamilyID); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil

@@ -95,8 +95,8 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 			name = "Gemini " + name
 
 			// Determine if this is a base model or a version
-			isVersionModel := strings.HasSuffix(id, "-001") || 
-				strings.Contains(id, "preview") || 
+			isVersionModel := strings.HasSuffix(id, "-001") ||
+				strings.Contains(id, "preview") ||
 				strings.Contains(id, "exp") ||
 				strings.Contains(id, "stable")
 
@@ -284,7 +284,7 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 			// If no version is preferred, mark the first one as preferred
 			if !hasPreferred {
 				familyModel.Versions[0].IsPreferred = true
-				logger.Debug("Marking version %s as preferred for model family %s", 
+				logger.Debug("Marking version %s as preferred for model family %s",
 					familyModel.Versions[0].ID, familyID)
 			}
 		}
@@ -325,11 +325,11 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 
 	logger.Warn("No Gemini models found via API (from %d total models), using fallback models", modelCount)
 	logger.Debug("API may have returned models in an unexpected format or access restrictions may be in place")
-	
+
 	// Use fallback models
 	modelStore.Lock()
 	modelStore.models = fallbackGeminiModels()
 	modelStore.Unlock()
-	
+
 	return fmt.Errorf("no Gemini models found via API")
 }

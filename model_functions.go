@@ -30,13 +30,13 @@ func GetAvailableGeminiModels() []GeminiModelInfo {
 // GetModelByID returns model info for either a family ID or a version ID
 func GetModelByID(modelID string) *GeminiModelInfo {
 	models := GetAvailableGeminiModels()
-	
+
 	// Check if it's a family ID
 	for _, model := range models {
 		if model.FamilyID == modelID {
 			return &model
 		}
-		
+
 		// Check if it's a version ID
 		for _, version := range model.Versions {
 			if version.ID == modelID {
@@ -67,7 +67,7 @@ func ResolveModelID(modelID string) string {
 	if GetModelVersion(modelID) != nil {
 		return modelID // Already a valid version ID
 	}
-	
+
 	// It might be a family ID, try to find the best version
 	model := GetModelByID(modelID)
 	if model != nil {
@@ -77,13 +77,13 @@ func ResolveModelID(modelID string) string {
 				return version.ID
 			}
 		}
-		
+
 		// Otherwise return the first version
 		if len(model.Versions) > 0 {
 			return model.Versions[0].ID
 		}
 	}
-	
+
 	// If we get here, it's an unknown ID, return it unchanged
 	return modelID
 }
