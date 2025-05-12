@@ -1,11 +1,11 @@
 module GeminiMCP
 
-go 1.24.2
+go 1.24.3
 
 require (
 	github.com/joho/godotenv v1.5.1
-	github.com/mark3labs/mcp-go v0.24.1
-	google.golang.org/genai v1.3.0
+	github.com/mark3labs/mcp-go v0.27.0
+	google.golang.org/genai v1.4.0
 )
 
 require (
