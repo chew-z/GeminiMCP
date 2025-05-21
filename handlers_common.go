@@ -9,7 +9,8 @@ import (
 )
 
 // extractArgumentString extracts a string argument from the request parameters
-func extractArgumentString(args map[string]interface{}, name string, defaultValue string) string {
+func extractArgumentString(req mcp.CallToolRequest, name string, defaultValue string) string {
+	args := req.GetArguments()
 	if val, ok := args[name].(string); ok && val != "" {
 		return val
 	}
@@ -17,7 +18,8 @@ func extractArgumentString(args map[string]interface{}, name string, defaultValu
 }
 
 // extractArgumentBool extracts a boolean argument from the request parameters
-func extractArgumentBool(args map[string]interface{}, name string, defaultValue bool) bool {
+func extractArgumentBool(req mcp.CallToolRequest, name string, defaultValue bool) bool {
+	args := req.GetArguments()
 	if val, ok := args[name].(bool); ok {
 		return val
 	}
@@ -27,8 +29,9 @@ func extractArgumentBool(args map[string]interface{}, name string, defaultValue 
 // This function has been removed as it was unused after refactoring to use direct handlers with mcp-go types
 
 // extractArgumentStringArray extracts a string array argument from the request parameters
-func extractArgumentStringArray(args map[string]interface{}, name string) []string {
+func extractArgumentStringArray(req mcp.CallToolRequest, name string) []string {
 	var result []string
+	args := req.GetArguments()
 	if rawArray, ok := args[name].([]interface{}); ok {
 		for _, item := range rawArray {
 			if str, ok := item.(string); ok {
@@ -40,11 +43,11 @@ func extractArgumentStringArray(args map[string]interface{}, name string) []stri
 }
 
 // createModelConfig creates a GenerateContentConfig for Gemini API based on request parameters
-func createModelConfig(ctx context.Context, params map[string]interface{}, config *Config, defaultModel string) (*genai.GenerateContentConfig, string, error) {
+func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Config, defaultModel string) (*genai.GenerateContentConfig, string, error) {
 	logger := getLoggerFromContext(ctx)
 
 	// Extract model parameter - use defaultModel if not specified
-	modelName := extractArgumentString(params, "model", defaultModel)
+	modelName := extractArgumentString(req, "model", defaultModel)
 
 	// Validate the model
 	if err := ValidateModelID(modelName); err != nil {
@@ -60,7 +63,7 @@ func createModelConfig(ctx context.Context, params map[string]interface{}, confi
 	}
 
 	// Extract system prompt
-	systemPrompt := extractArgumentString(params, "systemPrompt", config.GeminiSystemPrompt)
+	systemPrompt := extractArgumentString(req, "systemPrompt", config.GeminiSystemPrompt)
 
 	// Get model information
 	modelInfo := GetModelByID(modelName)
@@ -75,7 +78,7 @@ func createModelConfig(ctx context.Context, params map[string]interface{}, confi
 	}
 
 	// Configure thinking if supported
-	enableThinking := extractArgumentBool(params, "enable_thinking", config.EnableThinking)
+	enableThinking := extractArgumentBool(req, "enable_thinking", config.EnableThinking)
 	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
 		thinkingConfig := &genai.ThinkingConfig{
 			IncludeThoughts: true,
@@ -85,10 +88,11 @@ func createModelConfig(ctx context.Context, params map[string]interface{}, confi
 		thinkingBudget := 0
 
 		// Check for level first
-		if levelStr, ok := params["thinking_budget_level"].(string); ok && levelStr != "" {
+		args := req.GetArguments()
+		if levelStr, ok := args["thinking_budget_level"].(string); ok && levelStr != "" {
 			thinkingBudget = getThinkingBudgetFromLevel(levelStr)
 			logger.Info("Setting thinking budget to %d tokens from level: %s", thinkingBudget, levelStr)
-		} else if budgetRaw, ok := params["thinking_budget"].(float64); ok && budgetRaw >= 0 {
+		} else if budgetRaw, ok := args["thinking_budget"].(float64); ok && budgetRaw >= 0 {
 			// If explicit budget was provided, use that instead of level
 			thinkingBudget = int(budgetRaw)
 			logger.Info("Setting thinking budget to %d tokens from explicit value", thinkingBudget)
@@ -111,16 +115,17 @@ func createModelConfig(ctx context.Context, params map[string]interface{}, confi
 	}
 
 	// Configure max tokens with default ratio of context window
-	configureMaxTokensOutput(ctx, contentConfig, params, modelInfo, 0.75)
+	configureMaxTokensOutput(ctx, contentConfig, req, modelInfo, 0.75)
 
 	return contentConfig, modelName, nil
 }
 
 // configureMaxTokensOutput configures the maximum output tokens for the request
-func configureMaxTokensOutput(ctx context.Context, config *genai.GenerateContentConfig, args map[string]interface{}, modelInfo *GeminiModelInfo, defaultRatio float64) {
+func configureMaxTokensOutput(ctx context.Context, config *genai.GenerateContentConfig, req mcp.CallToolRequest, modelInfo *GeminiModelInfo, defaultRatio float64) {
 	logger := getLoggerFromContext(ctx)
 
 	// Check if max_tokens parameter was provided
+	args := req.GetArguments()
 	if maxTokensRaw, ok := args["max_tokens"].(float64); ok && maxTokensRaw > 0 {
 		maxTokens := int(maxTokensRaw)
 

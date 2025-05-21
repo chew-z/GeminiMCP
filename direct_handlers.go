@@ -19,26 +19,26 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 	logger.Info("Handling gemini_ask request with direct handler")
 
 	// Extract and validate query parameter (required)
-	query, ok := req.Params.Arguments["query"].(string)
+	query, ok := req.GetArguments()["query"].(string)
 	if !ok || query == "" {
 		return createErrorResult("query must be a string and cannot be empty"), nil
 	}
 
 	// Create Gemini model configuration
-	config, modelName, err := createModelConfig(ctx, req.Params.Arguments, s.config, s.config.GeminiModel)
+	config, modelName, err := createModelConfig(ctx, req, s.config, s.config.GeminiModel)
 	if err != nil {
 		return createErrorResult(fmt.Sprintf("Error creating model configuration: %v", err)), nil
 	}
 
 	// Extract file paths if provided
-	filePaths := extractArgumentStringArray(req.Params.Arguments, "file_paths")
+	filePaths := extractArgumentStringArray(req, "file_paths")
 
 	// Check if caching is requested
-	useCache := extractArgumentBool(req.Params.Arguments, "use_cache", false)
-	cacheTTL := extractArgumentString(req.Params.Arguments, "cache_ttl", "")
+	useCache := extractArgumentBool(req, "use_cache", false)
+	cacheTTL := extractArgumentString(req, "cache_ttl", "")
 
 	// Check if thinking mode is requested (used to determine if caching should be used)
-	enableThinking := extractArgumentBool(req.Params.Arguments, "enable_thinking", s.config.EnableThinking)
+	enableThinking := extractArgumentBool(req, "enable_thinking", s.config.EnableThinking)
 
 	// Caching and thinking conflict - prioritize thinking if both are requested
 	if useCache && enableThinking {
@@ -56,7 +56,7 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 		if modelVersion != nil && modelVersion.SupportsCaching {
 			// Try to create cache from files if provided
 			cacheID, cacheErr = s.createCacheFromFiles(ctx, query, modelName, filePaths, cacheTTL,
-				extractArgumentString(req.Params.Arguments, "systemPrompt", s.config.GeminiSystemPrompt))
+				extractArgumentString(req, "systemPrompt", s.config.GeminiSystemPrompt))
 
 			if cacheErr != nil {
 				logger.Warn("Failed to create cache, falling back to regular request: %v", cacheErr)
@@ -279,16 +279,16 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	logger.Info("Handling gemini_search request with direct handler")
 
 	// Extract and validate query parameter (required)
-	query, ok := req.Params.Arguments["query"].(string)
+	query, ok := req.GetArguments()["query"].(string)
 	if !ok || query == "" {
 		return createErrorResult("query must be a string and cannot be empty"), nil
 	}
 
 	// Extract optional system prompt - use search-specific prompt as default
-	systemPrompt := extractArgumentString(req.Params.Arguments, "systemPrompt", s.config.GeminiSearchSystemPrompt)
+	systemPrompt := extractArgumentString(req, "systemPrompt", s.config.GeminiSearchSystemPrompt)
 
 	// Extract optional model parameter - use search-specific model as default
-	modelName := extractArgumentString(req.Params.Arguments, "model", s.config.GeminiSearchModel)
+	modelName := extractArgumentString(req, "model", s.config.GeminiSearchModel)
 	if err := ValidateModelID(modelName); err != nil {
 		logger.Error("Invalid model requested: %v", err)
 		return createErrorResult(fmt.Sprintf("Invalid model specified: %v", err)), nil
@@ -313,7 +313,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	}
 
 	// Configure thinking
-	enableThinking := extractArgumentBool(req.Params.Arguments, "enable_thinking", s.config.EnableThinking)
+	enableThinking := extractArgumentBool(req, "enable_thinking", s.config.EnableThinking)
 	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
 		thinkingConfig := &genai.ThinkingConfig{
 			IncludeThoughts: true,
@@ -323,10 +323,11 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 		thinkingBudget := 0
 
 		// Check for level first
-		if levelStr, ok := req.Params.Arguments["thinking_budget_level"].(string); ok && levelStr != "" {
+		args := req.GetArguments()
+		if levelStr, ok := args["thinking_budget_level"].(string); ok && levelStr != "" {
 			thinkingBudget = getThinkingBudgetFromLevel(levelStr)
 			logger.Info("Setting thinking budget to %d tokens from level: %s", thinkingBudget, levelStr)
-		} else if budgetRaw, ok := req.Params.Arguments["thinking_budget"].(float64); ok && budgetRaw >= 0 {
+		} else if budgetRaw, ok := args["thinking_budget"].(float64); ok && budgetRaw >= 0 {
 			// If explicit budget was provided
 			thinkingBudget = int(budgetRaw)
 			logger.Info("Setting thinking budget to %d tokens from explicit value", thinkingBudget)
@@ -353,7 +354,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	}
 
 	// Configure max tokens (50% of context window by default for search)
-	configureMaxTokensOutput(ctx, config, req.Params.Arguments, modelInfo, 0.5)
+	configureMaxTokensOutput(ctx, config, req, modelInfo, 0.5)
 
 	// Create content with the query
 	contents := []*genai.Content{
