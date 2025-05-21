@@ -302,12 +302,50 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	}
 
 	// Create the generate content configuration
+	googleSearch := &genai.GoogleSearch{}
+
+	// Extract and validate time range filter parameters
+	startTimeStr := extractArgumentString(req, "start_time", "")
+	endTimeStr := extractArgumentString(req, "end_time", "")
+
+	// Both must be provided if either is provided
+	if (startTimeStr != "" && endTimeStr == "") || (startTimeStr == "" && endTimeStr != "") {
+		return createErrorResult("Both start_time and end_time must be provided for time range filtering"), nil
+	}
+
+	// If both time parameters are provided, create the time range filter
+	if startTimeStr != "" && endTimeStr != "" {
+		startTime, err := time.Parse(time.RFC3339, startTimeStr)
+		if err != nil {
+			logger.Error("Invalid start_time format: %v", err)
+			return createErrorResult(fmt.Sprintf("Invalid start_time format: %v. Must be RFC3339 format (e.g. '2024-01-01T00:00:00Z')", err)), nil
+		}
+
+		endTime, err := time.Parse(time.RFC3339, endTimeStr)
+		if err != nil {
+			logger.Error("Invalid end_time format: %v", err)
+			return createErrorResult(fmt.Sprintf("Invalid end_time format: %v. Must be RFC3339 format (e.g. '2024-12-31T23:59:59Z')", err)), nil
+		}
+
+		// Ensure start time is before or equal to end time
+		if startTime.After(endTime) {
+			return createErrorResult("start_time must be before or equal to end_time"), nil
+		}
+
+		// Create the time range filter
+		googleSearch.TimeRangeFilter = &genai.Interval{
+			StartTime: startTime,
+			EndTime:   endTime,
+		}
+		logger.Info("Applying time range filter from %s to %s", startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
+	}
+
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
 		Temperature:       genai.Ptr(float32(s.config.GeminiTemperature)),
 		Tools: []*genai.Tool{
 			{
-				GoogleSearch: &genai.GoogleSearch{},
+				GoogleSearch: googleSearch,
 			},
 		},
 	}

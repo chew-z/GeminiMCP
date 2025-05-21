@@ -29,6 +29,8 @@ var GeminiSearchTool = mcp.NewTool(
 	mcp.WithString("thinking_budget_level", mcp.Description("Optional: Predefined thinking budget level (none, low, medium, high)")),
 	mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
 	mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
+	mcp.WithString("start_time", mcp.Description("Optional: Filter search results to those published after this time (RFC3339 format, e.g. '2024-01-01T00:00:00Z'). If provided, end_time must also be provided.")),
+	mcp.WithString("end_time", mcp.Description("Optional: Filter search results to those published before this time (RFC3339 format, e.g. '2024-12-31T23:59:59Z'). If provided, start_time must also be provided.")),
 )
 
 // GeminiModelsTool defines the gemini_models tool specification

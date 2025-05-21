@@ -109,7 +109,7 @@ Say to your LLM:
 
 Say to your LLM:
 
-> _Use the **`gemini_search`** tool to find the latest information about advancements in fusion energy research. Include sources in your response._
+> _Use the **`gemini_search`** tool to find the latest information about advancements in fusion energy research from the past year. Set the start_time to one year ago and end_time to today. Include sources in your response._
 
 ### Complex Reasoning with Thinking Mode
 
@@ -245,7 +245,9 @@ Provides grounded answers using Google Search integration with enhanced model ca
         "thinking_budget": 8192,
         "thinking_budget_level": "medium",
         "max_tokens": 4096,
-        "model": "gemini-2.5-pro-exp-03-25"
+        "model": "gemini-2.5-pro-exp-03-25",
+        "start_time": "2024-01-01T00:00:00Z",
+        "end_time": "2024-12-31T23:59:59Z"
     }
 }
 ```
@@ -474,6 +476,7 @@ go test -v
 
 ## Recent Changes
 
+- **Time Range Filtering**: Added time range filtering to `gemini_search` tool with `start_time` and `end_time` parameters to filter search results by publication date
 - **Improved Model Management**: Enhanced model handling with preference-based organization, filtering of embedding/visual models, and preservation of custom descriptions
 - **Model Task Preferences**: Added model recommendations for specific tasks (thinking, caching, search)
 - **Advanced Usage Examples**: Added documentation for combining file attachments with caching for programming tasks
