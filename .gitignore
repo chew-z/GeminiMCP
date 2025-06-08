@@ -6,6 +6,7 @@ go.sum
 run_*
 .repomix/**
 repomix-output.*
+repomix.config.json
 codemcp.toml
 system_prompt.txt
 code-review.md
