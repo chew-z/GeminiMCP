@@ -4,6 +4,8 @@ go.sum
 *.log
 .aider*
 run_*
+.repomix/**
+repomix-output.*
 codemcp.toml
 system_prompt.txt
 code-review.md
