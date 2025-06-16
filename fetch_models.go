@@ -147,11 +147,32 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 				}
 			}
 
-			// Check if this is a preferred version
+			// Check if this is a preferred version based on specific model patterns
 			isPreferred := false
-			if strings.Contains(id, "exp") {
-				// Check if this is a specialized model that shouldn't be preferred for general use
-				idLower := strings.ToLower(id)
+			
+			// Define preferred versions for major model families
+			preferredVersions := map[string]bool{
+				"gemini-2.5-pro-preview-06-05":              true,
+				"gemini-2.5-flash-preview-05-20":            true,
+				"gemini-2.0-flash-001":                      true,
+				"gemini-2.0-flash-lite-001":                 true,
+				"gemini-2.0-pro-exp-02-05":                  true,
+				"gemini-2.0-flash-thinking-exp-01-21":       true,
+				"gemini-2.0-flash-thinking-exp-1219":        true,
+				"gemini-2.0-flash-thinking-exp":             true,
+				"gemini-2.0-flash-live-001":                 true,
+				"gemini-2.0-flash-exp":                      true,
+				"gemini-2.0-flash-lite-preview":             true,
+				"gemini-1.5-flash-8b-001":                   true,
+				"gemini-exp-1206":                           true,
+			}
+			
+			// Check if this is a specifically preferred version
+			if preferredVersions[id] {
+				isPreferred = true
+				logger.Debug("Marking model %s as preferred based on predefined list", id)
+			} else if strings.Contains(id, "exp") && !strings.Contains(idLower, "preview") {
+				// Fallback: mark non-specialized experimental models as preferred if not preview
 				isSpecialized := strings.Contains(idLower, "audio") ||
 					strings.Contains(idLower, "dialog") ||
 					strings.Contains(idLower, "tts") ||
@@ -160,8 +181,8 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 					strings.Contains(idLower, "image")
 
 				if !isSpecialized {
-					// Only mark non-specialized experimental models as preferred
 					isPreferred = true
+					logger.Debug("Marking experimental model %s as preferred (fallback)", id)
 				} else {
 					logger.Debug("Skipping specialized model %s from being marked as preferred", id)
 				}
@@ -255,15 +276,32 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 
 			// Merge versions from predefined model if applicable
 			if len(predefinedModel.Versions) > 0 {
-				// Create a map of existing versions
-				existingVersions := make(map[string]bool)
-				for _, v := range familyModel.Versions {
-					existingVersions[v.ID] = true
+				// Create a map of existing versions and predefined preferences
+				existingVersions := make(map[string]*ModelVersion)
+				predefinedPreferences := make(map[string]bool)
+				
+				for i := range familyModel.Versions {
+					existingVersions[familyModel.Versions[i].ID] = &familyModel.Versions[i]
+				}
+				
+				for _, v := range predefinedModel.Versions {
+					predefinedPreferences[v.ID] = v.IsPreferred
+				}
+
+				// First, update preferences for existing versions based on predefined model
+				for id, pref := range predefinedPreferences {
+					if existingVersion, exists := existingVersions[id]; exists {
+						if existingVersion.IsPreferred != pref {
+							logger.Debug("Updating preferred status for version %s in family %s from %v to %v", 
+								id, familyID, existingVersion.IsPreferred, pref)
+							existingVersion.IsPreferred = pref
+						}
+					}
 				}
 
 				// Add missing versions from predefined model
 				for _, v := range predefinedModel.Versions {
-					if !existingVersions[v.ID] {
+					if _, exists := existingVersions[v.ID]; !exists {
 						familyModel.Versions = append(familyModel.Versions, v)
 						logger.Debug("Added predefined version %s to model family %s", v.ID, familyID)
 					}
