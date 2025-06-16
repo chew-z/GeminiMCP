@@ -15,14 +15,14 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			PreferredForSearch:   false,
 			Versions: []ModelVersion{
 				{
-					ID:              "gemini-2.5-pro-exp-03-25",
-					Name:            "Gemini 2.5 Pro Exp 03 25",
+					ID:              "gemini-2.5-pro-preview-06-05",
+					Name:            "Gemini 2.5 Pro Preview 06 05",
 					SupportsCaching: true,
 					IsPreferred:     true,
 				},
 				{
-					ID:              "gemini-2.5-pro-preview-05-06",
-					Name:            "Gemini 2.5 Pro Preview 05 06",
+					ID:              "gemini-2.5-pro-exp-03-25",
+					Name:            "Gemini 2.5 Pro Exp 03 25",
 					SupportsCaching: true,
 					IsPreferred:     false,
 				},
@@ -41,10 +41,16 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			PreferredForSearch:   true,
 			Versions: []ModelVersion{
 				{
+					ID:              "gemini-2.5-flash-preview-05-20",
+					Name:            "Gemini 2.5 Flash Preview 05 20",
+					SupportsCaching: true,
+					IsPreferred:     true,
+				},
+				{
 					ID:              "gemini-2.5-flash-preview-04-17",
 					Name:            "Gemini 2.5 Flash Preview 04 17",
 					SupportsCaching: true,
-					IsPreferred:     true,
+					IsPreferred:     false,
 				},
 			},
 		},
