@@ -150,8 +150,21 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 			// Check if this is a preferred version
 			isPreferred := false
 			if strings.Contains(id, "exp") {
-				// Usually experimental models are preferred
-				isPreferred = true
+				// Check if this is a specialized model that shouldn't be preferred for general use
+				idLower := strings.ToLower(id)
+				isSpecialized := strings.Contains(idLower, "audio") ||
+					strings.Contains(idLower, "dialog") ||
+					strings.Contains(idLower, "tts") ||
+					strings.Contains(idLower, "vision") ||
+					strings.Contains(idLower, "visual") ||
+					strings.Contains(idLower, "image")
+
+				if !isSpecialized {
+					// Only mark non-specialized experimental models as preferred
+					isPreferred = true
+				} else {
+					logger.Debug("Skipping specialized model %s from being marked as preferred", id)
+				}
 			}
 
 			// For version models, create a ModelVersion
