@@ -149,24 +149,24 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 
 			// Check if this is a preferred version based on specific model patterns
 			isPreferred := false
-			
+
 			// Define preferred versions for major model families
 			preferredVersions := map[string]bool{
-				"gemini-2.5-pro-preview-06-05":              true,
-				"gemini-2.5-flash-preview-05-20":            true,
-				"gemini-2.0-flash-001":                      true,
-				"gemini-2.0-flash-lite-001":                 true,
-				"gemini-2.0-pro-exp-02-05":                  true,
-				"gemini-2.0-flash-thinking-exp-01-21":       true,
-				"gemini-2.0-flash-thinking-exp-1219":        true,
-				"gemini-2.0-flash-thinking-exp":             true,
-				"gemini-2.0-flash-live-001":                 true,
-				"gemini-2.0-flash-exp":                      true,
-				"gemini-2.0-flash-lite-preview":             true,
-				"gemini-1.5-flash-8b-001":                   true,
-				"gemini-exp-1206":                           true,
+				"gemini-2.5-pro-preview-06-05":        true,
+				"gemini-2.5-flash-preview-05-20":      true,
+				"gemini-2.0-flash-001":                true,
+				"gemini-2.0-flash-lite-001":           true,
+				"gemini-2.0-pro-exp-02-05":            true,
+				"gemini-2.0-flash-thinking-exp-01-21": true,
+				"gemini-2.0-flash-thinking-exp-1219":  true,
+				"gemini-2.0-flash-thinking-exp":       true,
+				"gemini-2.0-flash-live-001":           true,
+				"gemini-2.0-flash-exp":                true,
+				"gemini-2.0-flash-lite-preview":       true,
+				"gemini-1.5-flash-8b-001":             true,
+				"gemini-exp-1206":                     true,
 			}
-			
+
 			// Check if this is a specifically preferred version
 			if preferredVersions[id] {
 				isPreferred = true
@@ -279,11 +279,11 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 				// Create a map of existing versions and predefined preferences
 				existingVersions := make(map[string]*ModelVersion)
 				predefinedPreferences := make(map[string]bool)
-				
+
 				for i := range familyModel.Versions {
 					existingVersions[familyModel.Versions[i].ID] = &familyModel.Versions[i]
 				}
-				
+
 				for _, v := range predefinedModel.Versions {
 					predefinedPreferences[v.ID] = v.IsPreferred
 				}
@@ -292,7 +292,7 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 				for id, pref := range predefinedPreferences {
 					if existingVersion, exists := existingVersions[id]; exists {
 						if existingVersion.IsPreferred != pref {
-							logger.Debug("Updating preferred status for version %s in family %s from %v to %v", 
+							logger.Debug("Updating preferred status for version %s in family %s from %v to %v",
 								id, familyID, existingVersion.IsPreferred, pref)
 							existingVersion.IsPreferred = pref
 						}
