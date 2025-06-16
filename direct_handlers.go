@@ -294,6 +294,13 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 		logger.Error("Invalid model requested: %v", err)
 		return createErrorResult(fmt.Sprintf("Invalid model specified: %v", err)), nil
 	}
+
+	// Resolve model ID to ensure we use a valid API-addressable version
+	resolvedModelID := ResolveModelID(modelName)
+	if resolvedModelID != modelName {
+		logger.Info("Resolved model ID from '%s' to '%s'", modelName, resolvedModelID)
+		modelName = resolvedModelID
+	}
 	logger.Info("Using %s model for Google Search integration", modelName)
 
 	// Get model information for context window and thinking capability
