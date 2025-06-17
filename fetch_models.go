@@ -64,10 +64,7 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 		modelName := strings.ToLower(model.Name)
 		if strings.Contains(modelName, "gemini") {
 			// Extract ID from model name, handling different API response formats
-			id := model.Name
-			if strings.HasPrefix(id, "models/") {
-				id = strings.TrimPrefix(id, "models/")
-			}
+			id := strings.TrimPrefix(model.Name, "models/")
 
 			logger.Debug("Found Gemini model from API: %s", id)
 			logger.Debug("Model details: %+v", model)
