@@ -514,28 +514,28 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	// Get the available models
 	models := GetAvailableGeminiModels()
 
-	// Filter models (remove embedding/visual models)
+	// Filter models (remove embedding/visual/outdated models)
 	var filteredModels []GeminiModelInfo
 	for _, model := range models {
-		// Skip embedding and visual models
+		// Skip embedding, visual, and outdated 1.x models
 		familyIDLower := strings.ToLower(model.FamilyID)
 		if strings.Contains(familyIDLower, "embedding") ||
 			strings.Contains(familyIDLower, "vision") ||
 			strings.Contains(familyIDLower, "visual") ||
-			strings.Contains(familyIDLower, "image") {
+			strings.Contains(familyIDLower, "image") ||
+			strings.Contains(familyIDLower, "1.") {
 			continue
 		}
 		filteredModels = append(filteredModels, model)
 	}
 
-	// Organize models by preference and family
+	// Organize models by preference and family (2.0+ only)
 	var (
 		preferredThinkingModels []GeminiModelInfo
 		preferredSearchModels   []GeminiModelInfo
 		preferredCachingModels  []GeminiModelInfo
 		gemini25Models          []GeminiModelInfo
 		gemini20Models          []GeminiModelInfo
-		gemini15Models          []GeminiModelInfo
 		otherModels             []GeminiModelInfo
 	)
 
@@ -555,26 +555,23 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 			continue
 		}
 
-		// Then categorize by version
+		// Then categorize by version (2.0+ only)
 		if strings.Contains(familyIDLower, "2.5") {
 			gemini25Models = append(gemini25Models, model)
 		} else if strings.Contains(familyIDLower, "2.0") {
 			gemini20Models = append(gemini20Models, model)
-		} else if strings.Contains(familyIDLower, "1.5") {
-			gemini15Models = append(gemini15Models, model)
 		} else {
 			otherModels = append(otherModels, model)
 		}
 	}
 
-	// Create a combined, ordered list with preferences first, then by newest version
+	// Create a combined, ordered list with preferences first, then by newest version (2.0+ only)
 	orderedModels := make([]GeminiModelInfo, 0)
 	orderedModels = append(orderedModels, preferredThinkingModels...)
 	orderedModels = append(orderedModels, preferredSearchModels...)
 	orderedModels = append(orderedModels, preferredCachingModels...)
 	orderedModels = append(orderedModels, gemini25Models...)
 	orderedModels = append(orderedModels, gemini20Models...)
-	orderedModels = append(orderedModels, gemini15Models...)
 	orderedModels = append(orderedModels, otherModels...)
 
 	// Create formatted response using strings.Builder
@@ -618,7 +615,22 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		}
 
 		// Add preference information if applicable
-		if model.PreferredForThinking {
+		if model.PreferredForThinking && model.PreferredForCaching && model.PreferredForSearch {
+			if err := write("- Recommended for: All tasks (thinking, caching, search)\n"); err != nil {
+				logger.Error("Error writing to response: %v", err)
+				return createErrorResult("Error generating model list"), nil
+			}
+		} else if model.PreferredForThinking && model.PreferredForCaching {
+			if err := write("- Recommended for: Complex reasoning and programming tasks with caching\n"); err != nil {
+				logger.Error("Error writing to response: %v", err)
+				return createErrorResult("Error generating model list"), nil
+			}
+		} else if model.PreferredForThinking && model.PreferredForSearch {
+			if err := write("- Recommended for: Complex reasoning and search queries\n"); err != nil {
+				logger.Error("Error writing to response: %v", err)
+				return createErrorResult("Error generating model list"), nil
+			}
+		} else if model.PreferredForThinking {
 			if err := write("- Recommended for: Complex reasoning tasks with thinking mode\n"); err != nil {
 				logger.Error("Error writing to response: %v", err)
 				return createErrorResult("Error generating model list"), nil
@@ -629,7 +641,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 				return createErrorResult("Error generating model list"), nil
 			}
 		} else if model.PreferredForCaching {
-			if err := write("- Recommended for: Repeated programming tasks with caching\n"); err != nil {
+			if err := write("- Recommended for: Programming tasks with caching\n"); err != nil {
 				logger.Error("Error writing to response: %v", err)
 				return createErrorResult("Error generating model list"), nil
 			}
@@ -698,8 +710,8 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	// Find the preferred versions for different tasks
 	thinkingFamilyID := "gemini-2.5-pro"
 	thinkingVersionID := ResolveModelID(thinkingFamilyID)
-	cachingFamilyID := "gemini-2.0-flash"
-	searchFamilyID := "gemini-2.5-flash"
+	cachingFamilyID := "gemini-2.5-flash"  // Updated to use 2.5 Flash for caching
+	searchFamilyID := "gemini-2.5-flash-lite"  // Updated to use 2.5 Flash Lite for search
 
 	// Create example with both family ID and resolved version ID
 	if err := write("```json\n// Using family ID (automatically selects preferred version)\n{\n  \"query\": \"Your question here\",\n  \"model\": \"%s\"  // Resolves to %s\n}\n\n// Using specific version ID directly\n{\n  \"query\": \"Your question here\",\n  \"model\": \"%s\"\n}\n```\n",
