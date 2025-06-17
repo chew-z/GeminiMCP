@@ -1,14 +1,15 @@
 package main
 
-// fallbackGeminiModels provides a list of default Gemini models to use if API fetching fails
+// fallbackGeminiModels provides a list of default Gemini 2.5 models to use if API fetching fails
+// Note: Only Gemini 2.5 family models are supported for optimal thinking and caching capabilities
 func fallbackGeminiModels() []GeminiModelInfo {
 	return []GeminiModelInfo{
-		// Gemini 2.5 Pro Models (Preview/Experimental)
+		// Gemini 2.5 Pro Models
 		{
 			FamilyID:             "gemini-2.5-pro",
 			Name:                 "Gemini 2.5 Pro",
-			Description:          "Preview/Experimental Pro model with advanced reasoning capabilities",
-			SupportsThinking:     true, // Confirmed to work with thinking mode
+			Description:          "Pro model with advanced reasoning capabilities and thinking mode support",
+			SupportsThinking:     true, // All 2.5 models support thinking
 			ContextWindowSize:    1048576,
 			PreferredForThinking: true,
 			PreferredForCaching:  true,
@@ -17,7 +18,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 				{
 					ID:              "gemini-2.5-pro-preview-06-05",
 					Name:            "Gemini 2.5 Pro Preview 06 05",
-					SupportsCaching: true,
+					SupportsCaching: true, // All 2.5 models support implicit caching
 					IsPreferred:     true,
 				},
 				{
@@ -33,8 +34,8 @@ func fallbackGeminiModels() []GeminiModelInfo {
 		{
 			FamilyID:             "gemini-2.5-flash",
 			Name:                 "Gemini 2.5 Flash",
-			Description:          "Preview/Experimental Flash model optimized for efficiency and speed",
-			SupportsThinking:     true,
+			Description:          "Flash model optimized for efficiency and speed with thinking mode support",
+			SupportsThinking:     true, // All 2.5 models support thinking
 			ContextWindowSize:    32768,
 			PreferredForThinking: true,
 			PreferredForCaching:  true,
@@ -43,7 +44,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 				{
 					ID:              "gemini-2.5-flash-preview-05-20",
 					Name:            "Gemini 2.5 Flash Preview 05 20",
-					SupportsCaching: true,
+					SupportsCaching: true, // All 2.5 models support implicit caching
 					IsPreferred:     true,
 				},
 				{
@@ -59,83 +60,17 @@ func fallbackGeminiModels() []GeminiModelInfo {
 		{
 			FamilyID:             "gemini-2.5-flash-lite",
 			Name:                 "Gemini 2.5 Flash Lite",
-			Description:          "Preview/Experimental Flash model optimized for efficiency and speed",
-			SupportsThinking:     true,
+			Description:          "Flash lite model optimized for low-cost, low-latency with optional thinking mode",
+			SupportsThinking:     true, // All 2.5 models support thinking (off by default for Lite)
 			ContextWindowSize:    32768,
 			PreferredForThinking: true,
-			PreferredForCaching:  false,
+			PreferredForCaching:  false, // Flash Lite does not support implicit caching yet
 			PreferredForSearch:   true,
 			Versions: []ModelVersion{
 				{
 					ID:              "gemini-2.5-flash-lite-preview-06-17",
 					Name:            "Gemini 2.5 Flash Lite Preview 06 17",
-					SupportsCaching: false,
-					IsPreferred:     true,
-				},
-			},
-		},
-
-		// Gemini 2.0 Flash Models
-		{
-			FamilyID:             "gemini-2.0-flash",
-			Name:                 "Gemini 2.0 Flash",
-			Description:          "Flash model optimized for efficiency and speed",
-			SupportsThinking:     false,
-			ContextWindowSize:    32768,
-			PreferredForThinking: false,
-			PreferredForCaching:  false,
-			PreferredForSearch:   false,
-			Versions: []ModelVersion{
-				{
-					ID:              "gemini-2.0-flash-001",
-					Name:            "Gemini 2.0 Flash 001",
-					SupportsCaching: true,
-					IsPreferred:     true,
-				},
-				{
-					ID:              "gemini-2.0-flash-exp",
-					Name:            "Gemini 2.0 Flash Exp",
-					SupportsCaching: false,
-					IsPreferred:     false,
-				},
-			},
-		},
-
-		// Gemini 2.0 Flash Lite Model
-		{
-			FamilyID:             "gemini-2.0-flash-lite",
-			Name:                 "Gemini 2.0 Flash Lite",
-			Description:          "Flash lite model optimized for efficiency and speed",
-			SupportsThinking:     false,
-			ContextWindowSize:    32768,
-			PreferredForThinking: false,
-			PreferredForCaching:  false,
-			PreferredForSearch:   false,
-			Versions: []ModelVersion{
-				{
-					ID:              "gemini-2.0-flash-lite-001",
-					Name:            "Gemini 2.0 Flash Lite 001",
-					SupportsCaching: true,
-					IsPreferred:     true,
-				},
-			},
-		},
-
-		// Gemini 2.0 Pro Models
-		{
-			FamilyID:             "gemini-2.0-pro",
-			Name:                 "Gemini 2.0 Pro",
-			Description:          "Pro model with advanced reasoning capabilities",
-			SupportsThinking:     true,
-			ContextWindowSize:    1048576,
-			PreferredForThinking: false,
-			PreferredForCaching:  false,
-			PreferredForSearch:   false,
-			Versions: []ModelVersion{
-				{
-					ID:              "gemini-2.0-pro-exp",
-					Name:            "Gemini 2.0 Pro Exp",
-					SupportsCaching: false,
+					SupportsCaching: false, // Flash Lite does not support implicit caching yet
 					IsPreferred:     true,
 				},
 			},

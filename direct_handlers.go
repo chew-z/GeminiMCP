@@ -710,8 +710,8 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	// Find the preferred versions for different tasks
 	thinkingFamilyID := "gemini-2.5-pro"
 	thinkingVersionID := ResolveModelID(thinkingFamilyID)
-	cachingFamilyID := "gemini-2.5-flash"  // Updated to use 2.5 Flash for caching
-	searchFamilyID := "gemini-2.5-flash-lite"  // Updated to use 2.5 Flash Lite for search
+	cachingFamilyID := "gemini-2.5-flash"     // Updated to use 2.5 Flash for caching
+	searchFamilyID := "gemini-2.5-flash-lite" // Updated to use 2.5 Flash Lite for search
 
 	// Create example with both family ID and resolved version ID
 	if err := write("```json\n// Using family ID (automatically selects preferred version)\n{\n  \"query\": \"Your question here\",\n  \"model\": \"%s\"  // Resolves to %s\n}\n\n// Using specific version ID directly\n{\n  \"query\": \"Your question here\",\n  \"model\": \"%s\"\n}\n```\n",

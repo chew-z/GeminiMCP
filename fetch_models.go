@@ -69,26 +69,26 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 			logger.Debug("Found Gemini model from API: %s", id)
 			logger.Debug("Model details: %+v", model)
 
-			// Skip embedding models, visual models, and outdated 1.x models
+			// Only support Gemini 2.5 models - skip all others
 			idLower := strings.ToLower(id)
-			if strings.Contains(idLower, "embedding") ||
+			if !strings.Contains(idLower, "2.5") ||
+				strings.Contains(idLower, "embedding") ||
 				strings.Contains(idLower, "vision") ||
 				strings.Contains(idLower, "visual") ||
-				strings.Contains(idLower, "image") ||
-				strings.Contains(idLower, "1.") {
-				logger.Debug("Skipping embedding/visual/outdated model: %s", id)
+				strings.Contains(idLower, "image") {
+				logger.Debug("Skipping non-2.5 or unsupported model: %s", id)
 				continue
 			}
 
-			// Check if model has version suffix for caching support
-			supportsCaching := strings.HasSuffix(id, "-001") || strings.Contains(id, "stable")
+			// Gemini 2.5 Pro and Flash support implicit caching, Flash Lite does not (still in preview)
+			supportsCaching := strings.Contains(idLower, "2.5-pro") || strings.Contains(idLower, "2.5-flash") && !strings.Contains(idLower, "flash-lite")
 
 			// Create a more user-friendly name
 			name := strings.TrimPrefix(id, "gemini-")
 			name = strings.ReplaceAll(name, "-", " ")
 			name = strings.Title(name)
 			if supportsCaching {
-				name += " (Stable)"
+				name += " (Caching)"
 			}
 			name = "Gemini " + name
 
@@ -111,31 +111,15 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 			contextWindowSize := 32768 // Default for Flash models
 
 			// Determine model capabilities based on name patterns
+			// All Gemini 2.5 models support thinking mode
+			supportsThinking = true
+
 			// Check for Pro models first (they have higher capabilities)
 			if strings.Contains(idLower, "pro") {
 				description = "Pro model with strong reasoning capabilities and long context support"
-
-				// Only mark specific models as supporting thinking based on actual API behavior
-				// Testing shows inconsistent thinking support across Pro models
-				if strings.Contains(idLower, "2.5-pro") && (strings.Contains(idLower, "preview") || strings.Contains(idLower, "exp")) {
-					// Only 2.5 preview/experimental models confirmed to work with thinking
-					supportsThinking = true
-					logger.Debug("Marking model %s as supporting thinking mode", id)
-				} else {
-					// Other Pro models might claim to support thinking but have API issues
-					supportsThinking = false
-					logger.Debug("Pro model %s may have thinking capabilities but API errors occur", id)
-				}
-
 				contextWindowSize = 1048576 // 1M tokens for Pro models
 			} else if strings.Contains(idLower, "flash") {
 				description = "Flash model optimized for efficiency and speed"
-
-				// 2.5 Flash models support thinking mode
-				if strings.Contains(idLower, "2.5-flash") && (strings.Contains(idLower, "preview") || strings.Contains(idLower, "exp")) {
-					supportsThinking = true
-					logger.Debug("Marking 2.5 Flash model %s as supporting thinking mode", id)
-				}
 				// Flash models use the default values set above
 			}
 

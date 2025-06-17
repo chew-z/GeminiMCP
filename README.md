@@ -2,6 +2,8 @@
 
 MCP (Model Control Protocol) server integrating with Google's Gemini API.
 
+> **Important**: This server exclusively supports **Gemini 2.5 family models** for optimal thinking mode and implicit caching capabilities.
+
 ## Key Advantages
 
 - **Single Self-Contained Binary**: Written in Go, the project compiles to a single binary with no dependencies, eliminating package manager issues and preventing unexpected changes without user knowledge

@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 GeminiMCP is a Model Control Protocol (MCP) server that integrates with Google's Gemini API. It serves as a bridge between MCP-compatible clients (like Claude Desktop) and Google's Gemini models, providing a standardized interface for model interactions.
 
+**Note: This server exclusively supports Gemini 2.5 family models.** Only Gemini 2.5 models (Pro, Flash, Flash Lite) are supported as they provide optimal thinking mode and implicit caching capabilities.
+
 ## Build and Development Commands
 
 ### Building the Project
