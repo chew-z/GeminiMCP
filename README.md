@@ -27,7 +27,7 @@ go build -o mcp-gemini
 
 ## Start server with environment variables
 export GEMINI_API_KEY=your_api_key
-export GEMINI_MODEL=gemini-1.5-pro
+export GEMINI_MODEL=gemini-2.5-pro
 ./mcp-gemini
 ```
 
@@ -317,7 +317,7 @@ Example with caching:
     "name": "gemini_ask",
     "arguments": {
         "query": "Follow up on our previous discussion...",
-        "model": "gemini-1.5-pro-001",
+        "model": "gemini-2.5-pro",
         "use_cache": true,
         "cache_ttl": "1h"
     }
@@ -414,7 +414,7 @@ Example with context window size management:
     "name": "gemini_ask",
     "arguments": {
         "query": "Generate a detailed analysis of this code...",
-        "model": "gemini-1.5-pro-001",
+        "model": "gemini-2.5-pro",
         "max_tokens": 8192
     }
 }
@@ -427,8 +427,8 @@ Example with context window size management:
 | Variable                      | Description                          | Default                  |
 | ----------------------------- | ------------------------------------ | ------------------------ |
 | `GEMINI_API_KEY`              | Google Gemini API key                | _Required_               |
-| `GEMINI_MODEL`                | Default model ID for `gemini_ask`    | `gemini-1.5-pro`         |
-| `GEMINI_SEARCH_MODEL`         | Default model ID for `gemini_search` | `gemini-2.0-flash`       |
+| `GEMINI_MODEL`                | Default model ID for `gemini_ask`    | `gemini-2.5-pro`         |
+| `GEMINI_SEARCH_MODEL`         | Default model ID for `gemini_search` | `gemini-2.5-flash-lite`  |
 | `GEMINI_SYSTEM_PROMPT`        | System prompt for general queries    | _Custom review prompt_   |
 | `GEMINI_SEARCH_SYSTEM_PROMPT` | System prompt for search             | _Custom search prompt_   |
 | `GEMINI_MAX_FILE_SIZE`        | Max upload size (bytes)              | `10485760` (10MB)        |

@@ -189,9 +189,9 @@ func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse, withTh
 }
 
 // extractThinkingFromResponse attempts to extract thinking text from a Gemini response
-func extractThinkingFromResponse(resp *genai.GenerateContentResponse) string {
+func extractThinkingFromResponse(_ *genai.GenerateContentResponse) string {
 	// This is not directly available in the Go API, would need to parse raw JSON
 	// For now, return empty string to indicate no thinking data
-	// A proper implementation would need to look at resp.Candidates[0] raw data
+	// A proper implementation would need to look at raw JSON response data
 	return ""
 }

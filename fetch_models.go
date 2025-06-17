@@ -72,13 +72,14 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 			logger.Debug("Found Gemini model from API: %s", id)
 			logger.Debug("Model details: %+v", model)
 
-			// Skip embedding models and visual models
+			// Skip embedding models, visual models, and outdated 1.x models
 			idLower := strings.ToLower(id)
 			if strings.Contains(idLower, "embedding") ||
 				strings.Contains(idLower, "vision") ||
 				strings.Contains(idLower, "visual") ||
-				strings.Contains(idLower, "image") {
-				logger.Debug("Skipping embedding/visual model: %s", id)
+				strings.Contains(idLower, "image") ||
+				strings.Contains(idLower, "1.") {
+				logger.Debug("Skipping embedding/visual/outdated model: %s", id)
 				continue
 			}
 
@@ -132,6 +133,12 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 				contextWindowSize = 1048576 // 1M tokens for Pro models
 			} else if strings.Contains(idLower, "flash") {
 				description = "Flash model optimized for efficiency and speed"
+
+				// 2.5 Flash models support thinking mode
+				if strings.Contains(idLower, "2.5-flash") && (strings.Contains(idLower, "preview") || strings.Contains(idLower, "exp")) {
+					supportsThinking = true
+					logger.Debug("Marking 2.5 Flash model %s as supporting thinking mode", id)
+				}
 				// Flash models use the default values set above
 			}
 
@@ -150,10 +157,11 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 			// Check if this is a preferred version based on specific model patterns
 			isPreferred := false
 
-			// Define preferred versions for major model families
+			// Define preferred versions for major model families (2.0+ only)
 			preferredVersions := map[string]bool{
 				"gemini-2.5-pro-preview-06-05":        true,
 				"gemini-2.5-flash-preview-05-20":      true,
+				"gemini-2.5-flash-lite-preview-06-17": true,
 				"gemini-2.0-flash-001":                true,
 				"gemini-2.0-flash-lite-001":           true,
 				"gemini-2.0-pro-exp-02-05":            true,
@@ -163,7 +171,6 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 				"gemini-2.0-flash-live-001":           true,
 				"gemini-2.0-flash-exp":                true,
 				"gemini-2.0-flash-lite-preview":       true,
-				"gemini-1.5-flash-8b-001":             true,
 				"gemini-exp-1206":                     true,
 			}
 
@@ -311,13 +318,20 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 			// For non-predefined model families, set preferences based on characteristics
 			if strings.Contains(strings.ToLower(familyID), "2.5-pro") {
 				familyModel.PreferredForThinking = true
-				logger.Debug("Marking model family %s as preferred for thinking tasks", familyID)
-			} else if strings.Contains(strings.ToLower(familyID), "2.0-flash") {
 				familyModel.PreferredForCaching = true
-				logger.Debug("Marking model family %s as preferred for caching", familyID)
-			} else if strings.Contains(strings.ToLower(familyID), "2.5-flash") {
+				logger.Debug("Marking model family %s as preferred for thinking and caching tasks", familyID)
+			} else if strings.Contains(strings.ToLower(familyID), "2.5-flash-lite") {
+				familyModel.PreferredForThinking = true
 				familyModel.PreferredForSearch = true
-				logger.Debug("Marking model family %s as preferred for search", familyID)
+				logger.Debug("Marking model family %s as preferred for thinking and search", familyID)
+			} else if strings.Contains(strings.ToLower(familyID), "2.5-flash") {
+				familyModel.PreferredForThinking = true
+				familyModel.PreferredForCaching = true
+				familyModel.PreferredForSearch = false
+				logger.Debug("Marking model family %s as preferred for thinking and caching", familyID)
+			} else if strings.Contains(strings.ToLower(familyID), "2.0-flash") {
+				// 2.0 models are fallback options, not preferred
+				logger.Debug("Model family %s marked as fallback (not preferred for any task)", familyID)
 			}
 		}
 

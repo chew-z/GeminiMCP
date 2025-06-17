@@ -34,11 +34,11 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			FamilyID:             "gemini-2.5-flash",
 			Name:                 "Gemini 2.5 Flash",
 			Description:          "Preview/Experimental Flash model optimized for efficiency and speed",
-			SupportsThinking:     false,
+			SupportsThinking:     true,
 			ContextWindowSize:    32768,
-			PreferredForThinking: false,
-			PreferredForCaching:  false,
-			PreferredForSearch:   true,
+			PreferredForThinking: true,
+			PreferredForCaching:  true,
+			PreferredForSearch:   false,
 			Versions: []ModelVersion{
 				{
 					ID:              "gemini-2.5-flash-preview-05-20",
@@ -55,6 +55,26 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			},
 		},
 
+		// Gemini 2.5 Flash Lite Model
+		{
+			FamilyID:             "gemini-2.5-flash-lite",
+			Name:                 "Gemini 2.5 Flash Lite",
+			Description:          "Preview/Experimental Flash model optimized for efficiency and speed",
+			SupportsThinking:     true,
+			ContextWindowSize:    32768,
+			PreferredForThinking: true,
+			PreferredForCaching:  false,
+			PreferredForSearch:   true,
+			Versions: []ModelVersion{
+				{
+					ID:              "gemini-2.5-flash-lite-preview-06-17",
+					Name:            "Gemini 2.5 Flash Lite Preview 06 17",
+					SupportsCaching: false,
+					IsPreferred:     true,
+				},
+			},
+		},
+
 		// Gemini 2.0 Flash Models
 		{
 			FamilyID:             "gemini-2.0-flash",
@@ -63,7 +83,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			SupportsThinking:     false,
 			ContextWindowSize:    32768,
 			PreferredForThinking: false,
-			PreferredForCaching:  true,
+			PreferredForCaching:  false,
 			PreferredForSearch:   false,
 			Versions: []ModelVersion{
 				{
