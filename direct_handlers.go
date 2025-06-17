@@ -633,7 +633,92 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	}
 
 	// Basic examples
-	if err := write("```json\n// For complex reasoning (use Pro)\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"gemini-2.5-pro\",\n  \"enable_thinking\": true\n}\n\n// For general tasks (use Flash)\n{\n  \"query\": \"Your general question here\",\n  \"model\": \"gemini-2.5-flash\"\n}\n\n// For search queries (use Flash Lite)\n{\n  \"query\": \"Your search question here\",\n  \"model\": \"gemini-2.5-flash-lite-preview-06-17\"\n}\n```\n"); err != nil {
+	if err := write("```json\n// For complex reasoning (use Pro)\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"gemini-2.5-pro\",\n  \"enable_thinking\": true\n}\n\n// For general tasks (use Flash)\n{\n  \"query\": \"Your general question here\",\n  \"model\": \"gemini-2.5-flash\"\n}\n\n// For search queries (use Flash Lite)\n{\n  \"query\": \"Your search question here\",\n  \"model\": \"gemini-2.5-flash-lite-preview-06-17\"\n}\n```\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	// System Prompt Information
+	if err := write("## System Prompt\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("The default system prompt is optimized for code review and programming problems. For other tasks, consider using a custom system prompt:\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("```json\n// Using custom system prompt for creative writing\n{\n  \"query\": \"Write a short story about...\",\n  \"model\": \"gemini-2.5-pro\",\n  \"systemPrompt\": \"You are a creative writing assistant focused on storytelling, character development, and narrative structure.\"\n}\n\n// Using custom system prompt for data analysis\n{\n  \"query\": \"Analyze this dataset...\",\n  \"model\": \"gemini-2.5-flash\",\n  \"systemPrompt\": \"You are a data analyst expert. Provide clear insights, statistical analysis, and actionable recommendations.\"\n}\n```\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	// File Attachments
+	if err := write("## File Attachments\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("Attach files to provide context for your queries. This is particularly useful for code review, debugging, and analysis:\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("```json\n// Code review with multiple files\n{\n  \"query\": \"Review this code for potential issues and suggest improvements\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\n    \"/path/to/main.go\",\n    \"/path/to/utils.go\",\n    \"/path/to/config.yaml\"\n  ]\n}\n\n// Documentation analysis\n{\n  \"query\": \"Explain how these components interact and suggest documentation improvements\",\n  \"model\": \"gemini-2.5-flash\",\n  \"file_paths\": [\n    \"/path/to/README.md\",\n    \"/path/to/api.go\"\n  ]\n}\n```\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	// Caching
+	if err := write("## Caching\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("Pro and Flash models support caching for improved performance on repeated queries. Flash Lite (preview) does not support caching yet.\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("```json\n// Enable caching with default TTL (10 minutes)\n{\n  \"query\": \"Analyze this codebase structure\",\n  \"model\": \"gemini-2.5-flash\",\n  \"file_paths\": [\"/path/to/large/codebase\"],\n  \"use_cache\": true\n}\n\n// Custom cache TTL\n{\n  \"query\": \"Long-term project analysis\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\"/path/to/project\"],\n  \"use_cache\": true,\n  \"cache_ttl\": \"30m\"\n}\n```\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("Caching is especially useful when:\n- Working with large codebases where context from multiple files is needed\n- Planning to ask multiple follow-up questions about the same code\n- Debugging issues that require file context\n- Code review scenarios where you need to discuss specific implementations\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	// Thinking Mode
+	if err := write("## Thinking Mode\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("All Gemini 2.5 models support thinking mode, which shows the model's detailed reasoning process. This is particularly powerful with Pro models.\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("```json\n// Enable thinking with budget level\n{\n  \"query\": \"Solve this complex algorithm problem step by step\",\n  \"model\": \"gemini-2.5-pro\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"high\"\n}\n\n// Custom thinking budget\n{\n  \"query\": \"Debug this complex issue\",\n  \"model\": \"gemini-2.5-pro\",\n  \"enable_thinking\": true,\n  \"thinking_budget\": 12000\n}\n```\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("**Thinking Budget Levels:**\n- `none`: 0 tokens (disabled)\n- `low`: 4,096 tokens\n- `medium`: 16,384 tokens  \n- `high`: 24,576 tokens (maximum)\n\nOr use `thinking_budget` to set a specific token count (0-24,576).\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	// Advanced Examples
+	if err := write("## Advanced Examples\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("```json\n// Comprehensive code review with thinking and caching\n{\n  \"query\": \"Perform a thorough security and performance review of this codebase\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\n    \"/path/to/main.go\",\n    \"/path/to/auth.go\",\n    \"/path/to/database.go\"\n  ],\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\",\n  \"use_cache\": true,\n  \"cache_ttl\": \"1h\"\n}\n\n// Custom system prompt with file context\n{\n  \"query\": \"Suggest architectural improvements for better scalability\",\n  \"model\": \"gemini-2.5-pro\",\n  \"systemPrompt\": \"You are a senior software architect. Focus on scalability, maintainability, and best practices.\",\n  \"file_paths\": [\"/path/to/architecture/overview.md\"],\n  \"enable_thinking\": true\n}\n```\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
