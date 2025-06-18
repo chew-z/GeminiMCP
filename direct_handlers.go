@@ -526,7 +526,17 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	if err := write("This server supports the official Gemini 2.5 model family:\n\n"); err != nil {
+	if err := write("This server supports 3 Gemini 2.5 models and provides 2 main tools:\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- `gemini_ask`: For general queries, coding problems (default: code review system prompt)\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- `gemini_search`: For search-grounded queries (default: search assistant system prompt)\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
@@ -536,15 +546,11 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Model ID**: `gemini-2.5-pro`\n"); err != nil {
+	if err := write("- **Model ID**: `gemini-2.5-pro` (production)\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Description**: Our most powerful thinking model with maximum response accuracy and state-of-the-art performance\n"); err != nil {
-		logger.Error("Error writing to response: %v", err)
-		return createErrorResult("Error generating model list"), nil
-	}
-	if err := write("- **Best for**: Complex reasoning, programming tasks, thinking mode\n"); err != nil {
+	if err := write("- **Description**: Most powerful model with maximum accuracy and performance\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
@@ -552,11 +558,19 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Supports Thinking**: Yes\n"); err != nil {
+	if err := write("- **Best for**: Complex reasoning, detailed analysis, comprehensive code review\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Supports Caching**: Yes\n\n"); err != nil {
+	if err := write("- **Thinking Mode**: Yes (advanced reasoning capabilities)\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+	if err := write("- **Implicit Caching**: Yes (automatic optimization, 2048+ token minimum)\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+	if err := write("- **Explicit Caching**: Yes (user-controlled via `use_cache`)\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
@@ -566,15 +580,11 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Model ID**: `gemini-2.5-flash`\n"); err != nil {
+	if err := write("- **Model ID**: `gemini-2.5-flash` (production)\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Description**: Best model in terms of price-performance, offering well-rounded capabilities\n"); err != nil {
-		logger.Error("Error writing to response: %v", err)
-		return createErrorResult("Error generating model list"), nil
-	}
-	if err := write("- **Best for**: General tasks, balanced performance\n"); err != nil {
+	if err := write("- **Description**: Balanced price-performance with fast responses\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
@@ -582,11 +592,19 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Supports Thinking**: Yes\n"); err != nil {
+	if err := write("- **Best for**: General programming tasks, standard code review\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Supports Caching**: Yes\n\n"); err != nil {
+	if err := write("- **Thinking Mode**: Yes\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+	if err := write("- **Implicit Caching**: Yes (automatic optimization, 1024+ token minimum)\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+	if err := write("- **Explicit Caching**: Yes (user-controlled via `use_cache`)\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
@@ -596,7 +614,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Model ID**: `gemini-2.5-flash-lite-preview-06-17`\n"); err != nil {
+	if err := write("- **Model ID**: `gemini-2.5-flash-lite-preview-06-17` (preview)\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
@@ -604,58 +622,123 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Best for**: Search queries, lightweight tasks\n"); err != nil {
-		logger.Error("Error writing to response: %v", err)
-		return createErrorResult("Error generating model list"), nil
-	}
 	if err := write("- **Context Window**: 32K tokens\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Supports Thinking**: Yes\n"); err != nil {
+	if err := write("- **Best for**: Search queries, lightweight tasks, quick responses\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Supports Caching**: No (preview version)\n\n"); err != nil {
+	if err := write("- **Thinking Mode**: Yes (off by default for speed/cost, can be enabled)\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-
-	// Add usage section
-	if err := write("## Usage\n\n"); err != nil {
+	if err := write("- **Implicit Caching**: No\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-
-	if err := write("Specify a model ID in the `model` parameter:\n\n"); err != nil {
-		logger.Error("Error writing to response: %v", err)
-		return createErrorResult("Error generating model list"), nil
-	}
-
-	// Basic examples
-	if err := write("```json\n// For complex reasoning (use Pro)\n{\n  \"query\": \"Your complex question here\",\n  \"model\": \"gemini-2.5-pro\",\n  \"enable_thinking\": true\n}\n\n// For general tasks (use Flash)\n{\n  \"query\": \"Your general question here\",\n  \"model\": \"gemini-2.5-flash\"\n}\n\n// For search queries (use Flash Lite)\n{\n  \"query\": \"Your search question here\",\n  \"model\": \"gemini-2.5-flash-lite-preview-06-17\"\n}\n```\n\n"); err != nil {
+	if err := write("- **Explicit Caching**: No (preview limitation)\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	// System Prompt Information
-	if err := write("## System Prompt\n\n"); err != nil {
+	// Tool Usage Examples
+	if err := write("## Tool Usage Examples\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	if err := write("The default system prompt is optimized for code review and programming problems. For other tasks, consider using a custom system prompt:\n\n"); err != nil {
+	// gemini_ask examples
+	if err := write("### gemini_ask Examples\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	if err := write("```json\n// Using custom system prompt for creative writing\n{\n  \"query\": \"Write a short story about...\",\n  \"model\": \"gemini-2.5-pro\",\n  \"systemPrompt\": \"You are a creative writing assistant focused on storytelling, character development, and narrative structure.\"\n}\n\n// Using custom system prompt for data analysis\n{\n  \"query\": \"Analyze this dataset...\",\n  \"model\": \"gemini-2.5-flash\",\n  \"systemPrompt\": \"You are a data analyst expert. Provide clear insights, statistical analysis, and actionable recommendations.\"\n}\n```\n\n"); err != nil {
+	if err := write("**General Problem (non-coding):**\n```json\n{\n  \"query\": \"Explain quantum computing in simple terms\",\n  \"model\": \"gemini-2.5-flash\",\n  \"systemPrompt\": \"You are an expert science communicator. Explain complex topics clearly for a general audience.\"\n}\n```\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("**Coding Problem with Files and Cache:**\n```json\n{\n  \"query\": \"Review this code for security vulnerabilities and performance issues\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\"/path/to/auth.go\", \"/path/to/database.go\"],\n  \"use_cache\": true,\n  \"cache_ttl\": \"30m\",\n  \"enable_thinking\": true\n}\n```\n*Note: Default system prompt optimized for code review will be used*\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("**Custom System Prompt Override:**\n```json\n{\n  \"query\": \"Analyze this code architecture\",\n  \"model\": \"gemini-2.5-pro\",\n  \"systemPrompt\": \"You are a senior software architect. Focus on design patterns, scalability, and maintainability.\",\n  \"file_paths\": [\"/path/to/main.go\"]\n}\n```\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	// gemini_search examples
+	if err := write("### gemini_search Examples\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("**Basic Search:**\n```json\n{\n  \"query\": \"What are the latest developments in Go programming language?\",\n  \"model\": \"gemini-2.5-flash-lite-preview-06-17\"\n}\n```\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("**Search with Time Filtering:**\n```json\n{\n  \"query\": \"Recent security vulnerabilities in JavaScript frameworks\",\n  \"model\": \"gemini-2.5-flash\",\n  \"start_time\": \"2024-01-01T00:00:00Z\",\n  \"end_time\": \"2024-12-31T23:59:59Z\"\n}\n```\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("**Search with Thinking Mode (Flash Lite):**\n```json\n{\n  \"query\": \"Compare the pros and cons of different cloud deployment strategies\",\n  \"model\": \"gemini-2.5-flash-lite-preview-06-17\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\"\n}\n```\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	// System Prompt Details
+	if err := write("## System Prompt Details\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("**Default System Prompts:**\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- **gemini_ask**: Optimized for thorough code review (senior developer perspective)\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- **gemini_search**: Helpful search assistant for accurate, up-to-date information\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("**Override via:**\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- `systemPrompt` parameter in requests\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- `GEMINI_SYSTEM_PROMPT` env variable (for gemini_ask)\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- `GEMINI_SEARCH_SYSTEM_PROMPT` env variable (for gemini_search)\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- Command line flags: `--gemini-system-prompt`\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
 
 	// File Attachments
-	if err := write("## File Attachments\n\n"); err != nil {
+	if err := write("## File Attachments (gemini_ask only)\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
@@ -671,33 +754,73 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	}
 
 	// Caching
-	if err := write("## Caching\n\n"); err != nil {
+	if err := write("## Caching (gemini_ask only)\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	if err := write("Pro and Flash models support caching for improved performance on repeated queries. Flash Lite (preview) does not support caching yet.\n\n"); err != nil {
+	if err := write("**Implicit Caching (Automatic):**\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	if err := write("```json\n// Enable caching with default TTL (10 minutes)\n{\n  \"query\": \"Analyze this codebase structure\",\n  \"model\": \"gemini-2.5-flash\",\n  \"file_paths\": [\"/path/to/large/codebase\"],\n  \"use_cache\": true\n}\n\n// Custom cache TTL\n{\n  \"query\": \"Long-term project analysis\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\"/path/to/project\"],\n  \"use_cache\": true,\n  \"cache_ttl\": \"30m\"\n}\n```\n\n"); err != nil {
+	if err := write("- 75% token discount for requests with common prefixes\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	if err := write("Caching is especially useful when:\n- Working with large codebases where context from multiple files is needed\n- Planning to ask multiple follow-up questions about the same code\n- Debugging issues that require file context\n- Code review scenarios where you need to discuss specific implementations\n\n"); err != nil {
+	if err := write("- Pro: 2048+ tokens minimum\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- Flash: 1024+ tokens minimum\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- Keep content at the beginning of requests the same, add variable content at the end\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("**Explicit Caching (Manual):**\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- Available for Pro and Flash only\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- Use `use_cache: true` parameter\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- Custom TTL with `cache_ttl` (default: 10 minutes)\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("```json\n// Enable explicit caching\n{\n  \"query\": \"Analyze this codebase structure\",\n  \"model\": \"gemini-2.5-flash\",\n  \"file_paths\": [\"/path/to/large/codebase\"],\n  \"use_cache\": true,\n  \"cache_ttl\": \"30m\"\n}\n```\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
 
 	// Thinking Mode
-	if err := write("## Thinking Mode\n\n"); err != nil {
+	if err := write("## Thinking Mode (both tools)\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	if err := write("All Gemini 2.5 models support thinking mode, which shows the model's detailed reasoning process. This is particularly powerful with Pro models.\n\n"); err != nil {
+	if err := write("All Gemini 2.5 models support thinking mode, which shows the model's detailed reasoning process. Flash-Lite has thinking off by default for speed/cost optimization.\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("**Thinking Budget Levels:**\n- `none`: 0 tokens (disabled)\n- `low`: 4,096 tokens\n- `medium`: 16,384 tokens\n- `high`: 24,576 tokens (maximum)\n\nOr use `thinking_budget` to set a specific token count (0-24,576).\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
@@ -707,7 +830,23 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	if err := write("**Thinking Budget Levels:**\n- `none`: 0 tokens (disabled)\n- `low`: 4,096 tokens\n- `medium`: 16,384 tokens  \n- `high`: 24,576 tokens (maximum)\n\nOr use `thinking_budget` to set a specific token count (0-24,576).\n\n"); err != nil {
+	// Time Filtering
+	if err := write("## Time Filtering (gemini_search only)\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("Filter search results by publication date using RFC3339 format:\n\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- Use `start_time` and `end_time` together (both required)\n"); err != nil {
+		logger.Error("Error writing to response: %v", err)
+		return createErrorResult("Error generating model list"), nil
+	}
+
+	if err := write("- Format: `YYYY-MM-DDTHH:MM:SSZ`\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
@@ -718,7 +857,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	if err := write("```json\n// Comprehensive code review with thinking and caching\n{\n  \"query\": \"Perform a thorough security and performance review of this codebase\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\n    \"/path/to/main.go\",\n    \"/path/to/auth.go\",\n    \"/path/to/database.go\"\n  ],\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\",\n  \"use_cache\": true,\n  \"cache_ttl\": \"1h\"\n}\n\n// Custom system prompt with file context\n{\n  \"query\": \"Suggest architectural improvements for better scalability\",\n  \"model\": \"gemini-2.5-pro\",\n  \"systemPrompt\": \"You are a senior software architect. Focus on scalability, maintainability, and best practices.\",\n  \"file_paths\": [\"/path/to/architecture/overview.md\"],\n  \"enable_thinking\": true\n}\n```\n"); err != nil {
+	if err := write("```json\n// Comprehensive code review with thinking and caching (gemini_ask)\n{\n  \"query\": \"Perform a thorough security and performance review of this codebase\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\n    \"/path/to/main.go\",\n    \"/path/to/auth.go\",\n    \"/path/to/database.go\"\n  ],\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\",\n  \"use_cache\": true,\n  \"cache_ttl\": \"1h\"\n}\n\n// Custom system prompt with file context (gemini_ask)\n{\n  \"query\": \"Suggest architectural improvements for better scalability\",\n  \"model\": \"gemini-2.5-pro\",\n  \"systemPrompt\": \"You are a senior software architect. Focus on scalability, maintainability, and best practices.\",\n  \"file_paths\": [\"/path/to/architecture/overview.md\"],\n  \"enable_thinking\": true\n}\n```\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
