@@ -42,9 +42,9 @@ Add this server to any MCP-compatible client like Claude Desktop by adding to yo
     "gemini": {
         "command": "/Users/<user>/Path/to/bin/mcp-gemini",
         "env": {
-            "GEMINI_API_KEY": "YOUR_API_KEY_HERE",
-            "GEMINI_MODEL": "gemini-2.5-pro-exp-03-25",
-            "GEMINI_SEARCH_MODEL": "gemini-2.5-flash-preview-04-17",
+            "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY",
+            "GEMINI_MODEL": "gemini-2.5-pro",
+            "GEMINI_SEARCH_MODEL": "gemini-2.5-flash-lite", // Server resolves to latest preview like gemini-2.5-flash-lite-preview-06-17
             "GEMINI_SYSTEM_PROMPT": "You are a senior developer. Your job is to do a thorough code review of this code...",
             "GEMINI_SEARCH_SYSTEM_PROMPT": "You are a search assistant. Your job is to find the most relevant information about this topic..."
         }
@@ -146,6 +146,7 @@ This approach makes it easy to have an extended conversation about your codebase
 For programming tasks, you can directly use the file attachments feature with caching to create a more efficient workflow:
 
 > _Use gemini_ask with model gemini-2.0-flash-001 to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
+> _Use gemini_ask with model `gemini-2.5-flash` to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
 
 The server has special optimizations for this use case, particularly useful when:
 - Working with complex codebases requiring multiple files for context
@@ -196,8 +197,8 @@ For code analysis, general queries, and creative tasks with optional file contex
     "name": "gemini_ask",
     "arguments": {
         "query": "Review this Go code for concurrency issues...",
-        "model": "gemini-2.0-flash-001",
-        "systemPrompt": "Optional custom instructions",
+        "model": "gemini-2.5-flash",
+        "systemPrompt": "You are a senior Go developer. Focus on concurrency patterns, potential race conditions, and performance implications.",
         "file_paths": ["main.go", "config.go"],
         "use_cache": true,
         "cache_ttl": "1h"
@@ -212,7 +213,7 @@ Simple code analysis with file attachments:
     "name": "gemini_ask",
     "arguments": {
         "query": "Analyze this code and suggest improvements",
-        "model": "gemini-2.5-pro-exp-03-25",
+        "model": "gemini-2.5-pro",
         "file_paths": ["models.go"]
     }
 }
@@ -225,7 +226,7 @@ Combining file attachments with caching for repeated queries:
     "name": "gemini_ask",
     "arguments": {
         "query": "Explain the main data structures in these files and how they interact",
-        "model": "gemini-2.0-flash-001",
+        "model": "gemini-2.5-flash",
         "file_paths": ["models.go", "structs.go"],
         "use_cache": true,
         "cache_ttl": "30m"
@@ -247,7 +248,7 @@ Provides grounded answers using Google Search integration with enhanced model ca
         "thinking_budget": 8192,
         "thinking_budget_level": "medium",
         "max_tokens": 4096,
-        "model": "gemini-2.5-pro-exp-03-25",
+        "model": "gemini-2.5-pro",
         "start_time": "2024-01-01T00:00:00Z",
         "end_time": "2024-12-31T23:59:59Z"
     }
@@ -284,30 +285,40 @@ Lists all available Gemini models with capabilities and caching support.
 
 Returns comprehensive model information including:
 
-- Complete list of available models (dynamically fetched at startup)
-- Model IDs and descriptions
-- Caching support status
+- Detailed descriptions of the supported Gemini 2.5 models (Pro, Flash, Flash Lite).
+- Model IDs, context window sizes, and descriptions.
+- Caching capabilities (implicit and explicit).
 - Usage examples
+- Thinking mode support.
 
 ### Model Management
 
-The server dynamically fetches available Gemini models from the Google API at startup, preserving pre-defined descriptions and filtering out non-relevant models like embedding and visual models. Models are organized by preference and capability:
+This server is optimized for and exclusively supports the **Gemini 2.5 family of models**. The `gemini_models` tool provides a detailed, static list of these supported models and their specific capabilities as presented by the server.
 
-#### Recommended Models for Specific Tasks
+Key supported models (as detailed by the `gemini_models` tool):
 
-| Model ID                      | Description                                        | Recommended For                          |
-| ----------------------------- | -------------------------------------------------- | ---------------------------------------- |
-| `gemini-2.5-pro-exp-03-25`    | Advanced Pro model with superior thinking support  | Complex reasoning with thinking mode     |
-| `gemini-2.0-flash-001`        | Cacheable Flash model optimized for repeated tasks | Programming tasks with caching          |
-| `gemini-2.5-flash-preview-04-17` | Fast Flash model with excellent search capabilities | Search queries and web browsing         |
+-   **`gemini-2.5-pro`** (production):
+    *   Most powerful model, 1M token context window.
+    *   Best for: Complex reasoning, detailed analysis, comprehensive code review.
+    *   Capabilities: Advanced thinking mode, implicit caching (2048+ token minimum), explicit caching.
+-   **`gemini-2.5-flash`** (production):
+    *   Balanced price-performance, 32K token context window.
+    *   Best for: General programming tasks, standard code review.
+    *   Capabilities: Thinking mode, implicit caching (1024+ token minimum), explicit caching.
+-   **`gemini-2.5-flash-lite-preview-06-17`** (preview):
+    *   Optimized for cost efficiency and low latency, 32K token context window.
+    *   Best for: Search queries, lightweight tasks, quick responses.
+    *   Capabilities: Thinking mode (off by default), no implicit or explicit caching (preview limitation).
 
-Models are organized by preference first, then by version (newest to oldest) when displayed in the `gemini_models` tool output. Use the `gemini_models` tool for a complete, up-to-date list.
+**Always use the `gemini_models` tool to get the most current details, capabilities, and example usage for each model as presented by the server.**
 
 ### Caching System
 
 The server offers sophisticated context caching:
 
-- **Model Compatibility**: Only models with version suffixes (e.g., `-001`) support caching
+- **Model Compatibility**:
+    - **Gemini 2.5 Pro & Flash**: Support both implicit caching (automatic optimization by Google for repeated prefixes if content is long enough – 2048+ tokens for Pro, 1024+ for Flash) and explicit caching (user-controlled via `use_cache: true`).
+    - **Gemini 2.5 Flash Lite (Preview)**: Preview versions typically do not support implicit or explicit caching.
 - **Cache Control**: Set `use_cache: true` and specify `cache_ttl` (e.g., "10m", "2h")
 - **File Association**: Automatically stores files and associates with cache context
 - **Performance Optimization**: Local metadata caching for quick lookups
