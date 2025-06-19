@@ -44,7 +44,7 @@ Add this server to any MCP-compatible client like Claude Desktop by adding to yo
         "env": {
             "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY",
             "GEMINI_MODEL": "gemini-2.5-pro",
-            "GEMINI_SEARCH_MODEL": "gemini-2.5-flash-lite", // Server resolves to latest preview like gemini-2.5-flash-lite-preview-06-17
+            "GEMINI_SEARCH_MODEL": "gemini-2.5-flash-lite",
             "GEMINI_SYSTEM_PROMPT": "You are a senior developer. Your job is to do a thorough code review of this code...",
             "GEMINI_SEARCH_SYSTEM_PROMPT": "You are a search assistant. Your job is to find the most relevant information about this topic..."
         }
