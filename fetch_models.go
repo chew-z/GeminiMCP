@@ -4,9 +4,9 @@ import (
 	"context"
 )
 
-// FetchGeminiModels simply uses the predefined fallback models since we only support
+// InitializeModelStore simply uses the predefined fallback models since we only support
 // the 3 specific Gemini 2.5 models: Pro, Flash, and Flash Lite
-func FetchGeminiModels(ctx context.Context, apiKey string) error {
+func InitializeModelStore(ctx context.Context) error {
 	// Get logger from context if available
 	var logger Logger
 	loggerValue := ctx.Value(loggerKey)
@@ -20,7 +20,7 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 		logger = NewLogger(LevelInfo)
 	}
 
-	logger.Info("Setting up Gemini 2.5 model families...")
+	logger.Info("Initializing Gemini 2.5 model families from fallback data...")
 
 	// Use the 3 predefined Gemini 2.5 models
 	models := fallbackGeminiModels()
@@ -30,7 +30,7 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 	modelStore.models = models
 	modelStore.Unlock()
 
-	logger.Info("Successfully configured %d Gemini 2.5 model families", len(models))
+	logger.Info("Successfully initialized %d Gemini 2.5 model families in model store", len(models))
 
 	// Log the configured models for easier debugging
 	for i, model := range models {
