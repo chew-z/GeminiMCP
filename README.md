@@ -30,7 +30,7 @@ go build -o mcp-gemini
 ## Start server with environment variables
 export GEMINI_API_KEY=your_api_key
 export GEMINI_MODEL=gemini-2.5-pro
-./mcp-gemini
+./bin/mcp-gemini # Assuming build output is in ./bin
 ```
 
 ### Client Configuration
@@ -339,10 +339,8 @@ Robust file processing with:
 
 #### Thinking Mode
 
-The server supports "thinking mode" for compatible models (primarily Gemini 2.5 Pro models):
+The server supports "thinking mode" for all compatible Gemini 2.5 models (Pro, Flash, and Flash Lite, though it's off by default for Flash Lite):
 
-- **Enhanced Reasoning**: Shows the model's step-by-step reasoning process
-- **Complex Problem Solving**: Particularly useful for debugging, mathematical reasoning, and complex analysis
 - **Model Compatibility**: Automatically validates thinking capability based on requested model
 - **Tool Support**: Available in both `gemini_ask` and `gemini_search` tools
 - **Configurable Budget**: Control thinking depth with budget levels or explicit token counts
@@ -354,7 +352,7 @@ Example with thinking mode:
     "name": "gemini_ask",
     "arguments": {
         "query": "Analyze the algorithmic complexity of merge sort vs. quick sort",
-        "model": "gemini-2.5-pro-exp-03-25",
+        "model": "gemini-2.5-pro",
         "enable_thinking": true,
         "thinking_budget_level": "high"
     }
@@ -382,7 +380,7 @@ Examples:
   "name": "gemini_ask",
   "arguments": {
     "query": "Analyze this algorithm...",
-    "model": "gemini-2.5-pro-exp-03-25",
+    "model": "gemini-2.5-pro",
     "enable_thinking": true,
     "thinking_budget_level": "medium"
   }
@@ -393,7 +391,7 @@ Examples:
   "name": "gemini_search",
   "arguments": {
     "query": "Research quantum computing developments...",
-    "model": "gemini-2.5-pro-exp-03-25",
+    "model": "gemini-2.5-pro", // Or gemini-2.5-flash / gemini-2.5-flash-lite
     "enable_thinking": true,
     "thinking_budget": 12000
   }
@@ -429,8 +427,8 @@ Example with context window size management:
 | Variable                      | Description                          | Default                  |
 | ----------------------------- | ------------------------------------ | ------------------------ |
 | `GEMINI_API_KEY`              | Google Gemini API key                | _Required_               |
-| `GEMINI_MODEL`                | Default model ID for `gemini_ask`    | `gemini-2.5-pro`         |
-| `GEMINI_SEARCH_MODEL`         | Default model ID for `gemini_search` | `gemini-2.5-flash-lite`  |
+| `GEMINI_MODEL`                | Default model for `gemini_ask`       | `gemini-2.5-pro`         |
+| `GEMINI_SEARCH_MODEL`         | Default model for `gemini_search`    | `gemini-2.5-flash-lite`  |
 | `GEMINI_SYSTEM_PROMPT`        | System prompt for general queries    | _Custom review prompt_   |
 | `GEMINI_SEARCH_SYSTEM_PROMPT` | System prompt for search             | _Custom search prompt_   |
 | `GEMINI_MAX_FILE_SIZE`        | Max upload size (bytes)              | `10485760` (10MB)        |
@@ -478,26 +476,10 @@ go test -v
 
 ## Recent Changes
 
-- **Time Range Filtering**: Added time range filtering to `gemini_search` tool with `start_time` and `end_time` parameters to filter search results by publication date
-- **Improved Model Management**: Enhanced model handling with preference-based organization, filtering of embedding/visual models, and preservation of custom descriptions
-- **Model Task Preferences**: Added model recommendations for specific tasks (thinking, caching, search)
-- **Advanced Usage Examples**: Added documentation for combining file attachments with caching for programming tasks
-- **File Context Optimizations**: Improved handling of file content with caching for more efficient follow-up queries
-- **Model Display Organization**: Reorganized model output to prioritize recommended models and newer versions
-- **Thinking Budget Control**: Added configurable thinking budget levels and explicit token control for fine-tuning reasoning depth
-- **Model Selection for Search**: Added support for custom model selection in the `gemini_search` tool
-- **Enhanced Thinking Mode Support**: Added thinking capability across compatible models, enabling more detailed reasoning processes
-- **Conflict Management**: Improved handling of caching and thinking mode interactions to prevent conflicts
-- **Context Window Sizing**: Better management of token limits with automatic adjustments for model capabilities
-- **Advanced Model Selection**: Enhanced dynamic model validation and selection based on requested capabilities
-- **Improved Error Handling**: Better error messages and logging for troubleshooting API interactions
-- **Code Optimization**: Removed unnecessary whitespace and improved formatting for better maintainability
-- **Dynamic Model Fetching**: Automatic retrieval of available Gemini models at startup
-- **Enhanced Client Integration**: Added configuration guides for MCP clients
-- **Expanded Model Support**: Updated compatibility with latest Gemini 2.5 Pro and 2.0 Flash models
-- **Search Capabilities**: Added Google Search integration with source attribution
-- **Improved File Handling**: Enhanced MIME detection and validation
-- **Caching Enhancements**: Better support for models with version suffixes
+- **Exclusive Gemini 2.5 Support**: Server now exclusively supports the Gemini 2.5 family of models (Pro, Flash, Flash Lite) for optimal performance and access to the latest features.
+- **Streamlined Model Information**: The `gemini_models` tool provides detailed, up-to-date information on supported Gemini 2.5 models, their context windows, and specific capabilities like caching and thinking mode.
+- **Enhanced Caching for Gemini 2.5**: Leverages implicit caching (automatic for Pro/Flash with sufficient context) and provides robust explicit caching for Gemini 2.5 Pro and Flash models.
+- **Time Range Filtering**: Added `start_time` and `end_time` to `gemini_search` for filtering results by publication date.
 
 ## License
 
