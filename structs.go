@@ -163,33 +163,6 @@ type ErrorGeminiServer struct {
 	config       *Config // Added to check EnableCaching
 }
 
-// ListTools implements the ToolHandler interface for ErrorGeminiServer
-// Note: This method is no longer needed since tools are registered directly
-// in main.go using the shared definitions from tools.go
-func (s *ErrorGeminiServer) ListTools(ctx context.Context) ([]mcp.Tool, error) {
-	tools := []mcp.Tool{
-		GeminiAskTool,
-		GeminiSearchTool,
-		GeminiModelsTool,
-	}
-	return tools, nil
-}
-
-// CallTool implements the ToolHandler interface for ErrorGeminiServer
-// Note: This method is no longer needed since handlers are registered directly
-// in main.go. It's kept for potential backwards compatibility.
-func (s *ErrorGeminiServer) CallTool(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// Log which tool was attempted, if a logger is in the context
-	if loggerValue := ctx.Value(loggerKey); loggerValue != nil {
-		if logger, ok := loggerValue.(Logger); ok {
-			logger.Info("Tool '%s' called in error mode via deprecated CallTool method", req.Params.Name)
-		}
-	}
-
-	// Return the same error message regardless of which tool is called
-	return mcp.NewToolResultError(s.errorMessage), nil
-}
-
 // handleErrorResponse is a handler function that can be used with mark3labs/mcp-go's AddTool
 func (s *ErrorGeminiServer) handleErrorResponse(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Get logger from context

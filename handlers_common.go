@@ -153,7 +153,7 @@ func createErrorResult(message string) *mcp.CallToolResult {
 }
 
 // convertGenaiResponseToMCPResult converts a Gemini API response to an MCP result
-func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse, withThinking bool) *mcp.CallToolResult {
+func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse) *mcp.CallToolResult {
 	// Check for empty response
 	if resp == nil || len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
 		return mcp.NewToolResultError("Gemini API returned an empty response")
@@ -165,20 +165,10 @@ func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse, withTh
 		text = "The Gemini model returned an empty response. This might indicate that the model couldn't generate an appropriate response for your query. Please try rephrasing your question or providing more context."
 	}
 
-	// If thinking was requested, try to extract thinking data
-	if withThinking {
-		// Try to extract thinking from the response
-		thinking := extractThinkingFromResponse(resp)
-		if thinking != "" {
-			// Return JSON with both answer and thinking
-			thinkingJSON := fmt.Sprintf(`{"answer": %q, "thinking": %q}`, text, thinking)
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					mcp.NewTextContent(thinkingJSON),
-				},
-			}
-		}
-	}
+	// The 'thinking' field is not directly available in the Go client library.
+	// The response will be plain text. If thinking was enabled, the model's
+	// reasoning might be part of the main text response, but it cannot be
+	// separated into a distinct field.
 
 	// Return simple text response
 	return &mcp.CallToolResult{
@@ -186,12 +176,4 @@ func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse, withTh
 			mcp.NewTextContent(text),
 		},
 	}
-}
-
-// extractThinkingFromResponse attempts to extract thinking text from a Gemini response
-func extractThinkingFromResponse(_ *genai.GenerateContentResponse) string {
-	// This is not directly available in the Go API, would need to parse raw JSON
-	// For now, return empty string to indicate no thinking data
-	// A proper implementation would need to look at raw JSON response data
-	return ""
 }

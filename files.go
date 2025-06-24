@@ -13,20 +13,6 @@ import (
 
 // FileUploadRequest struct definition moved to structs.go
 
-// Validate ensures the file upload request contains valid data
-func (r *FileUploadRequest) Validate() error {
-	if r.FileName == "" {
-		return errors.New("filename is required")
-	}
-	if r.MimeType == "" {
-		return errors.New("mime type is required")
-	}
-	if len(r.Content) == 0 {
-		return errors.New("content is required")
-	}
-	return nil
-}
-
 // FileInfo struct definition moved to structs.go
 // FileStore struct definition moved to structs.go
 
@@ -218,104 +204,6 @@ func (fs *FileStore) GetFile(ctx context.Context, id string) (*FileInfo, error) 
 
 	logger.Debug("Added file info for %s to cache", fileID)
 	return fileInfo, nil
-}
-
-// DeleteFile deletes a file by ID
-func (fs *FileStore) DeleteFile(ctx context.Context, id string) error {
-	logger := getLoggerFromContext(ctx)
-
-	// Get the file info first to get the full name
-	fileInfo, err := fs.GetFile(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	// Check if client is properly initialized
-	if fs.client == nil || fs.client.Files == nil {
-		logger.Error("Gemini client or Files service not properly initialized")
-		return errors.New("internal error: Gemini client not properly initialized")
-	}
-
-	// Delete from API
-	logger.Info("Deleting file %s", fileInfo.Name)
-	if _, err := fs.client.Files.Delete(ctx, fileInfo.Name, &genai.DeleteFileConfig{}); err != nil {
-		logger.Error("Failed to delete file: %v", err)
-		return fmt.Errorf("failed to delete file: %w", err)
-	}
-
-	// Remove from cache
-	fs.mu.Lock()
-	delete(fs.fileInfo, id)
-	fs.mu.Unlock()
-
-	logger.Info("File deleted successfully: %s", id)
-	return nil
-}
-
-// ListFiles returns all files
-func (fs *FileStore) ListFiles(ctx context.Context) ([]*FileInfo, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info("Listing all files")
-
-	// Check if client is properly initialized
-	if fs.client == nil || fs.client.Files == nil {
-		logger.Error("Gemini client or Files service not properly initialized")
-		return nil, errors.New("internal error: Gemini client not properly initialized")
-	}
-
-	// Get files from API
-	page, err := fs.client.Files.List(ctx, nil)
-	if err != nil {
-		logger.Error("Failed to list files: %v", err)
-		return nil, fmt.Errorf("failed to list files: %w", err)
-	}
-
-	files := []*FileInfo{}
-	fileMap := make(map[string]*FileInfo)
-
-	// Process all files in the page
-	for _, file := range page.Items {
-
-		// Extract ID from name
-		id := file.Name
-		if strings.HasPrefix(file.Name, "files/") {
-			id = strings.TrimPrefix(file.Name, "files/")
-		}
-
-		// Create file info
-		fileInfo := &FileInfo{
-			ID:          id,
-			Name:        file.Name,
-			URI:         file.URI,
-			DisplayName: file.DisplayName,
-			MimeType:    file.MIMEType,
-			Size:        0, // SizeBytes is now a pointer in the new API
-			UploadedAt:  file.CreateTime,
-		}
-
-		// Set size if available
-		if file.SizeBytes != nil {
-			fileInfo.Size = *file.SizeBytes
-		}
-
-		// Set expiration if provided
-		if !file.ExpirationTime.IsZero() {
-			fileInfo.ExpiresAt = file.ExpirationTime
-		}
-
-		files = append(files, fileInfo)
-		fileMap[id] = fileInfo
-	}
-
-	// Update cache
-	fs.mu.Lock()
-	for id, info := range fileMap {
-		fs.fileInfo[id] = info
-	}
-	fs.mu.Unlock()
-
-	logger.Info("Found %d files", len(files))
-	return files, nil
 }
 
 // Helper function to format file sizes in a human-readable way

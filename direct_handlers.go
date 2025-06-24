@@ -181,13 +181,8 @@ func (s *GeminiServer) handleQueryWithCacheDirect(ctx context.Context, cacheID, 
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 
-	// Extract thinking flag to determine if we should try to include thinking data in response
-	enableThinking := s.config.EnableThinking
-	model := GetModelByID(cacheInfo.Model)
-	withThinking := enableThinking && model != nil && model.SupportsThinking
-
 	// Convert to MCP result
-	return convertGenaiResponseToMCPResult(response, withThinking), nil
+	return convertGenaiResponseToMCPResult(response), nil
 }
 
 // processWithFiles handles a Gemini API request with file attachments
@@ -245,7 +240,7 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, fileP
 	}
 
 	// Convert to MCP result
-	return convertGenaiResponseToMCPResult(response, enableThinking), nil
+	return convertGenaiResponseToMCPResult(response), nil
 }
 
 // processWithoutFiles handles a Gemini API request without file attachments
@@ -271,7 +266,7 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
 	}
 
 	// Convert to MCP result
-	return convertGenaiResponseToMCPResult(response, enableThinking), nil
+	return convertGenaiResponseToMCPResult(response), nil
 }
 
 // GeminiSearchHandler is a handler for the gemini_search tool that uses mcp-go types directly

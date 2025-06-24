@@ -119,36 +119,3 @@ func ValidateModelID(modelID string) error {
 
 	return fmt.Errorf("%s", sb.String())
 }
-
-// GetPreferredModelForTask returns the best version ID for a specific task
-// taskType can be "thinking", "caching", or "search"
-// If no preferred model is found, returns an empty string
-func GetPreferredModelForTask(taskType string) string {
-	models := GetAvailableGeminiModels()
-	for _, model := range models {
-		switch taskType {
-		case "thinking":
-			if model.PreferredForThinking {
-				// Use the ResolveModelID function to get a specific version ID
-				return ResolveModelID(model.FamilyID)
-			}
-		case "caching":
-			if model.PreferredForCaching {
-				// For caching tasks, we need a version that supports caching
-				for _, version := range model.Versions {
-					if version.SupportsCaching {
-						return version.ID
-					}
-				}
-				// If no version supports caching, use the default version
-				return ResolveModelID(model.FamilyID)
-			}
-		case "search":
-			if model.PreferredForSearch {
-				// For search tasks, use the preferred version
-				return ResolveModelID(model.FamilyID)
-			}
-		}
-	}
-	return ""
-}
