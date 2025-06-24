@@ -1,0 +1,24 @@
+{
+  "enableAllProjectMcpServers": false,
+  "permissions": {
+    "allow": [
+      "Bash(./run_format.sh)",
+      "Bash(./run_lint.sh)",
+      "Bash(awk:*)",
+      "Bash(cat:*)",
+      "Bash(cp:*)",
+      "Bash(go build:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(ls:*)",
+      "Bash(mv:*)",
+      "Bash(perl:*)",
+      "Bash(rm:*)",
+      "Bash(sed:*)",
+      "Bash(touch:*)",
+      "mcp__claude-code__think",
+      "mcp__gemini__gemini_ask",
+      "mcp__godoc__getPackageInfo",
+      "mcp__time__get_current_time"
+    ]
+  }
+}

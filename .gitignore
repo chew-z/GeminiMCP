@@ -2,10 +2,4 @@ bin/**
 .env
 go.sum
 *.log
-.aider*
-run_*
-.claude/**
-.repomix/**
-repomix-output.*
-repomix.config.json
-EDIT-FILE-GUIDE.md
+
