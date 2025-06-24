@@ -1,5 +1,4 @@
 {
-  "enableAllProjectMcpServers": false,
   "permissions": {
     "allow": [
       "Bash(./run_format.sh)",
@@ -18,7 +17,9 @@
       "mcp__claude-code__think",
       "mcp__gemini__gemini_ask",
       "mcp__godoc__getPackageInfo",
-      "mcp__time__get_current_time"
+      "mcp__time__get_current_time",
+      "WebFetch(domain:mcp-go.dev)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": false
 }

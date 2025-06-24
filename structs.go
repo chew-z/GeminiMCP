@@ -45,6 +45,15 @@ type Config struct {
 	// HTTP client settings
 	HTTPTimeout time.Duration
 
+	// HTTP transport settings
+	EnableHTTP      bool          // Enable HTTP transport
+	HTTPAddress     string        // Server address (default: ":8080")
+	HTTPPath        string        // Base path (default: "/mcp")
+	HTTPStateless   bool          // Stateless mode
+	HTTPHeartbeat   time.Duration // Heartbeat interval
+	HTTPCORSEnabled bool          // Enable CORS
+	HTTPCORSOrigins []string      // Allowed origins
+
 	// Retry settings
 	MaxRetries     int
 	InitialBackoff time.Duration

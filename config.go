@@ -32,6 +32,14 @@ If the search results don't contain enough information to fully answer the query
 	// File handling defaults
 	defaultMaxFileSize = int64(10 * 1024 * 1024) // 10MB explicitly as int64
 
+	// HTTP transport defaults
+	defaultEnableHTTP      = false
+	defaultHTTPAddress     = ":8080"
+	defaultHTTPPath        = "/mcp"
+	defaultHTTPStateless   = false
+	defaultHTTPHeartbeat   = 0 * time.Second // No heartbeat by default
+	defaultHTTPCORSEnabled = true
+
 	// Cache settings defaults
 	defaultEnableCaching   = true
 	defaultDefaultCacheTTL = 1 * time.Hour
@@ -214,6 +222,44 @@ func NewConfig() (*Config, error) {
 		thinkingBudget = getThinkingBudgetFromLevel(thinkingBudgetLevel)
 	}
 
+	// HTTP transport settings
+	enableHTTP := defaultEnableHTTP
+	if httpStr := os.Getenv("GEMINI_ENABLE_HTTP"); httpStr != "" {
+		enableHTTP = strings.ToLower(httpStr) == "true"
+	}
+
+	httpAddress := defaultHTTPAddress
+	if addrStr := os.Getenv("GEMINI_HTTP_ADDRESS"); addrStr != "" {
+		httpAddress = addrStr
+	}
+
+	httpPath := defaultHTTPPath
+	if pathStr := os.Getenv("GEMINI_HTTP_PATH"); pathStr != "" {
+		httpPath = pathStr
+	}
+
+	httpStateless := defaultHTTPStateless
+	if statelessStr := os.Getenv("GEMINI_HTTP_STATELESS"); statelessStr != "" {
+		httpStateless = strings.ToLower(statelessStr) == "true"
+	}
+
+	httpHeartbeat := defaultHTTPHeartbeat
+	if heartbeatStr := os.Getenv("GEMINI_HTTP_HEARTBEAT"); heartbeatStr != "" {
+		if hb, err := time.ParseDuration(heartbeatStr); err == nil && hb >= 0 {
+			httpHeartbeat = hb
+		}
+	}
+
+	httpCORSEnabled := defaultHTTPCORSEnabled
+	if corsStr := os.Getenv("GEMINI_HTTP_CORS_ENABLED"); corsStr != "" {
+		httpCORSEnabled = strings.ToLower(corsStr) == "true"
+	}
+
+	httpCORSOrigins := []string{"*"} // Default allow all origins
+	if originsStr := os.Getenv("GEMINI_HTTP_CORS_ORIGINS"); originsStr != "" {
+		httpCORSOrigins = strings.Split(originsStr, ",")
+	}
+
 	return &Config{
 		GeminiAPIKey:             geminiAPIKey,
 		GeminiModel:              geminiModel,
@@ -222,6 +268,13 @@ func NewConfig() (*Config, error) {
 		GeminiSearchSystemPrompt: geminiSearchSystemPrompt,
 		GeminiTemperature:        geminiTemperature,
 		HTTPTimeout:              timeout,
+		EnableHTTP:               enableHTTP,
+		HTTPAddress:              httpAddress,
+		HTTPPath:                 httpPath,
+		HTTPStateless:            httpStateless,
+		HTTPHeartbeat:            httpHeartbeat,
+		HTTPCORSEnabled:          httpCORSEnabled,
+		HTTPCORSOrigins:          httpCORSOrigins,
 		MaxRetries:               maxRetries,
 		InitialBackoff:           initialBackoff,
 		MaxBackoff:               maxBackoff,

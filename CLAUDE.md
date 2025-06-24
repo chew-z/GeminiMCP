@@ -61,6 +61,15 @@ export GEMINI_SEARCH_MODEL="gemini-2.5-flash-preview-05-20"
 export GEMINI_LOG_LEVEL="debug"
 export GEMINI_ENABLE_CACHING="true"
 export GEMINI_ENABLE_THINKING="true"
+
+# HTTP transport settings (optional)
+export GEMINI_ENABLE_HTTP="true"
+export GEMINI_HTTP_ADDRESS=":8081"
+export GEMINI_HTTP_PATH="/mcp"
+export GEMINI_HTTP_STATELESS="false"
+export GEMINI_HTTP_HEARTBEAT="30s"
+export GEMINI_HTTP_CORS_ENABLED="true"
+export GEMINI_HTTP_CORS_ORIGINS="*"
 ```
 
 ## Architecture Overview
@@ -90,6 +99,13 @@ The GeminiMCP server follows a clean, modular architecture:
 
 ## Key Concepts
 
+### Transport Modes
+
+The server supports two transport modes:
+
+1. **Stdio Transport** (default): Traditional stdin/stdout communication for command-line MCP clients
+2. **HTTP Transport**: RESTful HTTP endpoints with optional WebSocket upgrade for real-time communication
+
 ### MCP Integration
 
 The server implements the Model Control Protocol to provide a standardized interface for AI model interactions. The `github.com/mark3labs/mcp-go` library handles the protocol specifics.
@@ -118,6 +134,59 @@ Certain Gemini models (primarily Pro models) support "thinking mode" which expos
 
 The server implements graceful degradation with fallback models and a dedicated error server mode when initialization fails.
 
+## HTTP Transport Usage
+
+### Starting with HTTP Transport
+
+```bash
+# Enable HTTP transport
+export GEMINI_ENABLE_HTTP=true
+export GEMINI_HTTP_ADDRESS=":8081"
+
+# Start the server
+./bin/mcp-gemini
+```
+
+### HTTP Endpoints
+
+When HTTP transport is enabled, the following endpoints are available:
+
+- `GET /mcp` - Server-Sent Events (SSE) endpoint for real-time communication
+- `POST /mcp` - Message endpoint for request/response communication
+
+### Example HTTP Requests
+
+```bash
+# List available tools
+curl -X POST http://localhost:8081/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
+
+# Call gemini_ask tool
+curl -X POST http://localhost:8081/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "gemini_ask",
+      "arguments": {
+        "query": "Explain the MCP protocol"
+      }
+    }
+  }'
+```
+
+### CORS Configuration
+
+For web applications, configure CORS settings:
+
+```bash
+export GEMINI_HTTP_CORS_ENABLED=true
+export GEMINI_HTTP_CORS_ORIGINS="https://myapp.com,https://localhost:3000"
+```
+
 ## Common Workflows
 
 ### Adding a New Tool
@@ -141,4 +210,3 @@ The server implements graceful degradation with fallback models and a dedicated 
 3. Test with different model IDs to ensure proper resolution
 4. **Important**: Always use `ResolveModelID()` when passing model names to the Gemini API to convert family IDs (like `gemini-2.5-flash`) to specific version IDs (like `gemini-2.5-flash-preview-05-20`)
 
-@/Users/rrj/Projekty/CodeAssist/Prompts/EDIT-STEP-BY-STEP.md

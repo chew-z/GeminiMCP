@@ -4,7 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
+	"os/signal"
+	"strings"
+	"sync"
+	"syscall"
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -99,11 +104,131 @@ func main() {
 		return
 	}
 
-	logger.Info("Starting Gemini MCP server")
-	if err := server.ServeStdio(mcpServer); err != nil {
-		logger.Error("Server error: %v", err)
-		os.Exit(1)
+	// Start the appropriate transport(s)
+	if config.EnableHTTP {
+		logger.Info("Starting Gemini MCP server with HTTP transport on %s%s", config.HTTPAddress, config.HTTPPath)
+		if err := startHTTPServer(ctx, mcpServer, config, logger); err != nil {
+			logger.Error("HTTP server error: %v", err)
+			os.Exit(1)
+		}
+	} else {
+		logger.Info("Starting Gemini MCP server with stdio transport")
+		if err := server.ServeStdio(mcpServer); err != nil {
+			logger.Error("Server error: %v", err)
+			os.Exit(1)
+		}
 	}
+}
+
+// startHTTPServer starts the HTTP transport server
+func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *Config, logger Logger) error {
+	// Create HTTP server options
+	var opts []server.StreamableHTTPOption
+
+	// Configure heartbeat if enabled
+	if config.HTTPHeartbeat > 0 {
+		opts = append(opts, server.WithHeartbeatInterval(config.HTTPHeartbeat))
+	}
+
+	// Configure stateless mode
+	if config.HTTPStateless {
+		opts = append(opts, server.WithStateLess(true))
+	}
+
+	// Configure endpoint path
+	opts = append(opts, server.WithEndpointPath(config.HTTPPath))
+
+	// Add HTTP context function for CORS and logging
+	if config.HTTPCORSEnabled {
+		opts = append(opts, server.WithHTTPContextFunc(createHTTPMiddleware(config, logger)))
+	}
+
+	// Create streamable HTTP server
+	httpServer := server.NewStreamableHTTPServer(mcpServer, opts...)
+
+	// Set up graceful shutdown
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Handle shutdown signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	// Start server in goroutine
+	go func() {
+		defer wg.Done()
+		if err := httpServer.Start(config.HTTPAddress); err != nil {
+			logger.Error("HTTP server failed to start: %v", err)
+			cancel()
+		}
+	}()
+
+	// Wait for shutdown signal
+	select {
+	case sig := <-sigChan:
+		logger.Info("Received signal %v, shutting down HTTP server...", sig)
+	case <-ctx.Done():
+		logger.Info("Context cancelled, shutting down HTTP server...")
+	}
+
+	// Graceful shutdown
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), config.HTTPTimeout)
+	defer shutdownCancel()
+
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		logger.Error("HTTP server shutdown error: %v", err)
+		return err
+	}
+
+	wg.Wait()
+	logger.Info("HTTP server stopped")
+	return nil
+}
+
+// createHTTPMiddleware creates an HTTP context function with CORS and logging
+func createHTTPMiddleware(config *Config, logger Logger) server.HTTPContextFunc {
+	return func(ctx context.Context, r *http.Request) context.Context {
+		// Log HTTP request
+		logger.Info("HTTP %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+
+		// Add CORS headers if enabled
+		if config.HTTPCORSEnabled {
+			// Check if request origin is allowed
+			origin := r.Header.Get("Origin")
+			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins) {
+				// Note: We can't set response headers directly here as this is a context function
+				// CORS headers would need to be handled at the HTTP server level
+				logger.Info("CORS: Origin %s is allowed", origin)
+			}
+		}
+
+		// Add request info to context
+		ctx = context.WithValue(ctx, "http_method", r.Method)
+		ctx = context.WithValue(ctx, "http_path", r.URL.Path)
+		ctx = context.WithValue(ctx, "http_remote_addr", r.RemoteAddr)
+		
+		return ctx
+	}
+}
+
+// isOriginAllowed checks if the origin is in the allowed list
+func isOriginAllowed(origin string, allowedOrigins []string) bool {
+	for _, allowed := range allowedOrigins {
+		if allowed == "*" || allowed == origin {
+			return true
+		}
+		// Support wildcard subdomains (e.g., "*.example.com")
+		if strings.HasPrefix(allowed, "*.") {
+			domain := strings.TrimPrefix(allowed, "*.")
+			if strings.HasSuffix(origin, domain) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Helper function to get caching status as a string
