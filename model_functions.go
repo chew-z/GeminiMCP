@@ -152,24 +152,3 @@ func GetPreferredModelForTask(taskType string) string {
 	}
 	return ""
 }
-
-// This function identifies base model IDs from version IDs
-func extractBaseModelID(versionID string) string {
-	// Handle special cases for preview/experimental models
-	if strings.Contains(versionID, "-preview-") {
-		parts := strings.Split(versionID, "-preview-")
-		if len(parts) > 0 {
-			return parts[0]
-		}
-	} else if strings.Contains(versionID, "-exp-") {
-		parts := strings.Split(versionID, "-exp-")
-		if len(parts) > 0 {
-			return parts[0]
-		}
-	}
-
-	// Remove version-specific suffixes
-	baseModelID := strings.TrimSuffix(versionID, "-001")
-
-	return baseModelID
-}
