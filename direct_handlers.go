@@ -78,9 +78,9 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 
 	// Process with files if provided
 	if len(filePaths) > 0 {
-		return s.processWithFiles(ctx, query, filePaths, modelName, config, enableThinking, cacheErr)
+		return s.processWithFiles(ctx, query, filePaths, modelName, config, cacheErr)
 	} else {
-		return s.processWithoutFiles(ctx, query, modelName, config, enableThinking, cacheErr)
+		return s.processWithoutFiles(ctx, query, modelName, config, cacheErr)
 	}
 }
 
@@ -187,7 +187,7 @@ func (s *GeminiServer) handleQueryWithCacheDirect(ctx context.Context, cacheID, 
 
 // processWithFiles handles a Gemini API request with file attachments
 func (s *GeminiServer) processWithFiles(ctx context.Context, query string, filePaths []string,
-	modelName string, config *genai.GenerateContentConfig, enableThinking bool, cacheErr error) (*mcp.CallToolResult, error) {
+	modelName string, config *genai.GenerateContentConfig, cacheErr error) (*mcp.CallToolResult, error) {
 
 	logger := getLoggerFromContext(ctx)
 
@@ -245,7 +245,7 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, fileP
 
 // processWithoutFiles handles a Gemini API request without file attachments
 func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
-	modelName string, config *genai.GenerateContentConfig, enableThinking bool, cacheErr error) (*mcp.CallToolResult, error) {
+	modelName string, config *genai.GenerateContentConfig, cacheErr error) (*mcp.CallToolResult, error) {
 
 	logger := getLoggerFromContext(ctx)
 

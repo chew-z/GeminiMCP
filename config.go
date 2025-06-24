@@ -72,6 +72,51 @@ func getThinkingBudgetFromLevel(level string) int {
 	}
 }
 
+// Helper function to parse an integer environment variable with a default
+func parseEnvVarInt(key string, defaultValue int) int {
+	if str := os.Getenv(key); str != "" {
+		if val, err := strconv.Atoi(str); err == nil {
+			return val
+		}
+		// Log warning directly as logger might not be initialized yet
+		fmt.Printf("[WARN] Invalid integer value for %s: %q. Using default: %d\n", key, str, defaultValue)
+	}
+	return defaultValue
+}
+
+// Helper function to parse a float64 environment variable with a default
+func parseEnvVarFloat(key string, defaultValue float64) float64 {
+	if str := os.Getenv(key); str != "" {
+		if val, err := strconv.ParseFloat(str, 64); err == nil {
+			return val
+		}
+		fmt.Printf("[WARN] Invalid float value for %s: %q. Using default: %f\n", key, str, defaultValue)
+	}
+	return defaultValue
+}
+
+// Helper function to parse a duration environment variable with a default
+func parseEnvVarDuration(key string, defaultValue time.Duration) time.Duration {
+	if str := os.Getenv(key); str != "" {
+		if val, err := time.ParseDuration(str); err == nil {
+			return val
+		}
+		fmt.Printf("[WARN] Invalid duration value for %s: %q. Using default: %s\n", key, str, defaultValue.String())
+	}
+	return defaultValue
+}
+
+// Helper function to parse a boolean environment variable with a default
+func parseEnvVarBool(key string, defaultValue bool) bool {
+	if str := os.Getenv(key); str != "" {
+		if val, err := strconv.ParseBool(str); err == nil {
+			return val
+		}
+		fmt.Printf("[WARN] Invalid boolean value for %s: %q. Using default: %t\n", key, str, defaultValue)
+	}
+	return defaultValue
+}
+
 // NewConfig creates a new configuration from environment variables
 func NewConfig() (*Config, error) {
 	// No longer validating default model at startup - will be checked when needed
@@ -109,155 +154,100 @@ func NewConfig() (*Config, error) {
 		geminiSearchSystemPrompt = defaultGeminiSearchSystemPrompt // Default search system prompt if not specified
 	}
 
-	// Default timeout of 90 seconds
-	timeout := 90 * time.Second
-
-	// Override timeout if provided in environment
-	if timeoutStr := os.Getenv("GEMINI_TIMEOUT"); timeoutStr != "" {
-		if timeoutSec, err := strconv.Atoi(timeoutStr); err == nil && timeoutSec > 0 {
-			timeout = time.Duration(timeoutSec) * time.Second
-		}
-	}
-
-	// Set default retry values
-	maxRetries := 2
-	initialBackoff := 1 * time.Second
-	maxBackoff := 10 * time.Second
-
-	// Override retry settings if provided in environment
-	if retriesStr := os.Getenv("GEMINI_MAX_RETRIES"); retriesStr != "" {
-		if retries, err := strconv.Atoi(retriesStr); err == nil && retries >= 0 {
-			maxRetries = retries
-		}
-	}
-
-	if backoffStr := os.Getenv("GEMINI_INITIAL_BACKOFF"); backoffStr != "" {
-		if backoff, err := strconv.Atoi(backoffStr); err == nil && backoff > 0 {
-			initialBackoff = time.Duration(backoff) * time.Second
-		}
-	}
-
-	if maxBackoffStr := os.Getenv("GEMINI_MAX_BACKOFF"); maxBackoffStr != "" {
-		if backoff, err := strconv.Atoi(maxBackoffStr); err == nil && backoff > 0 {
-			maxBackoff = time.Duration(backoff) * time.Second
-		}
-	}
+	// Use helper functions to parse environment variables
+	timeout := parseEnvVarDuration("GEMINI_TIMEOUT", 90*time.Second)
+	maxRetries := parseEnvVarInt("GEMINI_MAX_RETRIES", 2)
+	initialBackoff := parseEnvVarDuration("GEMINI_INITIAL_BACKOFF", 1*time.Second)
+	maxBackoff := parseEnvVarDuration("GEMINI_MAX_BACKOFF", 10*time.Second)
 
 	// Set default temperature or override with environment variable
-	geminiTemperature := defaultGeminiTemperature
-	if tempStr := os.Getenv("GEMINI_TEMPERATURE"); tempStr != "" {
-		if tempVal, err := strconv.ParseFloat(tempStr, 64); err == nil {
-			// Validate that temperature is within valid range (0.0 to 1.0)
-			if tempVal < 0.0 || tempVal > 1.0 {
-				return nil, fmt.Errorf("GEMINI_TEMPERATURE must be between 0.0 and 1.0, got %v", tempVal)
-			}
-			geminiTemperature = tempVal
-		} else {
-			return nil, fmt.Errorf("invalid GEMINI_TEMPERATURE value: %v", err)
-		}
+	geminiTemperature := parseEnvVarFloat("GEMINI_TEMPERATURE", defaultGeminiTemperature)
+	// Specific validation for temperature range, as it's a critical parameter
+	if geminiTemperature < 0.0 || geminiTemperature > 1.0 {
+		return nil, fmt.Errorf("GEMINI_TEMPERATURE must be between 0.0 and 1.0, got %v", geminiTemperature)
 	}
 
 	// File handling settings
-	maxFileSize := defaultMaxFileSize
-	if sizeStr := os.Getenv("GEMINI_MAX_FILE_SIZE"); sizeStr != "" {
-		if size, err := strconv.ParseInt(sizeStr, 10, 64); err == nil && size > 0 {
-			maxFileSize = size
-		}
+	maxFileSize := int64(parseEnvVarInt("GEMINI_MAX_FILE_SIZE", int(defaultMaxFileSize)))
+	if maxFileSize <= 0 {
+		fmt.Printf("[WARN] GEMINI_MAX_FILE_SIZE must be positive. Using default: %d\n", defaultMaxFileSize)
+		maxFileSize = defaultMaxFileSize
 	}
 
-	allowedFileTypes := []string{
-		"text/plain", "text/javascript", "text/typescript",
-		"text/markdown", "text/html", "text/css",
-		"application/json", "text/yaml", "application/octet-stream",
-	}
+	var allowedFileTypes []string
 	if typesStr := os.Getenv("GEMINI_ALLOWED_FILE_TYPES"); typesStr != "" {
-		allowedFileTypes = strings.Split(typesStr, ",")
+		parts := strings.Split(typesStr, ",")
+		for _, p := range parts {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				allowedFileTypes = append(allowedFileTypes, trimmed)
+			}
+		}
+	}
+	if len(allowedFileTypes) == 0 {
+		allowedFileTypes = []string{
+			"text/plain", "text/javascript", "text/typescript",
+			"text/markdown", "text/html", "text/css",
+			"application/json", "text/yaml", "application/octet-stream",
+		}
 	}
 
 	// Cache settings
-	enableCaching := defaultEnableCaching
-	if cacheStr := os.Getenv("GEMINI_ENABLE_CACHING"); cacheStr != "" {
-		enableCaching = strings.ToLower(cacheStr) == "true"
-	}
-
-	defaultCacheTTL := defaultDefaultCacheTTL
-	if ttlStr := os.Getenv("GEMINI_DEFAULT_CACHE_TTL"); ttlStr != "" {
-		if ttl, err := time.ParseDuration(ttlStr); err == nil && ttl > 0 {
-			defaultCacheTTL = ttl
-		}
+	enableCaching := parseEnvVarBool("GEMINI_ENABLE_CACHING", defaultEnableCaching)
+	defaultCacheTTL := parseEnvVarDuration("GEMINI_DEFAULT_CACHE_TTL", defaultDefaultCacheTTL)
+	if defaultCacheTTL <= 0 {
+		fmt.Printf("[WARN] GEMINI_DEFAULT_CACHE_TTL must be positive. Using default: %s\n", defaultDefaultCacheTTL.String())
+		defaultCacheTTL = defaultDefaultCacheTTL
 	}
 
 	// Thinking settings
-	enableThinking := defaultEnableThinking
-	if thinkingStr := os.Getenv("GEMINI_ENABLE_THINKING"); thinkingStr != "" {
-		enableThinking = strings.ToLower(thinkingStr) == "true"
-	}
+	enableThinking := parseEnvVarBool("GEMINI_ENABLE_THINKING", defaultEnableThinking)
 
 	// Set thinking budget level from environment variable or use default
 	thinkingBudgetLevel := defaultThinkingBudgetLevel
 	if levelStr := os.Getenv("GEMINI_THINKING_BUDGET_LEVEL"); levelStr != "" {
 		level := strings.ToLower(levelStr)
-		// Validate level
-		switch level {
-		case "none", "low", "medium", "high":
+		if level == "none" || level == "low" || level == "medium" || level == "high" {
 			thinkingBudgetLevel = level
-		default:
-			fmt.Printf("[WARN] Invalid GEMINI_THINKING_BUDGET_LEVEL value: %s. Using default: %s\n",
+		} else {
+			fmt.Printf("[WARN] Invalid GEMINI_THINKING_BUDGET_LEVEL value: %q. Using default: %q\n",
 				levelStr, defaultThinkingBudgetLevel)
 		}
 	}
 
 	// Set thinking budget from environment variable or derive from level
-	thinkingBudget := defaultThinkingBudget
-	if budgetStr := os.Getenv("GEMINI_THINKING_BUDGET"); budgetStr != "" {
-		// Explicit token count overrides level
-		if budget, err := strconv.Atoi(budgetStr); err == nil && budget >= 0 {
-			thinkingBudget = budget
-		} else {
-			fmt.Printf("[WARN] Invalid GEMINI_THINKING_BUDGET value: %s. Using default from level.\n", budgetStr)
-			thinkingBudget = getThinkingBudgetFromLevel(thinkingBudgetLevel)
-		}
-	} else {
-		// Derive budget from level
-		thinkingBudget = getThinkingBudgetFromLevel(thinkingBudgetLevel)
-	}
+	thinkingBudget := getThinkingBudgetFromLevel(thinkingBudgetLevel)
+	// If GEMINI_THINKING_BUDGET is set, it overrides the level-derived value.
+	// The helper will use the level-derived budget as a fallback if parsing fails.
+	thinkingBudget = parseEnvVarInt("GEMINI_THINKING_BUDGET", thinkingBudget)
 
 	// HTTP transport settings
-	enableHTTP := defaultEnableHTTP
-	if httpStr := os.Getenv("GEMINI_ENABLE_HTTP"); httpStr != "" {
-		enableHTTP = strings.ToLower(httpStr) == "true"
+	enableHTTP := parseEnvVarBool("GEMINI_ENABLE_HTTP", defaultEnableHTTP)
+	httpAddress := os.Getenv("GEMINI_HTTP_ADDRESS")
+	if httpAddress == "" {
+		httpAddress = defaultHTTPAddress
 	}
-
-	httpAddress := defaultHTTPAddress
-	if addrStr := os.Getenv("GEMINI_HTTP_ADDRESS"); addrStr != "" {
-		httpAddress = addrStr
+	httpPath := os.Getenv("GEMINI_HTTP_PATH")
+	if httpPath == "" {
+		httpPath = defaultHTTPPath
 	}
-
-	httpPath := defaultHTTPPath
-	if pathStr := os.Getenv("GEMINI_HTTP_PATH"); pathStr != "" {
-		httpPath = pathStr
+	httpStateless := parseEnvVarBool("GEMINI_HTTP_STATELESS", defaultHTTPStateless)
+	httpHeartbeat := parseEnvVarDuration("GEMINI_HTTP_HEARTBEAT", defaultHTTPHeartbeat)
+	if httpHeartbeat < 0 {
+		fmt.Printf("[WARN] GEMINI_HTTP_HEARTBEAT must be non-negative. Using default: %s\n", defaultHTTPHeartbeat.String())
+		httpHeartbeat = defaultHTTPHeartbeat
 	}
-
-	httpStateless := defaultHTTPStateless
-	if statelessStr := os.Getenv("GEMINI_HTTP_STATELESS"); statelessStr != "" {
-		httpStateless = strings.ToLower(statelessStr) == "true"
-	}
-
-	httpHeartbeat := defaultHTTPHeartbeat
-	if heartbeatStr := os.Getenv("GEMINI_HTTP_HEARTBEAT"); heartbeatStr != "" {
-		if hb, err := time.ParseDuration(heartbeatStr); err == nil && hb >= 0 {
-			httpHeartbeat = hb
+	httpCORSEnabled := parseEnvVarBool("GEMINI_HTTP_CORS_ENABLED", defaultHTTPCORSEnabled)
+	var httpCORSOrigins []string
+	if originsStr := os.Getenv("GEMINI_HTTP_CORS_ORIGINS"); originsStr != "" {
+		parts := strings.Split(originsStr, ",")
+		for _, p := range parts {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				httpCORSOrigins = append(httpCORSOrigins, trimmed)
+			}
 		}
 	}
-
-	httpCORSEnabled := defaultHTTPCORSEnabled
-	if corsStr := os.Getenv("GEMINI_HTTP_CORS_ENABLED"); corsStr != "" {
-		httpCORSEnabled = strings.ToLower(corsStr) == "true"
-	}
-
-	httpCORSOrigins := []string{"*"} // Default allow all origins
-	if originsStr := os.Getenv("GEMINI_HTTP_CORS_ORIGINS"); originsStr != "" {
-		httpCORSOrigins = strings.Split(originsStr, ",")
+	if len(httpCORSOrigins) == 0 {
+		httpCORSOrigins = []string{"*"} // Default allow all origins
 	}
 
 	return &Config{
