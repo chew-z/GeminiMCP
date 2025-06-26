@@ -3,3 +3,5 @@ bin/**
 go.sum
 *.log
 
+.claude/**
+.gemini/**

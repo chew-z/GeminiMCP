@@ -25,6 +25,7 @@ func main() {
 	geminiTemperatureFlag := flag.Float64("gemini-temperature", -1, "Temperature setting (0.0-1.0, overrides env var)")
 	enableCachingFlag := flag.Bool("enable-caching", true, "Enable caching feature (overrides env var)")
 	enableThinkingFlag := flag.Bool("enable-thinking", true, "Enable thinking mode for supported models (overrides env var)")
+	transportFlag := flag.String("transport", "stdio", "Transport mode: 'stdio' (default) or 'http'")
 	flag.Parse()
 
 	// Create application context with logger
@@ -104,8 +105,14 @@ func main() {
 		return
 	}
 
-	// Start the appropriate transport(s)
-	if config.EnableHTTP {
+	// Validate transport flag
+	if *transportFlag != "stdio" && *transportFlag != "http" {
+		logger.Error("Invalid transport mode: %s. Must be 'stdio' or 'http'", *transportFlag)
+		os.Exit(1)
+	}
+
+	// Start the appropriate transport based on command-line flag
+	if *transportFlag == "http" {
 		logger.Info("Starting Gemini MCP server with HTTP transport on %s%s", config.HTTPAddress, config.HTTPPath)
 		if err := startHTTPServer(ctx, mcpServer, config, logger); err != nil {
 			logger.Error("HTTP server error: %v", err)
