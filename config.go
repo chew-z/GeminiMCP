@@ -40,6 +40,9 @@ If the search results don't contain enough information to fully answer the query
 	defaultHTTPHeartbeat   = 0 * time.Second // No heartbeat by default
 	defaultHTTPCORSEnabled = true
 
+	// Authentication defaults
+	defaultAuthEnabled = false // Authentication disabled by default
+
 	// Cache settings defaults
 	defaultEnableCaching   = true
 	defaultDefaultCacheTTL = 1 * time.Hour
@@ -250,6 +253,20 @@ func NewConfig() (*Config, error) {
 		httpCORSOrigins = []string{"*"} // Default allow all origins
 	}
 
+	// Authentication settings
+	authEnabled := parseEnvVarBool("GEMINI_AUTH_ENABLED", defaultAuthEnabled)
+	authSecretKey := os.Getenv("GEMINI_AUTH_SECRET_KEY")
+	
+	// If authentication is enabled, require secret key
+	if authEnabled && authSecretKey == "" {
+		return nil, fmt.Errorf("GEMINI_AUTH_SECRET_KEY is required when GEMINI_AUTH_ENABLED=true")
+	}
+	
+	// Warn if secret key is too short (for security)
+	if authEnabled && len(authSecretKey) < 32 {
+		fmt.Printf("[WARN] GEMINI_AUTH_SECRET_KEY should be at least 32 characters for security\n")
+	}
+
 	return &Config{
 		GeminiAPIKey:             geminiAPIKey,
 		GeminiModel:              geminiModel,
@@ -265,6 +282,8 @@ func NewConfig() (*Config, error) {
 		HTTPHeartbeat:            httpHeartbeat,
 		HTTPCORSEnabled:          httpCORSEnabled,
 		HTTPCORSOrigins:          httpCORSOrigins,
+		AuthEnabled:              authEnabled,
+		AuthSecretKey:            authSecretKey,
 		MaxRetries:               maxRetries,
 		InitialBackoff:           initialBackoff,
 		MaxBackoff:               maxBackoff,

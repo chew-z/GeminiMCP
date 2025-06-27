@@ -22,6 +22,15 @@ go build -o ./bin/mcp-gemini .
 ```bash
 # Run all tests (sets PATH for Go binary)
 ./run_test.sh
+
+# Run tests with verbose output
+go test -v ./...
+
+# Run specific test
+go test -v -run TestConfigDefaults
+
+# Run tests with coverage
+go test -cover ./...
 ```
 
 ### Code Formatting and Linting
@@ -42,11 +51,17 @@ go build -o ./bin/mcp-gemini .
 # Run server with debug logging
 GEMINI_LOG_LEVEL=debug ./bin/mcp-gemini
 
+# Run server with HTTP transport
+./bin/mcp-gemini --transport=http
+
+# Run server with custom settings via command line
+./bin/mcp-gemini --gemini-model=gemini-2.5-flash --enable-caching=true --transport=http
+
 # Test MCP server locally (requires MCP client)
 # Check server responds to MCP protocol messages
 
-# Validate configuration
-./mcp-gemini --help
+# Validate configuration and see available options
+./bin/mcp-gemini --help
 ```
 
 ### Development Environment Setup
@@ -101,10 +116,17 @@ The GeminiMCP server follows a clean, modular architecture:
 
 ### Transport Modes
 
-The server supports two transport modes:
+The server supports two transport modes, configurable via the `--transport` command-line flag:
 
 1. **Stdio Transport** (default): Traditional stdin/stdout communication for command-line MCP clients
+   ```bash
+   ./bin/mcp-gemini --transport=stdio  # or just ./bin/mcp-gemini
+   ```
+
 2. **HTTP Transport**: RESTful HTTP endpoints with optional WebSocket upgrade for real-time communication
+   ```bash
+   ./bin/mcp-gemini --transport=http
+   ```
 
 ### MCP Integration
 
@@ -146,6 +168,53 @@ export GEMINI_HTTP_ADDRESS=":8081"
 # Start the server
 ./bin/mcp-gemini
 ```
+
+### Authentication for HTTP Transport
+
+The server supports JWT-based authentication for HTTP transport to secure API access.
+
+#### Configuration
+
+```bash
+# Enable authentication
+export GEMINI_AUTH_ENABLED=true
+export GEMINI_AUTH_SECRET_KEY="your-secret-key-at-least-32-characters"
+
+# Start server with authentication
+./bin/mcp-gemini --transport=http --auth-enabled=true
+```
+
+#### Generate Authentication Tokens
+
+```bash
+# Generate a token for an admin user (31 days expiration by default)
+export GEMINI_AUTH_SECRET_KEY="your-secret-key-at-least-32-characters"
+./bin/mcp-gemini --generate-token --token-username=admin --token-role=admin
+
+# Generate a token for a regular user (24-hour expiration)
+./bin/mcp-gemini --generate-token --token-username=user1 --token-role=user --token-expiration=24
+```
+
+#### Using Authentication Tokens
+
+Include the JWT token in HTTP requests using the Authorization header:
+
+```bash
+# Store the token (replace with actual token from generation command)
+TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+# Use token in API requests
+curl -X POST http://localhost:8081/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
+```
+
+**Security Notes:**
+- The secret key should be at least 32 characters long for security
+- Tokens are signed with HMAC-SHA256
+- Authentication only applies to HTTP transport, not stdio transport
+- Failed authentication attempts are logged with IP addresses
 
 ### HTTP Endpoints
 
@@ -209,4 +278,65 @@ export GEMINI_HTTP_CORS_ORIGINS="https://myapp.com,https://localhost:3000"
 2. If adding fallbacks, update `fallback_models.go`
 3. Test with different model IDs to ensure proper resolution
 4. **Important**: Always use `ResolveModelID()` when passing model names to the Gemini API to convert family IDs (like `gemini-2.5-flash`) to specific version IDs (like `gemini-2.5-flash-preview-05-20`)
+
+### Running Tests
+
+The project has comprehensive test coverage for core functionality:
+
+1. **Configuration Tests** (`config_test.go`): Validates environment variable parsing, defaults, and overrides
+2. **API Integration Tests** (`gemini_test.go`): Tests actual Gemini API interactions (requires API key)
+
+When modifying configuration or API handling code, always run the relevant tests to ensure functionality remains intact.
+
+### Key Dependencies
+
+This project uses specific Go libraries that should be maintained:
+
+- `github.com/mark3labs/mcp-go/mcp` - Core MCP protocol implementation
+- `google.golang.org/genai` - Official Google Generative AI SDK
+- `github.com/joho/godotenv` - Environment variable loading (auto-loaded via import)
+
+The project targets Go 1.24+ and should maintain backward compatibility within the Go 1.x series.
+
+### Command-Line Options
+
+The server supports several command-line flags that override environment variables:
+
+```bash
+./bin/mcp-gemini [OPTIONS]
+
+Available options:
+  --gemini-model string          Gemini model name (overrides GEMINI_MODEL)
+  --gemini-system-prompt string  System prompt (overrides GEMINI_SYSTEM_PROMPT)
+  --gemini-temperature float     Temperature setting 0.0-1.0 (overrides GEMINI_TEMPERATURE)
+  --enable-caching              Enable caching feature (overrides GEMINI_ENABLE_CACHING)
+  --enable-thinking             Enable thinking mode (overrides GEMINI_ENABLE_THINKING)
+  --transport string            Transport mode: 'stdio' (default) or 'http'
+  --auth-enabled                Enable JWT authentication for HTTP transport (overrides GEMINI_AUTH_ENABLED)
+  --generate-token              Generate a JWT token and exit
+  --token-user-id string        User ID for token generation (default: "user1")
+  --token-username string       Username for token generation (default: "admin")
+  --token-role string           Role for token generation (default: "admin")
+  --token-expiration int        Token expiration in hours (default: 744 = 31 days)
+  --help                        Show help information
+```
+
+**Examples:**
+```bash
+# Start with HTTP transport and custom model
+./bin/mcp-gemini --transport=http --gemini-model=gemini-2.5-flash
+
+# Enable HTTP transport with authentication
+./bin/mcp-gemini --transport=http --auth-enabled=true
+
+# Disable caching and thinking mode
+./bin/mcp-gemini --enable-caching=false --enable-thinking=false
+
+# Set custom temperature and system prompt
+./bin/mcp-gemini --gemini-temperature=0.8 --gemini-system-prompt="You are a helpful assistant"
+
+# Generate a JWT token for authentication (31 days expiration by default)
+export GEMINI_AUTH_SECRET_KEY="your-secret-key-at-least-32-characters"
+./bin/mcp-gemini --generate-token --token-username=admin --token-role=admin
+```
 

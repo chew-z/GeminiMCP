@@ -53,6 +53,10 @@ type Config struct {
 	HTTPHeartbeat   time.Duration // Heartbeat interval
 	HTTPCORSEnabled bool          // Enable CORS
 	HTTPCORSOrigins []string      // Allowed origins
+	
+	// Authentication settings
+	AuthEnabled    bool   // Enable JWT authentication for HTTP transport
+	AuthSecretKey  string // Secret key for JWT signing and verification
 
 	// Retry settings
 	MaxRetries     int

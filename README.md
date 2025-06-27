@@ -25,12 +25,18 @@ MCP (Model Control Protocol) server integrating with Google's Gemini API.
 ## Clone and build
 git clone https://github.com/chew-z/GeminiMCP
 cd GeminiMCP
-go build -o mcp-gemini
+go build -o ./bin/mcp-gemini .
 
 ## Start server with environment variables
 export GEMINI_API_KEY=your_api_key
 export GEMINI_MODEL=gemini-2.5-pro
-./bin/mcp-gemini # Assuming build output is in ./bin
+./bin/mcp-gemini
+
+## Or start with HTTP transport
+./bin/mcp-gemini --transport=http
+
+## Or override settings via command line
+./bin/mcp-gemini --transport=http --gemini-model=gemini-2.5-flash --enable-caching=true
 ```
 
 ### Client Configuration
@@ -62,6 +68,57 @@ Add this server to any MCP-compatible client like Claude Desktop by adding to yo
     - On Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 - **Configuration Help**: If you encounter any issues configuring the Claude desktop app, refer to the [MCP Quickstart Guide](https://modelcontextprotocol.io/quickstart/user) for additional assistance.
+
+### Command-Line Options
+
+The server accepts several command-line flags to override environment variables:
+
+```bash
+./bin/mcp-gemini [OPTIONS]
+
+Options:
+  --gemini-model string          Gemini model name (overrides GEMINI_MODEL)
+  --gemini-system-prompt string  System prompt (overrides GEMINI_SYSTEM_PROMPT)  
+  --gemini-temperature float     Temperature 0.0-1.0 (overrides GEMINI_TEMPERATURE)
+  --enable-caching              Enable caching (overrides GEMINI_ENABLE_CACHING)
+  --enable-thinking             Enable thinking mode (overrides GEMINI_ENABLE_THINKING)
+  --transport string            Transport: 'stdio' (default) or 'http'
+  --auth-enabled                Enable JWT authentication for HTTP transport
+  --generate-token              Generate a JWT token and exit
+  --token-username string       Username for token generation (default: "admin")
+  --token-role string           Role for token generation (default: "admin")
+  --token-expiration int        Token expiration in hours (default: 744 = 31 days)
+  --help                        Show help information
+```
+
+**Transport Modes:**
+- **stdio** (default): For MCP clients like Claude Desktop that communicate via stdin/stdout
+- **http**: Enables REST API endpoints for web applications or direct HTTP access
+
+### Authentication (HTTP Transport Only)
+
+The server supports JWT-based authentication for HTTP transport:
+
+```bash
+# Enable authentication
+export GEMINI_AUTH_ENABLED=true
+export GEMINI_AUTH_SECRET_KEY="your-secret-key-at-least-32-characters"
+
+# Start server with authentication enabled
+./bin/mcp-gemini --transport=http --auth-enabled=true
+
+# Generate authentication tokens (31 days expiration by default)
+./bin/mcp-gemini --generate-token --token-username=admin --token-role=admin
+```
+
+**Using Authentication:**
+```bash
+# Include JWT token in requests
+curl -X POST http://localhost:8081/mcp \
+  -H "Authorization: Bearer your-jwt-token-here" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
+```
 
 ## Using this MCP server from Claude Desktop app
 

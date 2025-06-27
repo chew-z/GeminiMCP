@@ -26,7 +26,23 @@ func main() {
 	enableCachingFlag := flag.Bool("enable-caching", true, "Enable caching feature (overrides env var)")
 	enableThinkingFlag := flag.Bool("enable-thinking", true, "Enable thinking mode for supported models (overrides env var)")
 	transportFlag := flag.String("transport", "stdio", "Transport mode: 'stdio' (default) or 'http'")
+	
+	// Authentication flags
+	authEnabledFlag := flag.Bool("auth-enabled", false, "Enable JWT authentication for HTTP transport (overrides env var)")
+	generateTokenFlag := flag.Bool("generate-token", false, "Generate a JWT token and exit")
+	tokenUserIDFlag := flag.String("token-user-id", "user1", "User ID for token generation")
+	tokenUsernameFlag := flag.String("token-username", "admin", "Username for token generation")
+	tokenRoleFlag := flag.String("token-role", "admin", "Role for token generation")
+	tokenExpirationFlag := flag.Int("token-expiration", 744, "Token expiration in hours (default: 744 = 31 days)")
+	
 	flag.Parse()
+
+	// Handle token generation if requested
+	if *generateTokenFlag {
+		secretKey := os.Getenv("GEMINI_AUTH_SECRET_KEY")
+		CreateTokenCommand(secretKey, *tokenUserIDFlag, *tokenUsernameFlag, *tokenRoleFlag, *tokenExpirationFlag)
+		return
+	}
 
 	// Create application context with logger
 	logger := NewLogger(LevelInfo)
@@ -91,6 +107,12 @@ func main() {
 	config.EnableThinking = *enableThinkingFlag
 	logger.Info("Thinking feature is %s", getCachingStatusStr(config.EnableThinking))
 
+	// Override authentication if flag is provided
+	if *authEnabledFlag {
+		config.AuthEnabled = true
+		logger.Info("Authentication feature enabled via command line flag")
+	}
+
 	// Store config in context for error handler to access (already done earlier)
 
 	// Create MCP server
@@ -145,8 +167,8 @@ func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *C
 	// Configure endpoint path
 	opts = append(opts, server.WithEndpointPath(config.HTTPPath))
 
-	// Add HTTP context function for CORS and logging
-	if config.HTTPCORSEnabled {
+	// Add HTTP context function for CORS, logging, and authentication
+	if config.HTTPCORSEnabled || config.AuthEnabled {
 		opts = append(opts, server.WithHTTPContextFunc(createHTTPMiddleware(config, logger)))
 	}
 
@@ -195,11 +217,28 @@ func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *C
 	return nil
 }
 
-// createHTTPMiddleware creates an HTTP context function with CORS and logging
+// createHTTPMiddleware creates an HTTP context function with CORS, logging, and authentication
 func createHTTPMiddleware(config *Config, logger Logger) server.HTTPContextFunc {
+	// Create authentication middleware
+	var authMiddleware *AuthMiddleware
+	if config.AuthEnabled {
+		authMiddleware = NewAuthMiddleware(config.AuthSecretKey, config.AuthEnabled, logger)
+		logger.Info("HTTP authentication enabled")
+	}
+
 	return func(ctx context.Context, r *http.Request) context.Context {
 		// Log HTTP request
 		logger.Info("HTTP %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+
+		// Apply authentication middleware if enabled
+		if authMiddleware != nil {
+			// Create a wrapper function for the next middleware step
+			nextFunc := func(ctx context.Context, r *http.Request) context.Context {
+				return ctx
+			}
+			// Apply authentication middleware
+			ctx = authMiddleware.HTTPContextFunc(nextFunc)(ctx, r)
+		}
 
 		// Add CORS headers if enabled
 		if config.HTTPCORSEnabled {
@@ -362,10 +401,35 @@ func handleStartupError(ctx context.Context, err error) {
 // Define the expected handler signature for tools
 type MCPToolHandlerFunc = server.ToolHandlerFunc
 
-// wrapHandlerWithLogger creates a middleware wrapper for logging around a tool handler
+// wrapHandlerWithLogger creates a middleware wrapper for logging and authentication around a tool handler
 func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logger Logger) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		logger.Info("Calling tool '%s'...", toolName)
+
+		// Check authentication for HTTP requests if enabled
+		// Note: We need to check if this is an HTTP request and if auth is enabled
+		if httpMethod, ok := ctx.Value("http_method").(string); ok && httpMethod != "" {
+			// This is an HTTP request, check if auth is required
+			// Get config from the context (we'll need to pass it through)
+			if authError := getAuthError(ctx); authError != "" {
+				logger.Warn("Authentication failed for tool '%s': %s", toolName, authError)
+				return &mcp.CallToolResult{
+					Content: []interface{}{
+						mcp.TextContent{
+							Type: "text",
+							Text: fmt.Sprintf("Authentication required: %s", authError),
+						},
+					},
+					IsError: &[]bool{true}[0],
+				}, nil
+			}
+			
+			// Log successful authentication if present
+			if isAuthenticated(ctx) {
+				userID, username, role := getUserInfo(ctx)
+				logger.Info("Tool '%s' called by authenticated user %s (%s) with role %s", toolName, username, userID, role)
+			}
+		}
 
 		// Call the actual handler
 		resp, err := handler(ctx, req)
