@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
@@ -175,6 +176,12 @@ func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *C
 	// Create streamable HTTP server
 	httpServer := server.NewStreamableHTTPServer(mcpServer, opts...)
 
+	// Create custom HTTP server with OAuth well-known endpoint
+	customServer := &http.Server{
+		Addr: config.HTTPAddress,
+		Handler: createCustomHTTPHandler(httpServer, config, logger),
+	}
+
 	// Set up graceful shutdown
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -189,7 +196,7 @@ func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *C
 	// Start server in goroutine
 	go func() {
 		defer wg.Done()
-		if err := httpServer.Start(config.HTTPAddress); err != nil {
+		if err := customServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("HTTP server failed to start: %v", err)
 			cancel()
 		}
@@ -207,7 +214,7 @@ func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *C
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), config.HTTPTimeout)
 	defer shutdownCancel()
 
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+	if err := customServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("HTTP server shutdown error: %v", err)
 		return err
 	}
@@ -275,6 +282,49 @@ func isOriginAllowed(origin string, allowedOrigins []string) bool {
 		}
 	}
 	return false
+}
+
+// createCustomHTTPHandler creates a custom HTTP handler that includes OAuth well-known endpoint
+func createCustomHTTPHandler(mcpHandler http.Handler, config *Config, logger Logger) http.Handler {
+	mux := http.NewServeMux()
+	
+	// Add OAuth well-known endpoint
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		logger.Info("OAuth well-known endpoint accessed from %s", r.RemoteAddr)
+		
+		// Create OAuth authorization server metadata
+		metadata := map[string]interface{}{
+			"issuer": fmt.Sprintf("http://%s", r.Host),
+			"authorization_endpoint": fmt.Sprintf("http://%s/oauth/authorize", r.Host),
+			"token_endpoint": fmt.Sprintf("http://%s/oauth/token", r.Host),
+			"response_types_supported": []string{"code"},
+			"grant_types_supported": []string{"authorization_code"},
+			"code_challenge_methods_supported": []string{"S256"},
+		}
+		
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		
+		// Add CORS headers if enabled
+		if config.HTTPCORSEnabled {
+			origin := r.Header.Get("Origin")
+			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins) {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			}
+		}
+		
+		if err := json.NewEncoder(w).Encode(metadata); err != nil {
+			logger.Error("Failed to encode OAuth metadata: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+	})
+	
+	// Handle all other requests with the MCP handler
+	mux.Handle("/", mcpHandler)
+	
+	return mux
 }
 
 // Helper function to get caching status as a string
