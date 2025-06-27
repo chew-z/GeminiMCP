@@ -256,12 +256,12 @@ func NewConfig() (*Config, error) {
 	// Authentication settings
 	authEnabled := parseEnvVarBool("GEMINI_AUTH_ENABLED", defaultAuthEnabled)
 	authSecretKey := os.Getenv("GEMINI_AUTH_SECRET_KEY")
-	
+
 	// If authentication is enabled, require secret key
 	if authEnabled && authSecretKey == "" {
 		return nil, fmt.Errorf("GEMINI_AUTH_SECRET_KEY is required when GEMINI_AUTH_ENABLED=true")
 	}
-	
+
 	// Warn if secret key is too short (for security)
 	if authEnabled && len(authSecretKey) < 32 {
 		fmt.Printf("[WARN] GEMINI_AUTH_SECRET_KEY should be at least 32 characters for security\n")

@@ -26,7 +26,7 @@ func main() {
 	enableCachingFlag := flag.Bool("enable-caching", true, "Enable caching feature (overrides env var)")
 	enableThinkingFlag := flag.Bool("enable-thinking", true, "Enable thinking mode for supported models (overrides env var)")
 	transportFlag := flag.String("transport", "stdio", "Transport mode: 'stdio' (default) or 'http'")
-	
+
 	// Authentication flags
 	authEnabledFlag := flag.Bool("auth-enabled", false, "Enable JWT authentication for HTTP transport (overrides env var)")
 	generateTokenFlag := flag.Bool("generate-token", false, "Generate a JWT token and exit")
@@ -34,7 +34,7 @@ func main() {
 	tokenUsernameFlag := flag.String("token-username", "admin", "Username for token generation")
 	tokenRoleFlag := flag.String("token-role", "admin", "Role for token generation")
 	tokenExpirationFlag := flag.Int("token-expiration", 744, "Token expiration in hours (default: 744 = 31 days)")
-	
+
 	flag.Parse()
 
 	// Handle token generation if requested
@@ -255,7 +255,7 @@ func createHTTPMiddleware(config *Config, logger Logger) server.HTTPContextFunc 
 		ctx = context.WithValue(ctx, "http_method", r.Method)
 		ctx = context.WithValue(ctx, "http_path", r.URL.Path)
 		ctx = context.WithValue(ctx, "http_remote_addr", r.RemoteAddr)
-		
+
 		return ctx
 	}
 }
@@ -413,17 +413,9 @@ func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logg
 			// Get config from the context (we'll need to pass it through)
 			if authError := getAuthError(ctx); authError != "" {
 				logger.Warn("Authentication failed for tool '%s': %s", toolName, authError)
-				return &mcp.CallToolResult{
-					Content: []interface{}{
-						mcp.TextContent{
-							Type: "text",
-							Text: fmt.Sprintf("Authentication required: %s", authError),
-						},
-					},
-					IsError: &[]bool{true}[0],
-				}, nil
+				return createErrorResult(fmt.Sprintf("Authentication required: %s", authError)), nil
 			}
-			
+
 			// Log successful authentication if present
 			if isAuthenticated(ctx) {
 				userID, username, role := getUserInfo(ctx)
