@@ -5,3 +5,7 @@ go.sum
 
 .claude/**
 .gemini/**
+.vscode/**
+.repomix/**
+
+repomix.config.json

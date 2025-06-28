@@ -82,7 +82,7 @@ func parseEnvVarInt(key string, defaultValue int) int {
 			return val
 		}
 		// Log warning directly as logger might not be initialized yet
-		fmt.Printf("[WARN] Invalid integer value for %s: %q. Using default: %d\n", key, str, defaultValue)
+		fmt.Fprintf(os.Stderr, "[WARN] Invalid integer value for %s: %q. Using default: %d\n", key, str, defaultValue)
 	}
 	return defaultValue
 }
@@ -93,7 +93,7 @@ func parseEnvVarFloat(key string, defaultValue float64) float64 {
 		if val, err := strconv.ParseFloat(str, 64); err == nil {
 			return val
 		}
-		fmt.Printf("[WARN] Invalid float value for %s: %q. Using default: %f\n", key, str, defaultValue)
+		fmt.Fprintf(os.Stderr, "[WARN] Invalid float value for %s: %q. Using default: %f\n", key, str, defaultValue)
 	}
 	return defaultValue
 }
@@ -104,7 +104,7 @@ func parseEnvVarDuration(key string, defaultValue time.Duration) time.Duration {
 		if val, err := time.ParseDuration(str); err == nil {
 			return val
 		}
-		fmt.Printf("[WARN] Invalid duration value for %s: %q. Using default: %s\n", key, str, defaultValue.String())
+		fmt.Fprintf(os.Stderr, "[WARN] Invalid duration value for %s: %q. Using default: %s\n", key, str, defaultValue.String())
 	}
 	return defaultValue
 }
@@ -115,7 +115,7 @@ func parseEnvVarBool(key string, defaultValue bool) bool {
 		if val, err := strconv.ParseBool(str); err == nil {
 			return val
 		}
-		fmt.Printf("[WARN] Invalid boolean value for %s: %q. Using default: %t\n", key, str, defaultValue)
+		fmt.Fprintf(os.Stderr, "[WARN] Invalid boolean value for %s: %q. Using default: %t\n", key, str, defaultValue)
 	}
 	return defaultValue
 }
@@ -173,7 +173,7 @@ func NewConfig() (*Config, error) {
 	// File handling settings
 	maxFileSize := int64(parseEnvVarInt("GEMINI_MAX_FILE_SIZE", int(defaultMaxFileSize)))
 	if maxFileSize <= 0 {
-		fmt.Printf("[WARN] GEMINI_MAX_FILE_SIZE must be positive. Using default: %d\n", defaultMaxFileSize)
+		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_MAX_FILE_SIZE must be positive. Using default: %d\n", defaultMaxFileSize)
 		maxFileSize = defaultMaxFileSize
 	}
 
@@ -198,7 +198,7 @@ func NewConfig() (*Config, error) {
 	enableCaching := parseEnvVarBool("GEMINI_ENABLE_CACHING", defaultEnableCaching)
 	defaultCacheTTL := parseEnvVarDuration("GEMINI_DEFAULT_CACHE_TTL", defaultDefaultCacheTTL)
 	if defaultCacheTTL <= 0 {
-		fmt.Printf("[WARN] GEMINI_DEFAULT_CACHE_TTL must be positive. Using default: %s\n", defaultDefaultCacheTTL.String())
+		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_DEFAULT_CACHE_TTL must be positive. Using default: %s\n", defaultDefaultCacheTTL.String())
 		defaultCacheTTL = defaultDefaultCacheTTL
 	}
 
@@ -212,7 +212,7 @@ func NewConfig() (*Config, error) {
 		if level == "none" || level == "low" || level == "medium" || level == "high" {
 			thinkingBudgetLevel = level
 		} else {
-			fmt.Printf("[WARN] Invalid GEMINI_THINKING_BUDGET_LEVEL value: %q. Using default: %q\n",
+			fmt.Fprintf(os.Stderr, "[WARN] Invalid GEMINI_THINKING_BUDGET_LEVEL value: %q. Using default: %q\n",
 				levelStr, defaultThinkingBudgetLevel)
 		}
 	}
@@ -236,7 +236,7 @@ func NewConfig() (*Config, error) {
 	httpStateless := parseEnvVarBool("GEMINI_HTTP_STATELESS", defaultHTTPStateless)
 	httpHeartbeat := parseEnvVarDuration("GEMINI_HTTP_HEARTBEAT", defaultHTTPHeartbeat)
 	if httpHeartbeat < 0 {
-		fmt.Printf("[WARN] GEMINI_HTTP_HEARTBEAT must be non-negative. Using default: %s\n", defaultHTTPHeartbeat.String())
+		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_HTTP_HEARTBEAT must be non-negative. Using default: %s\n", defaultHTTPHeartbeat.String())
 		httpHeartbeat = defaultHTTPHeartbeat
 	}
 	httpCORSEnabled := parseEnvVarBool("GEMINI_HTTP_CORS_ENABLED", defaultHTTPCORSEnabled)
@@ -264,7 +264,7 @@ func NewConfig() (*Config, error) {
 
 	// Warn if secret key is too short (for security)
 	if authEnabled && len(authSecretKey) < 32 {
-		fmt.Printf("[WARN] GEMINI_AUTH_SECRET_KEY should be at least 32 characters for security\n")
+		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_AUTH_SECRET_KEY should be at least 32 characters for security\n")
 	}
 
 	return &Config{

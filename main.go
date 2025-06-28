@@ -178,7 +178,7 @@ func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *C
 
 	// Create custom HTTP server with OAuth well-known endpoint
 	customServer := &http.Server{
-		Addr: config.HTTPAddress,
+		Addr:    config.HTTPAddress,
 		Handler: createCustomHTTPHandler(httpServer, config, logger),
 	}
 
@@ -287,24 +287,24 @@ func isOriginAllowed(origin string, allowedOrigins []string) bool {
 // createCustomHTTPHandler creates a custom HTTP handler that includes OAuth well-known endpoint
 func createCustomHTTPHandler(mcpHandler http.Handler, config *Config, logger Logger) http.Handler {
 	mux := http.NewServeMux()
-	
+
 	// Add OAuth well-known endpoint
 	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
 		logger.Info("OAuth well-known endpoint accessed from %s", r.RemoteAddr)
-		
+
 		// Create OAuth authorization server metadata
 		metadata := map[string]interface{}{
-			"issuer": fmt.Sprintf("http://%s", r.Host),
-			"authorization_endpoint": fmt.Sprintf("http://%s/oauth/authorize", r.Host),
-			"token_endpoint": fmt.Sprintf("http://%s/oauth/token", r.Host),
-			"response_types_supported": []string{"code"},
-			"grant_types_supported": []string{"authorization_code"},
+			"issuer":                           fmt.Sprintf("http://%s", r.Host),
+			"authorization_endpoint":           fmt.Sprintf("http://%s/oauth/authorize", r.Host),
+			"token_endpoint":                   fmt.Sprintf("http://%s/oauth/token", r.Host),
+			"response_types_supported":         []string{"code"},
+			"grant_types_supported":            []string{"authorization_code"},
 			"code_challenge_methods_supported": []string{"S256"},
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "public, max-age=3600")
-		
+
 		// Add CORS headers if enabled
 		if config.HTTPCORSEnabled {
 			origin := r.Header.Get("Origin")
@@ -314,16 +314,16 @@ func createCustomHTTPHandler(mcpHandler http.Handler, config *Config, logger Log
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 			}
 		}
-		
+
 		if err := json.NewEncoder(w).Encode(metadata); err != nil {
 			logger.Error("Failed to encode OAuth metadata: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		}
 	})
-	
+
 	// Handle all other requests with the MCP handler
 	mux.Handle("/", mcpHandler)
-	
+
 	return mux
 }
 

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -233,7 +234,7 @@ func RequireAuth(ctx context.Context) error {
 // CreateTokenCommand creates a command-line utility to generate tokens
 func CreateTokenCommand(secretKey, userID, username, role string, expirationHours int) {
 	if secretKey == "" {
-		fmt.Println("Error: SECRET_KEY environment variable is required")
+		fmt.Fprintln(os.Stderr, "Error: SECRET_KEY environment variable is required")
 		return
 	}
 
@@ -242,16 +243,16 @@ func CreateTokenCommand(secretKey, userID, username, role string, expirationHour
 
 	token, err := auth.GenerateToken(userID, username, role, expirationHours)
 	if err != nil {
-		fmt.Printf("Error generating token: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error generating token: %v\n", err)
 		return
 	}
 
-	fmt.Printf("Generated JWT token:\n%s\n\n", token)
-	fmt.Printf("Token details:\n")
-	fmt.Printf("  User ID: %s\n", userID)
-	fmt.Printf("  Username: %s\n", username)
-	fmt.Printf("  Role: %s\n", role)
-	fmt.Printf("  Expires: %s\n", time.Now().Add(time.Duration(expirationHours)*time.Hour).Format(time.RFC3339))
-	fmt.Printf("\nTo use this token, include it in HTTP requests:\n")
-	fmt.Printf("  Authorization: Bearer %s\n", token)
+	fmt.Fprintf(os.Stderr, "Generated JWT token:\n%s\n\n", token)
+	fmt.Fprintf(os.Stderr, "Token details:\n")
+	fmt.Fprintf(os.Stderr, "  User ID: %s\n", userID)
+	fmt.Fprintf(os.Stderr, "  Username: %s\n", username)
+	fmt.Fprintf(os.Stderr, "  Role: %s\n", role)
+	fmt.Fprintf(os.Stderr, "  Expires: %s\n", time.Now().Add(time.Duration(expirationHours)*time.Hour).Format(time.RFC3339))
+	fmt.Fprintf(os.Stderr, "\nTo use this token, include it in HTTP requests:\n")
+	fmt.Fprintf(os.Stderr, "  Authorization: Bearer %s\n", token)
 }
