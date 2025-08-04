@@ -362,10 +362,10 @@ Key supported models (as detailed by the `gemini_models` tool):
     *   Balanced price-performance, 32K token context window.
     *   Best for: General programming tasks, standard code review.
     *   Capabilities: Thinking mode, implicit caching (1024+ token minimum), explicit caching.
--   **`gemini-2.5-flash-lite-preview-06-17`** (preview):
+-   **`gemini-2.5-flash-lite`** (production):
     *   Optimized for cost efficiency and low latency, 32K token context window.
     *   Best for: Search queries, lightweight tasks, quick responses.
-    *   Capabilities: Thinking mode (off by default), no implicit or explicit caching (preview limitation).
+    *   Capabilities: Thinking mode (off by default), no implicit or explicit caching.
 
 **Always use the `gemini_models` tool to get the most current details, capabilities, and example usage for each model as presented by the server.**
 
