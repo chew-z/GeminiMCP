@@ -609,7 +609,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Model ID**: `gemini-2.5-flash-lite-preview-06-17` (preview)\n"); err != nil {
+	if err := write("- **Model ID**: `gemini-2.5-flash-lite`\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
@@ -671,7 +671,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	if err := write("**Basic Search:**\n```json\n{\n  \"query\": \"What are the latest developments in Go programming language?\",\n  \"model\": \"gemini-2.5-flash-lite-preview-06-17\"\n}\n```\n\n"); err != nil {
+	if err := write("**Basic Search:**\n```json\n{\n  \"query\": \"What are the latest developments in Go programming language?\",\n  \"model\": \"gemini-2.5-flash-lite\"\n}\n```\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
@@ -681,7 +681,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		return createErrorResult("Error generating model list"), nil
 	}
 
-	if err := write("**Search with Thinking Mode (Flash Lite):**\n```json\n{\n  \"query\": \"Compare the pros and cons of different cloud deployment strategies\",\n  \"model\": \"gemini-2.5-flash-lite-preview-06-17\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\"\n}\n```\n\n"); err != nil {
+	if err := write("**Search with Thinking Mode (Flash Lite):**\n```json\n{\n  \"query\": \"Compare the pros and cons of different cloud deployment strategies\",\n  \"model\": \"gemini-2.5-flash-lite\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\"\n}\n```\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}

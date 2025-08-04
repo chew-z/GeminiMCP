@@ -29,7 +29,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			Versions:             []ModelVersion{}, // Production model uses family ID directly
 		},
 
-		// Gemini 2.5 Flash Lite - Preview model
+		// Gemini 2.5 Flash Lite - GA model
 		{
 			FamilyID:             "gemini-2.5-flash-lite",
 			Name:                 "Gemini 2.5 Flash Lite",
@@ -39,14 +39,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			PreferredForThinking: false,
 			PreferredForCaching:  false,
 			PreferredForSearch:   true,
-			Versions: []ModelVersion{
-				{
-					ID:              "gemini-2.5-flash-lite-preview-06-17",
-					Name:            "Gemini 2.5 Flash Lite Preview 06 17",
-					SupportsCaching: false,
-					IsPreferred:     true,
-				},
-			},
+			Versions:             []ModelVersion{}, // Production model uses family ID directly
 		},
 	}
 }

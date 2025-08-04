@@ -49,7 +49,6 @@ If the search results don't contain enough information to fully answer the query
 
 	// Thinking settings
 	defaultEnableThinking      = true
-	defaultThinkingBudget      = 4096  // Default thinking budget in tokens (low)
 	defaultThinkingBudgetLevel = "low" // Default thinking budget level
 	thinkingBudgetNone         = 0     // None: Thinking disabled
 	thinkingBudgetLow          = 4096  // Low: 4096 tokens
