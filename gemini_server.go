@@ -15,7 +15,7 @@ func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error)
 	}
 
 	if config.GeminiAPIKey == "" {
-		return nil, errors.New("Gemini API key is required")
+		return nil, errors.New("gemini API key is required")
 	}
 
 	// Initialize the Gemini client

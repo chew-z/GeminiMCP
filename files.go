@@ -120,7 +120,7 @@ func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*F
 	// Validate URI before storing
 	if fileInfo.URI == "" {
 		logger.Error("Invalid URI for uploaded file: empty URI")
-		return nil, errors.New("Invalid URI for uploaded file")
+		return nil, errors.New("invalid URI for uploaded file")
 	}
 
 	logger.Debug("Storing file info with URI: %s", fileInfo.URI)

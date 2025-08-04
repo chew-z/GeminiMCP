@@ -259,9 +259,9 @@ func createHTTPMiddleware(config *Config, logger Logger) server.HTTPContextFunc 
 		}
 
 		// Add request info to context
-		ctx = context.WithValue(ctx, "http_method", r.Method)
-		ctx = context.WithValue(ctx, "http_path", r.URL.Path)
-		ctx = context.WithValue(ctx, "http_remote_addr", r.RemoteAddr)
+		ctx = context.WithValue(ctx, httpMethodKey, r.Method)
+		ctx = context.WithValue(ctx, httpPathKey, r.URL.Path)
+		ctx = context.WithValue(ctx, httpRemoteAddrKey, r.RemoteAddr)
 
 		return ctx
 	}
@@ -458,7 +458,7 @@ func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logg
 
 		// Check authentication for HTTP requests if enabled
 		// Note: We need to check if this is an HTTP request and if auth is enabled
-		if httpMethod, ok := ctx.Value("http_method").(string); ok && httpMethod != "" {
+		if httpMethod, ok := ctx.Value(httpMethodKey).(string); ok && httpMethod != "" {
 			// This is an HTTP request, check if auth is required
 			// Get config from the context (we'll need to pass it through)
 			if authError := getAuthError(ctx); authError != "" {

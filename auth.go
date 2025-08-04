@@ -51,7 +51,7 @@ func (a *AuthMiddleware) HTTPContextFunc(next func(ctx context.Context, r *http.
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			a.logger.Warn("Missing or invalid authorization header from %s", r.RemoteAddr)
 			// Set authentication error in context instead of failing the request
-			ctx = context.WithValue(ctx, "auth_error", "missing_token")
+			ctx = context.WithValue(ctx, authErrorKey, "missing_token")
 			return next(ctx, r)
 		}
 
@@ -61,24 +61,24 @@ func (a *AuthMiddleware) HTTPContextFunc(next func(ctx context.Context, r *http.
 		claims, err := a.validateJWT(token)
 		if err != nil {
 			a.logger.Warn("Invalid token from %s: %v", r.RemoteAddr, err)
-			ctx = context.WithValue(ctx, "auth_error", "invalid_token")
+			ctx = context.WithValue(ctx, authErrorKey, "invalid_token")
 			return next(ctx, r)
 		}
 
 		// Check if token is expired
 		if time.Now().Unix() > claims.ExpiresAt {
 			a.logger.Warn("Expired token from %s", r.RemoteAddr)
-			ctx = context.WithValue(ctx, "auth_error", "expired_token")
+			ctx = context.WithValue(ctx, authErrorKey, "expired_token")
 			return next(ctx, r)
 		}
 
 		a.logger.Info("Authenticated user %s (%s) from %s", claims.Username, claims.Role, r.RemoteAddr)
 
 		// Add user to request context
-		ctx = context.WithValue(ctx, "authenticated", true)
-		ctx = context.WithValue(ctx, "user_id", claims.UserID)
-		ctx = context.WithValue(ctx, "username", claims.Username)
-		ctx = context.WithValue(ctx, "user_role", claims.Role)
+		ctx = context.WithValue(ctx, authenticatedKey, true)
+		ctx = context.WithValue(ctx, userIDKey, claims.UserID)
+		ctx = context.WithValue(ctx, usernameKey, claims.Username)
+		ctx = context.WithValue(ctx, userRoleKey, claims.Role)
 
 		return next(ctx, r)
 	}
@@ -185,7 +185,7 @@ func (a *AuthMiddleware) GenerateToken(userID, username, role string, expiration
 
 // isAuthenticated checks if the request context contains valid authentication
 func isAuthenticated(ctx context.Context) bool {
-	if auth, ok := ctx.Value("authenticated").(bool); ok && auth {
+	if auth, ok := ctx.Value(authenticatedKey).(bool); ok && auth {
 		return true
 	}
 	return false
@@ -193,7 +193,7 @@ func isAuthenticated(ctx context.Context) bool {
 
 // getAuthError returns any authentication error from the context
 func getAuthError(ctx context.Context) string {
-	if err, ok := ctx.Value("auth_error").(string); ok {
+	if err, ok := ctx.Value(authErrorKey).(string); ok {
 		return err
 	}
 	return ""
@@ -201,9 +201,9 @@ func getAuthError(ctx context.Context) string {
 
 // getUserInfo extracts user information from the authenticated context
 func getUserInfo(ctx context.Context) (userID, username, role string) {
-	if userID, ok := ctx.Value("user_id").(string); ok {
-		if username, ok := ctx.Value("username").(string); ok {
-			if role, ok := ctx.Value("user_role").(string); ok {
+	if userID, ok := ctx.Value(userIDKey).(string); ok {
+		if username, ok := ctx.Value(usernameKey).(string); ok {
+			if role, ok := ctx.Value(userRoleKey).(string); ok {
 				return userID, username, role
 			}
 		}
