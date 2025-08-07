@@ -1,5 +1,4 @@
 This file is a merged representation of the entire codebase, combined into a single document by Repomix.
-The content has been processed where comments have been removed, empty lines have been removed.
 
 <file_summary>
 This section contains a summary of this file.
@@ -37,8 +36,6 @@ The content is organized as follows:
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
 - Files matching patterns in .gitignore are excluded
 - Files matching default ignore patterns are excluded
-- Code comments have been removed from supported file types
-- Empty lines have been removed from all files
 - Files are sorted by Git change count (files with more changes are at the bottom)
 </notes>
 
@@ -78,66 +75,81 @@ tools.go
 <files>
 This section contains the contents of the repository's files.
 
-<file path="context.go">
-package main
-type contextKey string
-const (
-	loggerKey contextKey = "logger"
-	configKey contextKey = "config"
-)
-</file>
-
 <file path="logger.go">
 package main
+
 import (
 	"fmt"
 	"io"
 	"os"
 	"time"
 )
+
+// LogLevel represents the severity level of a log message
 type LogLevel int
+
 const (
+	// LevelDebug is for detailed troubleshooting
 	LevelDebug LogLevel = iota
+	// LevelInfo is for general operational messages
 	LevelInfo
+	// LevelWarning is for potential issues
 	LevelWarning
+	// LevelError is for error conditions
 	LevelError
 )
+
+// Logger provides a consistent logging interface
 type Logger interface {
 	Debug(format string, args ...interface{})
 	Info(format string, args ...interface{})
 	Warn(format string, args ...interface{})
 	Error(format string, args ...interface{})
 }
+
+// StandardLogger implements the Logger interface
 type StandardLogger struct {
 	level  LogLevel
 	writer io.Writer
 }
+
+// NewLogger creates a new standard logger with the specified level
 func NewLogger(level LogLevel) Logger {
 	return &StandardLogger{
 		level:  level,
-		writer: os.Stderr,
+		writer: os.Stderr, // Default to stderr
 	}
 }
+
+// Debug logs a debug message
 func (l *StandardLogger) Debug(format string, args ...interface{}) {
 	if l.level <= LevelDebug {
 		l.log("DEBUG", format, args...)
 	}
 }
+
+// Info logs an informational message
 func (l *StandardLogger) Info(format string, args ...interface{}) {
 	if l.level <= LevelInfo {
 		l.log("INFO", format, args...)
 	}
 }
+
+// Warn logs a warning message
 func (l *StandardLogger) Warn(format string, args ...interface{}) {
 	if l.level <= LevelWarning {
 		l.log("WARN", format, args...)
 	}
 }
+
+// Error logs an error message
 func (l *StandardLogger) Error(format string, args ...interface{}) {
 	if l.level <= LevelError {
 		l.log("ERROR", format, args...)
 	}
 }
+
+// log writes a formatted log message to the writer
 func (l *StandardLogger) log(level, format string, args ...interface{}) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	message := fmt.Sprintf(format, args...)
@@ -147,6 +159,7 @@ func (l *StandardLogger) log(level, format string, args ...interface{}) {
 
 <file path=".github/workflows/claude.yml">
 name: Claude PR Assistant
+
 on:
   issue_comment:
     types: [created]
@@ -156,6 +169,7 @@ on:
     types: [opened, assigned]
   pull_request_review:
     types: [submitted]
+
 jobs:
   claude-code-action:
     if: |
@@ -174,6 +188,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
       - name: Run Claude PR Action
         uses: anthropics/claude-code-action@beta
         with:
@@ -181,26 +196,113 @@ jobs:
           timeout_minutes: "60"
 </file>
 
+<file path="context.go">
+package main
+
+// contextKey is a type for context keys to prevent collisions
+type contextKey string
+
+// Context keys
+const (
+	// loggerKey is the context key for the logger
+	loggerKey contextKey = "logger"
+	// configKey is the context key for the configuration
+	configKey contextKey = "config"
+	// authErrorKey is the context key for authentication errors
+	authErrorKey contextKey = "auth_error"
+	// authenticatedKey is the context key for authentication status
+	authenticatedKey contextKey = "authenticated"
+	// userIDKey is the context key for user ID
+	userIDKey contextKey = "user_id"
+	// usernameKey is the context key for username
+	usernameKey contextKey = "username"
+	// userRoleKey is the context key for user role
+	userRoleKey contextKey = "user_role"
+	// httpMethodKey is the context key for HTTP method
+	httpMethodKey contextKey = "http_method"
+	// httpPathKey is the context key for HTTP path
+	httpPathKey contextKey = "http_path"
+	// httpRemoteAddrKey is the context key for HTTP remote address
+	httpRemoteAddrKey contextKey = "http_remote_addr"
+)
+</file>
+
 <file path="run_format.sh">
+#!/bin/sh
+
 export PATH="/usr/local/go/bin:$PATH"
+
+# Run gofmt to format all Go files recursively
 /usr/local/go/bin/gofmt -w .
 </file>
 
 <file path="run_lint.sh">
+#!/bin/sh
+
 export PATH="/usr/local/go/bin:$PATH"
 export HOME="/Users/rrj"
 export GOLANGCI_LINT_CACHE="$HOME/Library/Caches/golangci-lint"
 export GOCACHE="$HOME/.cache/go-build"
+
+# Run linter
 /Users/rrj/Projekty/Go/bin/golangci-lint run --fix ./...
 </file>
 
 <file path="run_test.sh">
+#!/bin/sh
+
 export PATH="/usr/local/go/bin:$PATH"
+
+# Run tests
 go test -v ./...
+</file>
+
+<file path="tools.go">
+package main
+
+import "github.com/mark3labs/mcp-go/mcp"
+
+// GeminiAskTool defines the gemini_ask tool specification
+var GeminiAskTool = mcp.NewTool(
+	"gemini_ask",
+	mcp.WithDescription("Use Google's Gemini AI model to ask about complex coding problems"),
+	mcp.WithString("query", mcp.Required(), mcp.Description("The coding problem that we are asking Gemini AI to work on [question + code]")),
+	mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
+	mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
+	mcp.WithArray("file_paths", mcp.Description("Optional: Paths to files to include in the request context")),
+	mcp.WithBoolean("use_cache", mcp.Description("Optional: Whether to try using a cache for this request (only works with compatible models)")),
+	mcp.WithString("cache_ttl", mcp.Description("Optional: TTL for cache if created (e.g., '10m', '1h'). Default is 10 minutes")),
+	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (only works with Pro models)")),
+	mcp.WithNumber("thinking_budget", mcp.Description("Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)")),
+	mcp.WithString("thinking_budget_level", mcp.Description("Optional: Predefined thinking budget level (none, low, medium, high)")),
+	mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
+)
+
+// GeminiSearchTool defines the gemini_search tool specification
+var GeminiSearchTool = mcp.NewTool(
+	"gemini_search",
+	mcp.WithDescription("Use Google's Gemini AI model with Google Search to answer questions with grounded information"),
+	mcp.WithString("query", mcp.Required(), mcp.Description("The question to ask Gemini using Google Search for grounding")),
+	mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
+	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (when supported)")),
+	mcp.WithNumber("thinking_budget", mcp.Description("Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)")),
+	mcp.WithString("thinking_budget_level", mcp.Description("Optional: Predefined thinking budget level (none, low, medium, high)")),
+	mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
+	mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
+	mcp.WithString("start_time", mcp.Description("Optional: Filter search results to those published after this time (RFC3339 format, e.g. '2024-01-01T00:00:00Z'). If provided, end_time must also be provided.")),
+	mcp.WithString("end_time", mcp.Description("Optional: Filter search results to those published before this time (RFC3339 format, e.g. '2024-12-31T23:59:59Z'). If provided, start_time must also be provided.")),
+)
+
+// GeminiModelsTool defines the gemini_models tool specification
+var GeminiModelsTool = mcp.NewTool(
+	"gemini_models",
+	mcp.WithDescription("List available Gemini models with descriptions"),
+)
 </file>
 
 <file path="auth.go">
 package main
+
 import (
 	"context"
 	"crypto/hmac"
@@ -213,11 +315,15 @@ import (
 	"strings"
 	"time"
 )
+
+// AuthMiddleware handles JWT-based authentication for HTTP transport
 type AuthMiddleware struct {
 	secretKey []byte
 	enabled   bool
 	logger    Logger
 }
+
+// Claims represents JWT token claims
 type Claims struct {
 	UserID    string `json:"user_id"`
 	Username  string `json:"username"`
@@ -225,6 +331,8 @@ type Claims struct {
 	IssuedAt  int64  `json:"iat"`
 	ExpiresAt int64  `json:"exp"`
 }
+
+// NewAuthMiddleware creates a new authentication middleware
 func NewAuthMiddleware(secretKey string, enabled bool, logger Logger) *AuthMiddleware {
 	return &AuthMiddleware{
 		secretKey: []byte(secretKey),
@@ -232,46 +340,67 @@ func NewAuthMiddleware(secretKey string, enabled bool, logger Logger) *AuthMiddl
 		logger:    logger,
 	}
 }
+
+// HTTPContextFunc returns a middleware function compatible with mcp-go
 func (a *AuthMiddleware) HTTPContextFunc(next func(ctx context.Context, r *http.Request) context.Context) func(ctx context.Context, r *http.Request) context.Context {
 	return func(ctx context.Context, r *http.Request) context.Context {
+		// If authentication is disabled, just call the next middleware
 		if !a.enabled {
 			return next(ctx, r)
 		}
+
+		// Extract token from Authorization header
 		authHeader := r.Header.Get("Authorization")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			a.logger.Warn("Missing or invalid authorization header from %s", r.RemoteAddr)
-			ctx = context.WithValue(ctx, "auth_error", "missing_token")
+			// Set authentication error in context instead of failing the request
+			ctx = context.WithValue(ctx, authErrorKey, "missing_token")
 			return next(ctx, r)
 		}
+
 		token := strings.TrimPrefix(authHeader, "Bearer ")
+
+		// Validate JWT token
 		claims, err := a.validateJWT(token)
 		if err != nil {
 			a.logger.Warn("Invalid token from %s: %v", r.RemoteAddr, err)
-			ctx = context.WithValue(ctx, "auth_error", "invalid_token")
+			ctx = context.WithValue(ctx, authErrorKey, "invalid_token")
 			return next(ctx, r)
 		}
+
+		// Check if token is expired
 		if time.Now().Unix() > claims.ExpiresAt {
 			a.logger.Warn("Expired token from %s", r.RemoteAddr)
-			ctx = context.WithValue(ctx, "auth_error", "expired_token")
+			ctx = context.WithValue(ctx, authErrorKey, "expired_token")
 			return next(ctx, r)
 		}
+
 		a.logger.Info("Authenticated user %s (%s) from %s", claims.Username, claims.Role, r.RemoteAddr)
-		ctx = context.WithValue(ctx, "authenticated", true)
-		ctx = context.WithValue(ctx, "user_id", claims.UserID)
-		ctx = context.WithValue(ctx, "username", claims.Username)
-		ctx = context.WithValue(ctx, "user_role", claims.Role)
+
+		// Add user to request context
+		ctx = context.WithValue(ctx, authenticatedKey, true)
+		ctx = context.WithValue(ctx, userIDKey, claims.UserID)
+		ctx = context.WithValue(ctx, usernameKey, claims.Username)
+		ctx = context.WithValue(ctx, userRoleKey, claims.Role)
+
 		return next(ctx, r)
 	}
 }
+
+// validateJWT validates a JWT token and returns the claims
 func (a *AuthMiddleware) validateJWT(tokenString string) (*Claims, error) {
+	// Split the token into header, payload, and signature
 	parts := strings.Split(tokenString, ".")
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid token format")
 	}
+
+	// Decode and parse header
 	headerData, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
 		return nil, fmt.Errorf("invalid header encoding: %w", err)
 	}
+
 	var header struct {
 		Alg string `json:"alg"`
 		Typ string `json:"typ"`
@@ -279,32 +408,45 @@ func (a *AuthMiddleware) validateJWT(tokenString string) (*Claims, error) {
 	if err := json.Unmarshal(headerData, &header); err != nil {
 		return nil, fmt.Errorf("invalid header format: %w", err)
 	}
+
+	// Verify algorithm
 	if header.Alg != "HS256" {
 		return nil, fmt.Errorf("unsupported algorithm: %s", header.Alg)
 	}
+
+	// Decode and parse payload
 	payloadData, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return nil, fmt.Errorf("invalid payload encoding: %w", err)
 	}
+
 	var claims Claims
 	if err := json.Unmarshal(payloadData, &claims); err != nil {
 		return nil, fmt.Errorf("invalid payload format: %w", err)
 	}
+
+	// Verify signature
 	expectedSignature := a.generateSignature(parts[0] + "." + parts[1])
 	actualSignature, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
 		return nil, fmt.Errorf("invalid signature encoding: %w", err)
 	}
+
 	if !hmac.Equal(expectedSignature, actualSignature) {
 		return nil, fmt.Errorf("invalid signature")
 	}
+
 	return &claims, nil
 }
+
+// generateSignature generates HMAC-SHA256 signature for the given data
 func (a *AuthMiddleware) generateSignature(data string) []byte {
 	h := hmac.New(sha256.New, a.secretKey)
 	h.Write([]byte(data))
 	return h.Sum(nil)
 }
+
+// GenerateToken generates a JWT token for a user (utility function for testing/setup)
 func (a *AuthMiddleware) GenerateToken(userID, username, role string, expirationHours int) (string, error) {
 	now := time.Now()
 	claims := Claims{
@@ -314,49 +456,64 @@ func (a *AuthMiddleware) GenerateToken(userID, username, role string, expiration
 		IssuedAt:  now.Unix(),
 		ExpiresAt: now.Add(time.Duration(expirationHours) * time.Hour).Unix(),
 	}
+
+	// Create header
 	header := map[string]string{
 		"alg": "HS256",
 		"typ": "JWT",
 	}
+
 	headerBytes, err := json.Marshal(header)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal header: %w", err)
 	}
+
 	payloadBytes, err := json.Marshal(claims)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal payload: %w", err)
 	}
+
+	// Encode header and payload
 	headerEncoded := base64.RawURLEncoding.EncodeToString(headerBytes)
 	payloadEncoded := base64.RawURLEncoding.EncodeToString(payloadBytes)
+
+	// Generate signature
 	signatureData := headerEncoded + "." + payloadEncoded
 	signature := a.generateSignature(signatureData)
 	signatureEncoded := base64.RawURLEncoding.EncodeToString(signature)
+
 	token := headerEncoded + "." + payloadEncoded + "." + signatureEncoded
 	return token, nil
 }
+
+// isAuthenticated checks if the request context contains valid authentication
 func isAuthenticated(ctx context.Context) bool {
-	if auth, ok := ctx.Value("authenticated").(bool); ok && auth {
+	if auth, ok := ctx.Value(authenticatedKey).(bool); ok && auth {
 		return true
 	}
 	return false
 }
+
+// getAuthError returns any authentication error from the context
 func getAuthError(ctx context.Context) string {
-	if err, ok := ctx.Value("auth_error").(string); ok {
+	if err, ok := ctx.Value(authErrorKey).(string); ok {
 		return err
 	}
 	return ""
 }
+
 // getUserInfo extracts user information from the authenticated context
 func getUserInfo(ctx context.Context) (userID, username, role string) {
-	if userID, ok := ctx.Value("user_id").(string); ok {
-		if username, ok := ctx.Value("username").(string); ok {
-			if role, ok := ctx.Value("user_role").(string); ok {
+	if userID, ok := ctx.Value(userIDKey).(string); ok {
+		if username, ok := ctx.Value(usernameKey).(string); ok {
+			if role, ok := ctx.Value(userRoleKey).(string); ok {
 				return userID, username, role
 			}
 		}
 	}
 	return "", "", ""
 }
+
 // RequireAuth is a utility function to check authentication and return error if not authenticated
 func RequireAuth(ctx context.Context) error {
 	if !isAuthenticated(ctx) {
@@ -376,18 +533,23 @@ func RequireAuth(ctx context.Context) error {
 	}
 	return nil
 }
+
+// CreateTokenCommand creates a command-line utility to generate tokens
 func CreateTokenCommand(secretKey, userID, username, role string, expirationHours int) {
 	if secretKey == "" {
 		fmt.Fprintln(os.Stderr, "Error: SECRET_KEY environment variable is required")
 		return
 	}
+
 	logger := NewLogger(LevelInfo)
 	auth := NewAuthMiddleware(secretKey, true, logger)
+
 	token, err := auth.GenerateToken(userID, username, role, expirationHours)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating token: %v\n", err)
 		return
 	}
+
 	fmt.Fprintf(os.Stderr, "Generated JWT token:\n%s\n\n", token)
 	fmt.Fprintf(os.Stderr, "Token details:\n")
 	fmt.Fprintf(os.Stderr, "  User ID: %s\n", userID)
@@ -399,394 +561,17 @@ func CreateTokenCommand(secretKey, userID, username, role string, expirationHour
 }
 </file>
 
-<file path="tools.go">
-package main
-import "github.com/mark3labs/mcp-go/mcp"
-var GeminiAskTool = mcp.NewTool(
-	"gemini_ask",
-	mcp.WithDescription("Use Google's Gemini AI model to ask about complex coding problems"),
-	mcp.WithString("query", mcp.Required(), mcp.Description("The coding problem that we are asking Gemini AI to work on [question + code]")),
-	mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
-	mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
-	mcp.WithArray("file_paths", mcp.Description("Optional: Paths to files to include in the request context")),
-	mcp.WithBoolean("use_cache", mcp.Description("Optional: Whether to try using a cache for this request (only works with compatible models)")),
-	mcp.WithString("cache_ttl", mcp.Description("Optional: TTL for cache if created (e.g., '10m', '1h'). Default is 10 minutes")),
-	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (only works with Pro models)")),
-	mcp.WithNumber("thinking_budget", mcp.Description("Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)")),
-	mcp.WithString("thinking_budget_level", mcp.Description("Optional: Predefined thinking budget level (none, low, medium, high)")),
-	mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
-)
-var GeminiSearchTool = mcp.NewTool(
-	"gemini_search",
-	mcp.WithDescription("Use Google's Gemini AI model with Google Search to answer questions with grounded information"),
-	mcp.WithString("query", mcp.Required(), mcp.Description("The question to ask Gemini using Google Search for grounding")),
-	mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
-	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (when supported)")),
-	mcp.WithNumber("thinking_budget", mcp.Description("Optional: Maximum number of tokens to allocate for the model's thinking process (0-24576)")),
-	mcp.WithString("thinking_budget_level", mcp.Description("Optional: Predefined thinking budget level (none, low, medium, high)")),
-	mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
-	mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
-	mcp.WithString("start_time", mcp.Description("Optional: Filter search results to those published after this time (RFC3339 format, e.g. '2024-01-01T00:00:00Z'). If provided, end_time must also be provided.")),
-	mcp.WithString("end_time", mcp.Description("Optional: Filter search results to those published before this time (RFC3339 format, e.g. '2024-12-31T23:59:59Z'). If provided, start_time must also be provided.")),
-)
-var GeminiModelsTool = mcp.NewTool(
-	"gemini_models",
-	mcp.WithDescription("List available Gemini models with descriptions"),
-)
-</file>
-
-<file path="CLAUDE.md">
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Project Overview
-
-GeminiMCP is a Model Control Protocol (MCP) server that integrates with Google's Gemini API. It serves as a bridge between MCP-compatible clients (like Claude Desktop) and Google's Gemini models, providing a standardized interface for model interactions.
-
-**Note: This server exclusively supports Gemini 2.5 family models.** Only Gemini 2.5 models (Pro, Flash, Flash Lite) are supported as they provide optimal thinking mode and implicit caching capabilities.
-
-## Build and Development Commands
-
-### Building the Project
-
-```bash
-# Build the binary
-go build -o ./bin/mcp-gemini .
-```
-
-### Testing
-
-```bash
-# Run all tests (sets PATH for Go binary)
-./run_test.sh
-
-# Run tests with verbose output
-go test -v ./...
-
-# Run specific test
-go test -v -run TestConfigDefaults
-
-# Run tests with coverage
-go test -cover ./...
-```
-
-### Code Formatting and Linting
-
-```bash
-# Format code with gofmt
-./run_format.sh
-
-# Run linter (golangci-lint)
-./run_lint.sh
-
-# Both scripts should be run before committing changes
-```
-
-### Debugging and Troubleshooting
-
-```bash
-# Run server with debug logging
-GEMINI_LOG_LEVEL=debug ./bin/mcp-gemini
-
-# Run server with HTTP transport
-./bin/mcp-gemini --transport=http
-
-# Run server with custom settings via command line
-./bin/mcp-gemini --gemini-model=gemini-2.5-flash --enable-caching=true --transport=http
-
-# Test MCP server locally (requires MCP client)
-# Check server responds to MCP protocol messages
-
-# Validate configuration and see available options
-./bin/mcp-gemini --help
-```
-
-### Development Environment Setup
-
-```bash
-# Essential environment variables for development
-export GEMINI_API_KEY="your_api_key_here"
-export GEMINI_MODEL="gemini-2.5-pro-06-05"
-export GEMINI_SEARCH_MODEL="gemini-2.5-flash-preview-05-20"
-
-# Optional development settings
-export GEMINI_LOG_LEVEL="debug"
-export GEMINI_ENABLE_CACHING="true"
-export GEMINI_ENABLE_THINKING="true"
-
-# HTTP transport settings (optional)
-export GEMINI_ENABLE_HTTP="true"
-export GEMINI_HTTP_ADDRESS=":8081"
-export GEMINI_HTTP_PATH="/mcp"
-export GEMINI_HTTP_STATELESS="false"
-export GEMINI_HTTP_HEARTBEAT="30s"
-export GEMINI_HTTP_CORS_ENABLED="true"
-export GEMINI_HTTP_CORS_ORIGINS="*"
-```
-
-## Architecture Overview
-
-The GeminiMCP server follows a clean, modular architecture:
-
-1. **Server Initialization** (`main.go`): Entry point that configures and launches the MCP server.
-
-2. **Configuration** (`config.go`): Handles environment variables, flags, and defaults for the server.
-
-3. **Tool Definitions** (`tools.go`): Defines the MCP tools (gemini_ask, gemini_search, gemini_models) exposed by the server.
-
-4. **Handlers** (`direct_handlers.go`): Implements the tool handlers that process requests and interact with the Gemini API.
-
-5. **Model Management** (`fetch_models.go`, `fallback_models.go`): Fetches available models from the Gemini API and maintains model metadata.
-
-6. **Context Caching** (`cache.go`): Implements caching for Gemini contexts to improve performance for repeated queries.
-
-7. **File Handling** (`files.go`): Manages file uploads for providing context to Gemini.
-
-8. **Utility Components**:
-   - `logger.go`: Logger for consistent log output
-   - `context.go`: Context key definitions
-   - `middleware.go`: Request processing middleware
-   - `structs.go`: Shared data structures
-   - `gemini_utils.go`: Utility functions for interacting with Gemini API
-
-## Key Concepts
-
-### Transport Modes
-
-The server supports two transport modes, configurable via the `--transport` command-line flag:
-
-1. **Stdio Transport** (default): Traditional stdin/stdout communication for command-line MCP clients
-   ```bash
-   ./bin/mcp-gemini --transport=stdio  # or just ./bin/mcp-gemini
-   ```
-
-2. **HTTP Transport**: RESTful HTTP endpoints with optional WebSocket upgrade for real-time communication
-   ```bash
-   ./bin/mcp-gemini --transport=http
-   ```
-
-### MCP Integration
-
-The server implements the Model Control Protocol to provide a standardized interface for AI model interactions. The `github.com/mark3labs/mcp-go` library handles the protocol specifics.
-
-### Tool Handlers
-
-Three primary tools are exposed:
-
-1. **gemini_ask**: For general queries, code analysis, and creative tasks
-2. **gemini_search**: For grounded search queries using Google Search
-3. **gemini_models**: For listing available Gemini models
-
-### Model Management
-
-The server dynamically fetches available Gemini models at startup and organizes them by preferences and capabilities. Models are categorized for specific tasks (thinking, caching, search).
-
-### Caching System
-
-A sophisticated caching system allows for efficient repeated queries, particularly useful for code analysis. Only models with specific version suffixes (e.g., `-001`) support caching.
-
-### Thinking Mode
-
-Certain Gemini models (primarily Pro models) support "thinking mode" which exposes the model's reasoning process. The server configures thinking with adjustable budget levels.
-
-### Error Handling
-
-The server implements graceful degradation with fallback models and a dedicated error server mode when initialization fails.
-
-## HTTP Transport Usage
-
-### Starting with HTTP Transport
-
-```bash
-# Enable HTTP transport
-export GEMINI_ENABLE_HTTP=true
-export GEMINI_HTTP_ADDRESS=":8081"
-
-# Start the server
-./bin/mcp-gemini
-```
-
-### Authentication for HTTP Transport
-
-The server supports JWT-based authentication for HTTP transport to secure API access.
-
-#### Configuration
-
-```bash
-# Enable authentication
-export GEMINI_AUTH_ENABLED=true
-export GEMINI_AUTH_SECRET_KEY="your-secret-key-at-least-32-characters"
-
-# Start server with authentication
-./bin/mcp-gemini --transport=http --auth-enabled=true
-```
-
-#### Generate Authentication Tokens
-
-```bash
-# Generate a token for an admin user (31 days expiration by default)
-export GEMINI_AUTH_SECRET_KEY="your-secret-key-at-least-32-characters"
-./bin/mcp-gemini --generate-token --token-username=admin --token-role=admin
-
-# Generate a token for a regular user (24-hour expiration)
-./bin/mcp-gemini --generate-token --token-username=user1 --token-role=user --token-expiration=24
-```
-
-#### Using Authentication Tokens
-
-Include the JWT token in HTTP requests using the Authorization header:
-
-```bash
-# Store the token (replace with actual token from generation command)
-TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-
-# Use token in API requests
-curl -X POST http://localhost:8081/mcp \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
-```
-
-**Security Notes:**
-- The secret key should be at least 32 characters long for security
-- Tokens are signed with HMAC-SHA256
-- Authentication only applies to HTTP transport, not stdio transport
-- Failed authentication attempts are logged with IP addresses
-
-### HTTP Endpoints
-
-When HTTP transport is enabled, the following endpoints are available:
-
-- `GET /mcp` - Server-Sent Events (SSE) endpoint for real-time communication
-- `POST /mcp` - Message endpoint for request/response communication
-
-### Example HTTP Requests
-
-```bash
-# List available tools
-curl -X POST http://localhost:8081/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
-
-# Call gemini_ask tool
-curl -X POST http://localhost:8081/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 2,
-    "method": "tools/call",
-    "params": {
-      "name": "gemini_ask",
-      "arguments": {
-        "query": "Explain the MCP protocol"
-      }
-    }
-  }'
-```
-
-### CORS Configuration
-
-For web applications, configure CORS settings:
-
-```bash
-export GEMINI_HTTP_CORS_ENABLED=true
-export GEMINI_HTTP_CORS_ORIGINS="https://myapp.com,https://localhost:3000"
-```
-
-## Common Workflows
-
-### Adding a New Tool
-
-1. Define the tool specification in `tools.go` using the `mcp.NewTool` function with appropriate parameters
-2. Create a handler function in `direct_handlers.go` following existing patterns
-3. Register the tool in `setupGeminiServer` in `main.go`
-4. Add error handling in `registerErrorTools` in `main.go`
-
-### Modifying Configuration
-
-1. Update default values or variable names in `config.go`
-2. Add env variable parsing in `NewConfig` function
-3. Update the `Config` struct in `structs.go` if needed
-4. Add flag handling in `main.go` if the setting should be configurable via CLI
-
-### Updating Model Handling
-
-1. Modify model capabilities and preferences in `fetch_models.go`
-2. If adding fallbacks, update `fallback_models.go`
-3. Test with different model IDs to ensure proper resolution
-4. **Important**: Always use `ResolveModelID()` when passing model names to the Gemini API to convert family IDs (like `gemini-2.5-flash`) to specific version IDs (like `gemini-2.5-flash-preview-05-20`)
-
-### Running Tests
-
-The project has comprehensive test coverage for core functionality:
-
-1. **Configuration Tests** (`config_test.go`): Validates environment variable parsing, defaults, and overrides
-2. **API Integration Tests** (`gemini_test.go`): Tests actual Gemini API interactions (requires API key)
-
-When modifying configuration or API handling code, always run the relevant tests to ensure functionality remains intact.
-
-### Key Dependencies
-
-This project uses specific Go libraries that should be maintained:
-
-- `github.com/mark3labs/mcp-go/mcp` - Core MCP protocol implementation
-- `google.golang.org/genai` - Official Google Generative AI SDK
-- `github.com/joho/godotenv` - Environment variable loading (auto-loaded via import)
-
-The project targets Go 1.24+ and should maintain backward compatibility within the Go 1.x series.
-
-### Command-Line Options
-
-The server supports several command-line flags that override environment variables:
-
-```bash
-./bin/mcp-gemini [OPTIONS]
-
-Available options:
-  --gemini-model string          Gemini model name (overrides GEMINI_MODEL)
-  --gemini-system-prompt string  System prompt (overrides GEMINI_SYSTEM_PROMPT)
-  --gemini-temperature float     Temperature setting 0.0-1.0 (overrides GEMINI_TEMPERATURE)
-  --enable-caching              Enable caching feature (overrides GEMINI_ENABLE_CACHING)
-  --enable-thinking             Enable thinking mode (overrides GEMINI_ENABLE_THINKING)
-  --transport string            Transport mode: 'stdio' (default) or 'http'
-  --auth-enabled                Enable JWT authentication for HTTP transport (overrides GEMINI_AUTH_ENABLED)
-  --generate-token              Generate a JWT token and exit
-  --token-user-id string        User ID for token generation (default: "user1")
-  --token-username string       Username for token generation (default: "admin")
-  --token-role string           Role for token generation (default: "admin")
-  --token-expiration int        Token expiration in hours (default: 744 = 31 days)
-  --help                        Show help information
-```
-
-**Examples:**
-```bash
-# Start with HTTP transport and custom model
-./bin/mcp-gemini --transport=http --gemini-model=gemini-2.5-flash
-
-# Enable HTTP transport with authentication
-./bin/mcp-gemini --transport=http --auth-enabled=true
-
-# Disable caching and thinking mode
-./bin/mcp-gemini --enable-caching=false --enable-thinking=false
-
-# Set custom temperature and system prompt
-./bin/mcp-gemini --gemini-temperature=0.8 --gemini-system-prompt="You are a helpful assistant"
-
-# Generate a JWT token for authentication (31 days expiration by default)
-export GEMINI_AUTH_SECRET_KEY="your-secret-key-at-least-32-characters"
-./bin/mcp-gemini --generate-token --token-username=admin --token-role=admin
-```
-</file>
-
 <file path="config_test.go">
 package main
+
 import (
 	"os"
 	"testing"
 	"time"
 )
+
 func TestNewConfig(t *testing.T) {
+	// Save original environment and restore it after the test
 	originalAPIKey := os.Getenv("GEMINI_API_KEY")
 	originalModel := os.Getenv("GEMINI_MODEL")
 	originalTimeout := os.Getenv("GEMINI_TIMEOUT")
@@ -795,9 +580,12 @@ func TestNewConfig(t *testing.T) {
 		os.Setenv("GEMINI_MODEL", originalModel)
 		os.Setenv("GEMINI_TIMEOUT", originalTimeout)
 	}()
+
 	t.Run("missing API key returns error", func(t *testing.T) {
 		os.Unsetenv("GEMINI_API_KEY")
+
 		config, err := NewConfig()
+
 		if err == nil {
 			t.Error("Expected error when API key is missing, got nil")
 		}
@@ -805,10 +593,13 @@ func TestNewConfig(t *testing.T) {
 			t.Errorf("Expected nil config when API key is missing, got %+v", config)
 		}
 	})
+
 	t.Run("valid API key creates config", func(t *testing.T) {
 		os.Setenv("GEMINI_API_KEY", "test-api-key")
-		os.Setenv("GEMINI_MODEL", "gemini-2.5-pro")
+		os.Setenv("GEMINI_MODEL", "gemini-2.5-pro") // Use a valid model from models.go
+
 		config, err := NewConfig()
+
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -825,10 +616,13 @@ func TestNewConfig(t *testing.T) {
 			t.Errorf("Expected timeout of 90s, got %v", config.HTTPTimeout)
 		}
 	})
+
 	t.Run("missing model uses default", func(t *testing.T) {
 		os.Setenv("GEMINI_API_KEY", "test-api-key")
 		os.Unsetenv("GEMINI_MODEL")
+
 		config, err := NewConfig()
+
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -839,10 +633,13 @@ func TestNewConfig(t *testing.T) {
 			t.Errorf("Expected default model 'gemini-2.5-pro', got '%s'", config.GeminiModel)
 		}
 	})
+
 	t.Run("custom timeout", func(t *testing.T) {
 		os.Setenv("GEMINI_API_KEY", "test-api-key")
 		os.Setenv("GEMINI_TIMEOUT", "180")
+
 		config, err := NewConfig()
+
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -853,12 +650,15 @@ func TestNewConfig(t *testing.T) {
 			t.Errorf("Expected timeout of 120s, got %v", config.HTTPTimeout)
 		}
 	})
+
 	t.Run("custom retry settings", func(t *testing.T) {
 		os.Setenv("GEMINI_API_KEY", "test-api-key")
 		os.Setenv("GEMINI_MAX_RETRIES", "3")
 		os.Setenv("GEMINI_INITIAL_BACKOFF", "2")
 		os.Setenv("GEMINI_MAX_BACKOFF", "15")
+
 		config, err := NewConfig()
+
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -945,6 +745,7 @@ func TestConfigDefaults(t *testing.T) {
 		t.Errorf("default CORS origins: want [\"*\"], got %v", cfg.HTTPCORSOrigins)
 	}
 }
+
 func TestInvalidTemperature(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("GEMINI_API_KEY", "key")
@@ -954,6 +755,7 @@ func TestInvalidTemperature(t *testing.T) {
 		t.Fatal("expected error for GEMINI_TEMPERATURE > 1.0, got nil")
 	}
 }
+
 func TestValidTemperature(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("GEMINI_API_KEY", "key")
@@ -966,10 +768,11 @@ func TestValidTemperature(t *testing.T) {
 		t.Errorf("override temperature: want 0.8, got %v", cfg.GeminiTemperature)
 	}
 }
+
 func TestFileSettings(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("GEMINI_API_KEY", "key")
-	os.Setenv("GEMINI_MAX_FILE_SIZE", "2097152")
+	os.Setenv("GEMINI_MAX_FILE_SIZE", "2097152") // 2 MB
 	os.Setenv("GEMINI_ALLOWED_FILE_TYPES", "text/foo,application/bar")
 	cfg, err := NewConfig()
 	if err != nil {
@@ -985,6 +788,7 @@ func TestFileSettings(t *testing.T) {
 		t.Errorf("allowed types: want %v, got %v", wantTypes, cfg.AllowedFileTypes)
 	}
 }
+
 func TestCacheSettings(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("GEMINI_API_KEY", "key")
@@ -1001,7 +805,9 @@ func TestCacheSettings(t *testing.T) {
 		t.Errorf("cache TTL: want 30m, got %v", cfg.DefaultCacheTTL)
 	}
 }
+
 func TestThinkingSettings(t *testing.T) {
+	// override level only
 	os.Clearenv()
 	os.Setenv("GEMINI_API_KEY", "key")
 	os.Setenv("GEMINI_THINKING_BUDGET_LEVEL", "high")
@@ -1016,6 +822,7 @@ func TestThinkingSettings(t *testing.T) {
 		t.Errorf("thinking budget: want %d, got %d",
 			getThinkingBudgetFromLevel("high"), cfg.ThinkingBudget)
 	}
+	// explicit budget override
 	os.Clearenv()
 	os.Setenv("GEMINI_API_KEY", "key")
 	os.Setenv("GEMINI_THINKING_BUDGET_LEVEL", "medium")
@@ -1028,6 +835,7 @@ func TestThinkingSettings(t *testing.T) {
 		t.Errorf("explicit thinking budget: want 1000, got %d", cfg2.ThinkingBudget)
 	}
 }
+
 func TestHTTPSettings(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("GEMINI_API_KEY", "key")
@@ -1070,37 +878,55 @@ func TestHTTPSettings(t *testing.T) {
 
 <file path="model_functions.go">
 package main
+
 import (
 	"fmt"
 	"strings"
 	"sync"
 )
+
+// modelStore handles storing and retrieving models
 var modelStore struct {
 	sync.RWMutex
 	models []GeminiModelInfo
 }
+
+// GetAvailableGeminiModels returns a list of available Gemini models
 func GetAvailableGeminiModels() []GeminiModelInfo {
+	// Get models with read lock
 	modelStore.RLock()
 	defer modelStore.RUnlock()
+
+	// Return cached model list if available
 	if len(modelStore.models) > 0 {
 		return modelStore.models
 	}
+
+	// Return fallback models if nothing has been fetched yet
 	return fallbackGeminiModels()
 }
+
+// GetModelByID returns model info for either a family ID or a version ID
 func GetModelByID(modelID string) *GeminiModelInfo {
 	models := GetAvailableGeminiModels()
+
+	// Check if it's a family ID
 	for _, model := range models {
 		if model.FamilyID == modelID {
 			return &model
 		}
+
+		// Check if it's a version ID
 		for _, version := range model.Versions {
 			if version.ID == modelID {
-				return &model
+				return &model // Return the family for this version
 			}
 		}
 	}
 	return nil
 }
+
+// GetModelVersion returns the specific version info for a model ID
 func GetModelVersion(modelID string) *ModelVersion {
 	for _, model := range GetAvailableGeminiModels() {
 		for i, version := range model.Versions {
@@ -1111,32 +937,55 @@ func GetModelVersion(modelID string) *ModelVersion {
 	}
 	return nil
 }
+
+// ResolveModelID converts a model family ID or version ID to an actual API-usable version ID
+// If the provided ID is already a version ID, it returns it unchanged
+// If it's a family ID, it returns the ID of the preferred or first version
 func ResolveModelID(modelID string) string {
+	// First check if this is already a specific version ID
 	if GetModelVersion(modelID) != nil {
-		return modelID
+		return modelID // Already a valid version ID
 	}
+
+	// It might be a family ID, try to find the best version
 	model := GetModelByID(modelID)
 	if model != nil {
+		// Find preferred version first
 		for _, version := range model.Versions {
 			if version.IsPreferred {
 				return version.ID
 			}
 		}
+
+		// Otherwise return the first version
 		if len(model.Versions) > 0 {
 			return model.Versions[0].ID
 		}
 	}
+
+	// If we get here, it's an unknown ID, return it unchanged
 	return modelID
 }
+
+// ValidateModelID checks if a model ID is in the list of available models
+// Returns nil if valid, error otherwise
 func ValidateModelID(modelID string) error {
+	// First check if it's a known version ID or family ID
 	if GetModelVersion(modelID) != nil || GetModelByID(modelID) != nil {
 		return nil
 	}
+
+	// Special handling for preview models or other special cases
+	// Preview models often have date suffixes like "preview-04-17"
 	if strings.Contains(modelID, "preview") ||
 		strings.Contains(modelID, "exp") ||
 		strings.HasSuffix(modelID, "-dev") {
+		// Allow preview/experimental models even if not in our list
 		return nil
 	}
+
+	// Model is neither in our list nor a recognized preview format
+	// Return a warning, but don't block the model from being used
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Unknown model ID: %s. Known models are:", modelID))
 	for _, model := range GetAvailableGeminiModels() {
@@ -1146,53 +995,29 @@ func ValidateModelID(modelID string) error {
 		}
 	}
 	sb.WriteString("\n\nHowever, we will attempt to use this model anyway. It may be a new or preview model.")
-	return fmt.Errorf("%s", sb.String())
-}
-</file>
 
-<file path="gemini_server.go">
-package main
-import (
-	"context"
-	"errors"
-	"fmt"
-	"google.golang.org/genai"
-)
-func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error) {
-	if config == nil {
-		return nil, errors.New("config cannot be nil")
-	}
-	if config.GeminiAPIKey == "" {
-		return nil, errors.New("Gemini API key is required")
-	}
-	clientConfig := &genai.ClientConfig{
-		APIKey: config.GeminiAPIKey,
-	}
-	client, err := genai.NewClient(ctx, clientConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
-	}
-	fileStore := NewFileStore(client, config)
-	cacheStore := NewCacheStore(client, config, fileStore)
-	return &GeminiServer{
-		config:     config,
-		client:     client,
-		fileStore:  fileStore,
-		cacheStore: cacheStore,
-	}, nil
+	return fmt.Errorf("%s", sb.String())
 }
 </file>
 
 <file path="cache.go">
 package main
+
 import (
 	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+
 	"google.golang.org/genai"
 )
+
+// CacheRequest struct definition moved to structs.go
+// CacheInfo struct definition moved to structs.go
+// CacheStore struct definition moved to structs.go
+
+// NewCacheStore creates a new cache store
 func NewCacheStore(client *genai.Client, config *Config, fileStore *FileStore) *CacheStore {
 	return &CacheStore{
 		client:    client,
@@ -1201,17 +1026,27 @@ func NewCacheStore(client *genai.Client, config *Config, fileStore *FileStore) *
 		cacheInfo: make(map[string]*CacheInfo),
 	}
 }
+
+// CreateCache creates a cached context
 func (cs *CacheStore) CreateCache(ctx context.Context, req *CacheRequest) (*CacheInfo, error) {
 	logger := getLoggerFromContext(ctx)
+
+	// Check if caching is enabled
 	if !cs.config.EnableCaching {
 		return nil, errors.New("caching is disabled")
 	}
+
+	// Input validation
 	if req.Model == "" {
 		return nil, errors.New("model is required")
 	}
+
+	// Validate the model
 	if err := ValidateModelID(req.Model); err != nil {
 		return nil, fmt.Errorf("invalid model: %w", err)
 	}
+
+	// Parse TTL
 	var ttl time.Duration
 	if req.TTL == "" {
 		ttl = cs.config.DefaultCacheTTL
@@ -1222,50 +1057,72 @@ func (cs *CacheStore) CreateCache(ctx context.Context, req *CacheRequest) (*Cach
 			return nil, fmt.Errorf("invalid TTL format: %w", err)
 		}
 	}
+
+	// Create config with TTL
 	config := &genai.CreateCachedContentConfig{
 		TTL: ttl,
 	}
+
+	// Set up display name if provided
 	if req.DisplayName != "" {
 		config.DisplayName = req.DisplayName
 	}
+
 	// Set up system instruction if provided
 	if req.SystemPrompt != "" {
 		config.SystemInstruction = genai.NewContentFromText(req.SystemPrompt, "")
 	}
+
 	// Build contents with files and text
 	contents := []*genai.Content{}
+
 	// Add files if provided
 	if len(req.FileIDs) > 0 {
 		logger.Info("Adding %d files to cache context", len(req.FileIDs))
 		for _, fileID := range req.FileIDs {
+			// Get file info
 			fileInfo, err := cs.fileStore.GetFile(ctx, fileID)
 			if err != nil {
 				logger.Error("Failed to get file with ID %s: %v", fileID, err)
 				return nil, fmt.Errorf("failed to get file with ID %s: %w", fileID, err)
 			}
+
+			// Add file to contents
 			logger.Info("Adding file %s with URI %s to cache context", fileID, fileInfo.URI)
 			logger.Debug("File details: Name=%s, MimeType=%s, Size=%d", fileInfo.DisplayName, fileInfo.MimeType, fileInfo.Size)
 			contents = append(contents, genai.NewContentFromURI(fileInfo.URI, fileInfo.MimeType, genai.RoleUser))
 		}
 	}
+
+	// Add text content if provided
 	if req.Content != "" {
 		logger.Debug("Adding text content to cache context")
 		contents = append(contents, genai.NewContentFromText(req.Content, genai.RoleUser))
 	}
+
+	// Add contents to config if we have any
 	if len(contents) > 0 {
 		config.Contents = contents
 	}
+
+	// Create the cached content
 	logger.Info("Creating cached content with model %s", req.Model)
 	cc, err := cs.client.Caches.Create(ctx, req.Model, config)
 	if err != nil {
 		logger.Error("Failed to create cached content: %v", err)
 		return nil, fmt.Errorf("failed to create cached content: %w", err)
 	}
+
+	// Extract ID from name (format: "cachedContents/abc123")
 	id := cc.Name
 	if strings.HasPrefix(cc.Name, "cachedContents/") {
 		id = strings.TrimPrefix(cc.Name, "cachedContents/")
 	}
+
+	// Calculate expiration time
 	expiresAt := cc.ExpireTime
+
+	// Create cache info
 	cacheInfo := &CacheInfo{
 		ID:          id,
 		Name:        cc.Name,
@@ -1275,36 +1132,53 @@ func (cs *CacheStore) CreateCache(ctx context.Context, req *CacheRequest) (*Cach
 		ExpiresAt:   expiresAt,
 		FileIDs:     req.FileIDs,
 	}
+
+	// Store cache info
 	cs.mu.Lock()
 	cs.cacheInfo[id] = cacheInfo
 	cs.mu.Unlock()
+
 	logger.Info("Cache created successfully with ID: %s", id)
 	return cacheInfo, nil
 }
+
+// GetCache gets cache information by ID
 func (cs *CacheStore) GetCache(ctx context.Context, id string) (*CacheInfo, error) {
 	logger := getLoggerFromContext(ctx)
+
+	// Check cache first
 	cs.mu.RLock()
 	info, ok := cs.cacheInfo[id]
 	cs.mu.RUnlock()
+
 	if ok {
 		logger.Debug("Cache info for %s found in local cache", id)
 		return info, nil
 	}
+
+	// If not in cache, try to get from API
 	name := id
 	if !strings.HasPrefix(id, "cachedContents/") {
 		name = "cachedContents/" + id
 	}
+
 	logger.Info("Fetching cache info for %s from API", name)
 	cc, err := cs.client.Caches.Get(ctx, name, nil)
 	if err != nil {
 		logger.Error("Failed to get cached content: %v", err)
 		return nil, fmt.Errorf("failed to get cached content: %w", err)
 	}
+
+	// Extract ID from name
 	cacheID := cc.Name
 	if strings.HasPrefix(cc.Name, "cachedContents/") {
 		cacheID = strings.TrimPrefix(cc.Name, "cachedContents/")
 	}
+
+	// Get expiration time
 	expiresAt := cc.ExpireTime
+
+	// Create cache info
 	cacheInfo := &CacheInfo{
 		ID:          cacheID,
 		Name:        cc.Name,
@@ -1312,71 +1186,186 @@ func (cs *CacheStore) GetCache(ctx context.Context, id string) (*CacheInfo, erro
 		Model:       cc.Model,
 		CreatedAt:   cc.CreateTime,
 		ExpiresAt:   expiresAt,
+		// Note: We can't get file IDs from the API, so this will be empty
 	}
+
+	// Store in cache
 	cs.mu.Lock()
 	cs.cacheInfo[cacheID] = cacheInfo
 	cs.mu.Unlock()
+
 	logger.Debug("Added cache info for %s to local cache", cacheID)
 	return cacheInfo, nil
 }
 </file>
 
-<file path="fallback_models.go">
-package main
-func fallbackGeminiModels() []GeminiModelInfo {
-	return []GeminiModelInfo{
-		{
-			FamilyID:             "gemini-2.5-pro",
-			Name:                 "Gemini 2.5 Pro",
-			Description:          "Our most powerful thinking model with maximum response accuracy and state-of-the-art performance",
-			SupportsThinking:     true,
-			ContextWindowSize:    1048576,
-			PreferredForThinking: true,
-			PreferredForCaching:  true,
-			PreferredForSearch:   false,
-			Versions:             []ModelVersion{},
-		},
-		{
-			FamilyID:             "gemini-2.5-flash",
-			Name:                 "Gemini 2.5 Flash",
-			Description:          "Best model in terms of price-performance, offering well-rounded capabilities",
-			SupportsThinking:     true,
-			ContextWindowSize:    32768,
-			PreferredForThinking: false,
-			PreferredForCaching:  true,
-			PreferredForSearch:   false,
-			Versions:             []ModelVersion{},
-		},
-		{
-			FamilyID:             "gemini-2.5-flash-lite",
-			Name:                 "Gemini 2.5 Flash Lite",
-			Description:          "Optimized for cost efficiency and low latency",
-			SupportsThinking:     true,
-			ContextWindowSize:    32768,
-			PreferredForThinking: false,
-			PreferredForCaching:  false,
-			PreferredForSearch:   true,
-			Versions: []ModelVersion{
-				{
-					ID:              "gemini-2.5-flash-lite-preview-06-17",
-					Name:            "Gemini 2.5 Flash Lite Preview 06 17",
-					SupportsCaching: false,
-					IsPreferred:     true,
-				},
-			},
-		},
-	}
-}
+<file path="CLAUDE.md">
+# CLAUDE.md
+
+GeminiMCP is an Model Control Protocol (MCP) server bridging MCP clients with Google's Gemini 2.5 family models (Pro, Flash, Flash-Lite).
+
+## Build Commands
+
+```bash
+# Build
+go build -o ./bin/mcp-gemini .
+
+# Test & Format (run before commits)
+./run_test.sh
+./run_format.sh
+./run_lint.sh
+```
+
+## Architecture
+
+**Core Files:**
+- `main.go` - Server initialization, transport handling
+- `config.go` - Environment variables, CLI flags, defaults
+- `tools.go` - MCP tool definitions (gemini_ask, gemini_search, gemini_models)
+- `direct_handlers.go` - Tool request handlers, Gemini API interaction
+- `fetch_models.go`, `fallback_models.go` - Dynamic model management
+- `cache.go` - Context caching for repeated queries
+- `auth.go` - JWT authentication for HTTP transport
+
+**Key Functions:**
+- `ResolveModelID()` - Convert family IDs to specific version IDs (ALWAYS use before API calls)
+- `ValidateModelID()` - Check model ID validity
+- `NewConfig()` - Parse environment variables and flags
+
+## Supported Models (As of GA Release)
+
+- `gemini-2.5-pro` (production) - Advanced thinking, caching, 1M context
+- `gemini-2.5-flash` (production) - Balanced performance, caching, 32K context  
+- `gemini-2.5-flash-lite` (production) - Cost-optimized, no caching, 32K context
+
+## Configuration
+
+**Required:**
+- `GEMINI_API_KEY` - Google AI Studio API key
+
+**Key Environment Variables:**
+```bash
+GEMINI_MODEL="gemini-2.5-pro"                  # Default ask model
+GEMINI_SEARCH_MODEL="gemini-2.5-flash-lite"   # Default search model
+GEMINI_ENABLE_CACHING="true"                   # Context caching
+GEMINI_ENABLE_THINKING="true"                  # Thinking mode
+GEMINI_LOG_LEVEL="info"                        # debug|info|warn|error
+```
+
+**HTTP Transport:**
+```bash
+GEMINI_ENABLE_HTTP="true"
+GEMINI_HTTP_ADDRESS=":8081"
+GEMINI_HTTP_PATH="/mcp"
+```
+
+**Authentication (HTTP only):**
+```bash
+GEMINI_AUTH_ENABLED="true"
+GEMINI_AUTH_SECRET_KEY="32char-minimum-secret"
+```
+
+## CLI Flags (Override Environment)
+
+```bash
+./bin/mcp-gemini --transport=http --gemini-model=gemini-2.5-flash --enable-caching=false
+./bin/mcp-gemini --generate-token --token-username=admin --token-role=admin
+```
+
+## Transport Modes
+
+**Stdio (default):** `./bin/mcp-gemini`
+**HTTP:** `./bin/mcp-gemini --transport=http`
+
+## HTTP Endpoints
+
+- `POST /mcp` - MCP protocol messages  
+- `GET /mcp` - Server-Sent Events
+- `GET /.well-known/oauth-authorization-server` - OAuth metadata
+
+## Development Workflows
+
+**Add Tool:**
+1. Define in `tools.go` using `mcp.NewTool()`
+2. Implement handler in `direct_handlers.go`
+3. Register in `setupGeminiServer()` in `main.go`
+4. Add error handler in `registerErrorTools()`
+
+**Modify Config:**
+1. Update defaults in `config.go`
+2. Add parsing in `NewConfig()`
+3. Update `Config` struct in `structs.go`
+4. Add CLI flag in `main.go` if needed
+
+**Update Models:**
+1. Modify `fetch_models.go` or `fallback_models.go`
+2. Use `ResolveModelID()` for API calls
+3. Test model resolution
+
+## Recent Changes
+
+- **Commit 9158646:** Updated Gemini 2.5 Flash Lite to GA model (`gemini-2.5-flash-lite`)
+- **Commit 01b642f:** Added OAuth well-known endpoint (`/.well-known/oauth-authorization-server`)
+- **Commit 48098fa, f3d47d8:** Improved authentication error handling and stderr logging
+- **Commit 9f6ab9a:** Implemented JWT authentication for HTTP transport
+- **Commit f78ae6c:** Added HTTP transport option
+
+## Key Dependencies
+
+- `github.com/mark3labs/mcp-go/mcp` - MCP protocol
+- `google.golang.org/genai` - Gemini API SDK
+- `github.com/joho/godotenv` - Environment loading
+
+## Testing
+
+```bash
+# Configuration tests
+go test -v -run TestConfigDefaults
+
+# API integration tests (requires GEMINI_API_KEY)
+go test -v -run TestGeminiServer
+```
+
+## Debug Commands
+
+```bash
+# Debug logging
+GEMINI_LOG_LEVEL=debug ./bin/mcp-gemini
+
+# HTTP with auth
+./bin/mcp-gemini --transport=http --auth-enabled=true
+
+# Generate auth token
+export GEMINI_AUTH_SECRET_KEY="your-32char-secret"
+./bin/mcp-gemini --generate-token --token-username=admin
+
+# Test HTTP endpoint
+curl -X POST http://localhost:8081/mcp -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
+```
+
+**Security Notes:**
+- Auth only applies to HTTP transport
+- Secret key must be 32+ characters
+- Tokens use HMAC-SHA256 signing
+- Failed auth attempts logged with IP
 </file>
 
 <file path="gemini_test.go">
+//go:build ignore
+// +build ignore
+
 package main
+
 import (
 	"context"
 	"testing"
+
 	"github.com/mark3labs/mcp-go/mcp"
 	"google.golang.org/genai"
 )
+
+// TestNewGeminiServer tests the creation of a new GeminiServer
 func TestNewGeminiServer(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1396,7 +1385,9 @@ func TestNewGeminiServer(t *testing.T) {
 			},
 			expectError: true,
 		},
+		// Note: We can't easily test successful creation without mocking the genai.NewClient constructor
 	}
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := NewGeminiServer(context.Background(), tc.config)
@@ -1409,17 +1400,25 @@ func TestNewGeminiServer(t *testing.T) {
 		})
 	}
 }
+
+// TestGeminiServerListTools tests the ListTools method of GeminiServer
 func TestGeminiServerListTools(t *testing.T) {
+	// Create a mock GeminiServer
 	server := &GeminiServer{
 		config: &Config{
 			GeminiAPIKey: "test-key",
 			GeminiModel:  "gemini-pro",
 		},
+		// We don't need a real client for this test
 	}
+
+	// Test ListTools
 	resp, err := server.ListTools(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	// Verify response
 	if len(resp) != 3 {
 		t.Errorf("expected 3 tools, got %d", len(resp))
 	}
@@ -1433,14 +1432,21 @@ func TestGeminiServerListTools(t *testing.T) {
 		t.Errorf("expected tool name 'gemini_models', got '%s'", resp[2].Name)
 	}
 }
+
+// TestErrorGeminiServerListTools tests the ListTools method of ErrorGeminiServer
 func TestErrorGeminiServerListTools(t *testing.T) {
+	// Create an ErrorGeminiServer
 	server := &ErrorGeminiServer{
 		errorMessage: "test error",
 	}
+
+	// Test ListTools
 	resp, err := server.ListTools(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	// Verify response
 	if len(resp) != 3 {
 		t.Errorf("expected 3 tools, got %d", len(resp))
 	}
@@ -1454,20 +1460,28 @@ func TestErrorGeminiServerListTools(t *testing.T) {
 		t.Errorf("expected tool name 'gemini_models', got '%s'", resp[2].Name)
 	}
 }
+
+// TestErrorGeminiServerCallTool tests the CallTool method of ErrorGeminiServer
 func TestErrorGeminiServerCallTool(t *testing.T) {
+	// Create an ErrorGeminiServer
 	errorMsg := "initialization failed"
 	server := &ErrorGeminiServer{
 		errorMessage: errorMsg,
 	}
+
+	// Test CallTool
 	req := mcp.CallToolRequest{}
 	req.Params.Name = "gemini_ask"
 	req.Params.Arguments = map[string]interface{}{
 		"query": "test query",
 	}
+
 	resp, err := server.CallTool(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	// Verify response
 	if !resp.IsError {
 		t.Error("expected IsError to be true")
 	}
@@ -1482,6 +1496,8 @@ func TestErrorGeminiServerCallTool(t *testing.T) {
 		t.Errorf("expected error message '%s', got '%s'", errorMsg, content.Text)
 	}
 }
+
+// MockGenerateContentResponse creates a mock Gemini API response for testing
 func MockGenerateContentResponse(content string) *genai.GenerateContentResponse {
 	return &genai.GenerateContentResponse{
 		Candidates: []*genai.Candidate{
@@ -1496,16 +1512,25 @@ func MockGenerateContentResponse(content string) *genai.GenerateContentResponse 
 		},
 	}
 }
+
+// TestFormatMCPResponse tests the formatMCPResponse method of GeminiServer
 func TestFormatMCPResponse(t *testing.T) {
+	// Create a GeminiServer
 	server := &GeminiServer{
 		config: &Config{
 			GeminiAPIKey: "test-key",
 			GeminiModel:  "gemini-pro",
 		},
 	}
+
+	// Create a mock response
 	mockContent := "This is a test response from Gemini."
 	mockResp := MockGenerateContentResponse(mockContent)
+
+	// Test formatMCPResponse
 	resp := server.formatMCPResponse(mockResp)
+
+	// Verify response
 	if len(resp.Content) != 1 {
 		t.Fatalf("expected 1 content item, got %d", len(resp.Content))
 	}
@@ -1517,22 +1542,30 @@ func TestFormatMCPResponse(t *testing.T) {
 		t.Errorf("expected content '%s', got '%s'", mockContent, content.Text)
 	}
 }
+
+// TestGeminiServerCallTool_InvalidTool tests CallTool with an invalid tool name
 func TestGeminiServerCallTool_InvalidTool(t *testing.T) {
+	// Create a GeminiServer
 	server := &GeminiServer{
 		config: &Config{
 			GeminiAPIKey: "test-key",
 			GeminiModel:  "gemini-pro",
 		},
 	}
+
+	// Test with invalid tool name
 	req := mcp.CallToolRequest{}
 	req.Params.Name = "invalid_tool"
 	req.Params.Arguments = map[string]interface{}{
 		"query": "test query",
 	}
+
 	resp, err := server.CallTool(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	// Verify response
 	if !resp.IsError {
 		t.Error("expected IsError to be true")
 	}
@@ -1547,22 +1580,30 @@ func TestGeminiServerCallTool_InvalidTool(t *testing.T) {
 		t.Errorf("expected error message 'unknown tool: invalid_tool', got '%s'", content.Text)
 	}
 }
+
+// TestGeminiServerCallTool_InvalidArgument tests CallTool with an invalid argument
 func TestGeminiServerCallTool_InvalidArgument(t *testing.T) {
+	// Create a GeminiServer
 	server := &GeminiServer{
 		config: &Config{
 			GeminiAPIKey: "test-key",
 			GeminiModel:  "gemini-pro",
 		},
 	}
+
+	// Test with invalid argument
 	req := mcp.CallToolRequest{}
 	req.Params.Name = "gemini_ask"
 	req.Params.Arguments = map[string]interface{}{
-		"query": 123,
+		"query": 123, // Not a string
 	}
+
 	resp, err := server.CallTool(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
+	// Verify response
 	if !resp.IsError {
 		t.Error("expected IsError to be true")
 	}
@@ -1579,13 +1620,59 @@ func TestGeminiServerCallTool_InvalidArgument(t *testing.T) {
 }
 </file>
 
+<file path="gemini_server.go">
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"google.golang.org/genai"
+)
+
+// NewGeminiServer creates a new GeminiServer with the provided configuration
+func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error) {
+	if config == nil {
+		return nil, errors.New("config cannot be nil")
+	}
+
+	if config.GeminiAPIKey == "" {
+		return nil, errors.New("gemini API key is required")
+	}
+
+	// Initialize the Gemini client
+	clientConfig := &genai.ClientConfig{
+		APIKey: config.GeminiAPIKey,
+	}
+	client, err := genai.NewClient(ctx, clientConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
+	}
+
+	// Create the file and cache stores
+	fileStore := NewFileStore(client, config)
+	cacheStore := NewCacheStore(client, config, fileStore)
+
+	return &GeminiServer{
+		config:     config,
+		client:     client,
+		fileStore:  fileStore,
+		cacheStore: cacheStore,
+	}, nil
+}
+</file>
+
 <file path="gemini_utils.go">
 package main
+
 import (
 	"context"
 	"path/filepath"
 	"strings"
 )
+
+// getLoggerFromContext safely extracts a logger from the context or creates a new one
 func getLoggerFromContext(ctx context.Context) Logger {
 	loggerValue := ctx.Value(loggerKey)
 	if loggerValue != nil {
@@ -1593,10 +1680,18 @@ func getLoggerFromContext(ctx context.Context) Logger {
 			return l
 		}
 	}
+	// Create a new logger if one isn't in the context or type assertion fails
 	return NewLogger(LevelInfo)
 }
+
+// This function has been removed after refactoring to use direct MCP types
+
+// This function has been removed after refactoring to use formatMCPResponse and direct MCP types
+
+// Helper function to get MIME type from file path
 func getMimeTypeFromPath(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
+
 	switch ext {
 	case ".txt":
 		return "text/plain"
@@ -1637,13 +1732,13 @@ func getMimeTypeFromPath(path string) string {
 	case ".csv":
 		return "text/csv"
 	case ".go":
-		return "text/plain"
+		return "text/plain" // Changed from "text/x-go" to "text/plain"
 	case ".py":
-		return "text/plain"
+		return "text/plain" // Changed from "text/x-python" to "text/plain"
 	case ".java":
-		return "text/plain"
+		return "text/plain" // Changed from "text/x-java" to "text/plain"
 	case ".c", ".cpp", ".h", ".hpp":
-		return "text/plain"
+		return "text/plain" // Changed from "text/x-c" to "text/plain"
 	case ".rb":
 		return "text/plain"
 	case ".php":
@@ -1654,16 +1749,299 @@ func getMimeTypeFromPath(path string) string {
 		return "application/octet-stream"
 	}
 }
+
+// This function has been removed as it was unused after refactoring to use convertGenaiResponseToMCPResult
+</file>
+
+<file path="fallback_models.go">
+package main
+
+// fallbackGeminiModels provides the 3 actual Gemini 2.5 models as documented by Google
+func fallbackGeminiModels() []GeminiModelInfo {
+	return []GeminiModelInfo{
+		// Gemini 2.5 Pro - Production model
+		{
+			FamilyID:             "gemini-2.5-pro",
+			Name:                 "Gemini 2.5 Pro",
+			Description:          "Our most powerful thinking model with maximum response accuracy and state-of-the-art performance",
+			SupportsThinking:     true,
+			ContextWindowSize:    1048576,
+			PreferredForThinking: true,
+			PreferredForCaching:  true,
+			PreferredForSearch:   false,
+			Versions:             []ModelVersion{}, // Production model uses family ID directly
+		},
+
+		// Gemini 2.5 Flash - Production model
+		{
+			FamilyID:             "gemini-2.5-flash",
+			Name:                 "Gemini 2.5 Flash",
+			Description:          "Best model in terms of price-performance, offering well-rounded capabilities",
+			SupportsThinking:     true,
+			ContextWindowSize:    32768,
+			PreferredForThinking: false,
+			PreferredForCaching:  true,
+			PreferredForSearch:   false,
+			Versions:             []ModelVersion{}, // Production model uses family ID directly
+		},
+
+		// Gemini 2.5 Flash Lite - GA model
+		{
+			FamilyID:             "gemini-2.5-flash-lite",
+			Name:                 "Gemini 2.5 Flash Lite",
+			Description:          "Optimized for cost efficiency and low latency",
+			SupportsThinking:     true,
+			ContextWindowSize:    32768,
+			PreferredForThinking: false,
+			PreferredForCaching:  false,
+			PreferredForSearch:   true,
+			Versions:             []ModelVersion{}, // Production model uses family ID directly
+		},
+	}
+}
+</file>
+
+<file path="files.go">
+package main
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"google.golang.org/genai"
+)
+
+// FileUploadRequest struct definition moved to structs.go
+
+// FileInfo struct definition moved to structs.go
+// FileStore struct definition moved to structs.go
+
+// NewFileStore creates a new file store
+func NewFileStore(client *genai.Client, config *Config) *FileStore {
+	return &FileStore{
+		client:   client,
+		config:   config,
+		fileInfo: make(map[string]*FileInfo),
+	}
+}
+
+// UploadFile uploads a file to the Gemini API
+func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*FileInfo, error) {
+	// Get logger from context
+	logger := getLoggerFromContext(ctx)
+
+	// Input validation
+	if req.FileName == "" {
+		return nil, errors.New("filename is required")
+	}
+	if req.MimeType == "" {
+		return nil, errors.New("mime type is required")
+	}
+	if len(req.Content) == 0 {
+		return nil, errors.New("content is required")
+	}
+
+	// Validate file size
+	if int64(len(req.Content)) > fs.config.MaxFileSize {
+		return nil, fmt.Errorf("file size exceeds maximum allowed (%d bytes)", fs.config.MaxFileSize)
+	}
+
+	// Validate mime type
+	mimeTypeAllowed := false
+	for _, allowedType := range fs.config.AllowedFileTypes {
+		if req.MimeType == allowedType {
+			mimeTypeAllowed = true
+			break
+		}
+	}
+	if !mimeTypeAllowed {
+		return nil, fmt.Errorf("mime type %s is not allowed", req.MimeType)
+	}
+
+	// Check if client is properly initialized
+	if fs.client == nil || fs.client.Files == nil {
+		logger.Error("Gemini client or Files service not properly initialized")
+		return nil, errors.New("internal error: Gemini client not properly initialized")
+	}
+
+	// Create options with display name if provided
+	opts := &genai.UploadFileConfig{
+		MIMEType: req.MimeType,
+	}
+	if req.DisplayName != "" {
+		opts.DisplayName = req.DisplayName
+	} else {
+		// Use filename as display name if not provided
+		opts.DisplayName = req.FileName
+	}
+
+	// Upload file to Gemini API
+	logger.Info("Uploading file %s with MIME type %s", req.FileName, req.MimeType)
+	file, err := fs.client.Files.Upload(ctx, bytes.NewReader(req.Content), opts)
+	if err != nil {
+		logger.Error("Failed to upload file: %v", err)
+		return nil, fmt.Errorf("failed to upload file: %w", err)
+	}
+
+	// Extract ID from name (format: "files/abc123")
+	id := file.Name
+	if strings.HasPrefix(file.Name, "files/") {
+		id = strings.TrimPrefix(file.Name, "files/")
+	}
+
+	// Create file info
+	fileInfo := &FileInfo{
+		ID:          id,
+		Name:        file.Name,
+		URI:         file.URI,
+		DisplayName: file.DisplayName,
+		MimeType:    file.MIMEType,
+		Size:        0, // SizeBytes is now a pointer in the new API
+		UploadedAt:  file.CreateTime,
+	}
+
+	// Set size if available
+	if file.SizeBytes != nil {
+		fileInfo.Size = *file.SizeBytes
+	} else {
+		// If not available, use the content length
+		fileInfo.Size = int64(len(req.Content))
+	}
+
+	// Set expiration if provided
+	if !file.ExpirationTime.IsZero() {
+		fileInfo.ExpiresAt = file.ExpirationTime
+	} else {
+		// Default expiration if not provided by API
+		fileInfo.ExpiresAt = time.Now().Add(24 * time.Hour)
+	}
+
+	// Store file info
+	// Validate URI before storing
+	if fileInfo.URI == "" {
+		logger.Error("Invalid URI for uploaded file: empty URI")
+		return nil, errors.New("invalid URI for uploaded file")
+	}
+
+	logger.Debug("Storing file info with URI: %s", fileInfo.URI)
+	fs.mu.Lock()
+	fs.fileInfo[id] = fileInfo
+	fs.mu.Unlock()
+
+	logger.Info("File uploaded successfully with ID: %s", id)
+	return fileInfo, nil
+}
+
+// GetFile gets file information by ID
+func (fs *FileStore) GetFile(ctx context.Context, id string) (*FileInfo, error) {
+	logger := getLoggerFromContext(ctx)
+
+	// Validate client first
+	if fs.client == nil {
+		return nil, errors.New("file store client is nil")
+	}
+
+	// Check cache first
+	fs.mu.RLock()
+	info, ok := fs.fileInfo[id]
+	fs.mu.RUnlock()
+
+	if ok {
+		logger.Debug("File info for %s found in cache", id)
+		return info, nil
+	}
+
+	// If not in cache, try to get from API
+	name := id
+	if !strings.HasPrefix(id, "files/") {
+		name = "files/" + id
+	}
+
+	// Check if client is properly initialized
+	if fs.client == nil || fs.client.Files == nil {
+		logger.Error("Gemini client or Files service not properly initialized")
+		return nil, errors.New("internal error: Gemini client not properly initialized")
+	}
+
+	logger.Info("Fetching file info for %s from API", name)
+	file, err := fs.client.Files.Get(ctx, name, nil)
+	if err != nil {
+		logger.Error("Failed to get file from API: %v", err)
+		return nil, fmt.Errorf("failed to get file: %w", err)
+	}
+
+	// Extract ID from name
+	fileID := file.Name
+	if strings.HasPrefix(file.Name, "files/") {
+		fileID = strings.TrimPrefix(file.Name, "files/")
+	}
+
+	// Create file info
+	fileInfo := &FileInfo{
+		ID:          fileID,
+		Name:        file.Name,
+		URI:         file.URI,
+		DisplayName: file.DisplayName,
+		MimeType:    file.MIMEType,
+		Size:        0, // SizeBytes is now a pointer in the new API
+		UploadedAt:  file.CreateTime,
+	}
+
+	// Set size if available
+	if file.SizeBytes != nil {
+		fileInfo.Size = *file.SizeBytes
+	}
+
+	// Set expiration if provided
+	if !file.ExpirationTime.IsZero() {
+		fileInfo.ExpiresAt = file.ExpirationTime
+	}
+
+	// Store in cache
+	fs.mu.Lock()
+	fs.fileInfo[fileID] = fileInfo
+	fs.mu.Unlock()
+
+	logger.Debug("Added file info for %s to cache", fileID)
+	return fileInfo, nil
+}
+
+// Helper function to format file sizes in a human-readable way
+func humanReadableSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// Helper function to get MIME type from file path
+// Moved to gemini_utils.go
 </file>
 
 <file path="handlers_common.go">
 package main
+
 import (
 	"context"
 	"fmt"
+
 	"github.com/mark3labs/mcp-go/mcp"
 	"google.golang.org/genai"
 )
+
+// extractArgumentString extracts a string argument from the request parameters
 func extractArgumentString(req mcp.CallToolRequest, name string, defaultValue string) string {
 	args := req.GetArguments()
 	if val, ok := args[name].(string); ok && val != "" {
@@ -1671,6 +2049,7 @@ func extractArgumentString(req mcp.CallToolRequest, name string, defaultValue st
 	}
 	return defaultValue
 }
+
 // extractArgumentBool extracts a boolean argument from the request parameters
 func extractArgumentBool(req mcp.CallToolRequest, name string, defaultValue bool) bool {
 	args := req.GetArguments()
@@ -1679,7 +2058,9 @@ func extractArgumentBool(req mcp.CallToolRequest, name string, defaultValue bool
 	}
 	return defaultValue
 }
+
 // This function has been removed as it was unused after refactoring to use direct handlers with mcp-go types
+
 // extractArgumentStringArray extracts a string array argument from the request parameters
 func extractArgumentStringArray(req mcp.CallToolRequest, name string) []string {
 	var result []string
@@ -1693,88 +2074,136 @@ func extractArgumentStringArray(req mcp.CallToolRequest, name string) []string {
 	}
 	return result
 }
+
 // createModelConfig creates a GenerateContentConfig for Gemini API based on request parameters
 func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Config, defaultModel string) (*genai.GenerateContentConfig, string, error) {
 	logger := getLoggerFromContext(ctx)
+
 	// Extract model parameter - use defaultModel if not specified
 	modelName := extractArgumentString(req, "model", defaultModel)
+
+	// Validate the model
 	if err := ValidateModelID(modelName); err != nil {
 		logger.Error("Invalid model requested: %v", err)
 		return nil, "", fmt.Errorf("invalid model specified: %v", err)
 	}
+
+	// Resolve model ID to ensure we use a valid API-addressable version
 	resolvedModelID := ResolveModelID(modelName)
 	if resolvedModelID != modelName {
 		logger.Info("Resolved model ID from '%s' to '%s'", modelName, resolvedModelID)
 		modelName = resolvedModelID
 	}
+
+	// Extract system prompt
 	systemPrompt := extractArgumentString(req, "systemPrompt", config.GeminiSystemPrompt)
+
+	// Get model information
 	modelInfo := GetModelByID(modelName)
 	if modelInfo == nil {
 		logger.Warn("Model information not found for %s, using default parameters", modelName)
 	}
+
+	// Create the configuration
 	contentConfig := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
 		Temperature:       genai.Ptr(float32(config.GeminiTemperature)),
 	}
+
 	// Configure thinking if supported
 	enableThinking := extractArgumentBool(req, "enable_thinking", config.EnableThinking)
 	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
 		thinkingConfig := &genai.ThinkingConfig{
 			IncludeThoughts: true,
 		}
+
+		// Determine thinking budget
 		thinkingBudget := 0
+
+		// Check for level first
 		args := req.GetArguments()
 		if levelStr, ok := args["thinking_budget_level"].(string); ok && levelStr != "" {
 			thinkingBudget = getThinkingBudgetFromLevel(levelStr)
 			logger.Info("Setting thinking budget to %d tokens from level: %s", thinkingBudget, levelStr)
 		} else if budgetRaw, ok := args["thinking_budget"].(float64); ok && budgetRaw >= 0 {
+			// If explicit budget was provided, use that instead of level
 			thinkingBudget = int(budgetRaw)
 			logger.Info("Setting thinking budget to %d tokens from explicit value", thinkingBudget)
 		} else if config.ThinkingBudget > 0 {
+			// Fall back to config value if neither level nor explicit budget provided
 			thinkingBudget = config.ThinkingBudget
 			logger.Info("Using default thinking budget of %d tokens", thinkingBudget)
 		}
+
+		// Set budget if greater than 0
 		if thinkingBudget > 0 {
 			budget := int32(thinkingBudget)
 			thinkingConfig.ThinkingBudget = &budget
 		}
+
 		contentConfig.ThinkingConfig = thinkingConfig
 		logger.Info("Thinking mode enabled with budget %d for model %s", thinkingBudget, modelName)
 	} else if enableThinking && (modelInfo == nil || !modelInfo.SupportsThinking) {
 		logger.Warn("Thinking mode was requested but model doesn't support it")
 	}
+
+	// Configure max tokens with default ratio of context window
 	configureMaxTokensOutput(ctx, contentConfig, req, modelInfo, 0.75)
+
 	return contentConfig, modelName, nil
 }
+
+// configureMaxTokensOutput configures the maximum output tokens for the request
 func configureMaxTokensOutput(ctx context.Context, config *genai.GenerateContentConfig, req mcp.CallToolRequest, modelInfo *GeminiModelInfo, defaultRatio float64) {
 	logger := getLoggerFromContext(ctx)
+
+	// Check if max_tokens parameter was provided
 	args := req.GetArguments()
 	if maxTokensRaw, ok := args["max_tokens"].(float64); ok && maxTokensRaw > 0 {
 		maxTokens := int(maxTokensRaw)
+
+		// Warn if tokens exceed the model's context window
 		if modelInfo != nil && maxTokens > modelInfo.ContextWindowSize {
 			logger.Warn("Requested max_tokens (%d) exceeds model's context window size (%d)",
 				maxTokens, modelInfo.ContextWindowSize)
 		}
+
+		// Set the maximum output token limit
 		config.MaxOutputTokens = int32(maxTokens)
 		logger.Info("Setting max output tokens to %d", maxTokens)
 	} else if modelInfo != nil {
+		// Set a safe default if not specified using the provided ratio
 		safeTokenLimit := int32(float64(modelInfo.ContextWindowSize) * defaultRatio)
 		config.MaxOutputTokens = safeTokenLimit
 		logger.Debug("Using default max output tokens: %d (%.0f%% of context window)",
 			safeTokenLimit, defaultRatio*100)
 	}
 }
+
+// createErrorResult creates a standardized error result for mcp.CallToolResult
 func createErrorResult(message string) *mcp.CallToolResult {
 	return mcp.NewToolResultError(message)
 }
+
+// convertGenaiResponseToMCPResult converts a Gemini API response to an MCP result
 func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse) *mcp.CallToolResult {
+	// Check for empty response
 	if resp == nil || len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
 		return mcp.NewToolResultError("Gemini API returned an empty response")
 	}
+
+	// Get the text from the response
 	text := resp.Text()
 	if text == "" {
 		text = "The Gemini model returned an empty response. This might indicate that the model couldn't generate an appropriate response for your query. Please try rephrasing your question or providing more context."
 	}
+
+	// The 'thinking' field is not directly available in the Go client library.
+	// The response will be plain text. If thinking was enabled, the model's
+	// reasoning might be part of the main text response, but it cannot be
+	// separated into a distinct field.
+
+	// Return simple text response
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.NewTextContent(text),
@@ -1783,173 +2212,17 @@ func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse) *mcp.C
 }
 </file>
 
-<file path="files.go">
-package main
-import (
-	"bytes"
-	"context"
-	"errors"
-	"fmt"
-	"strings"
-	"time"
-	"google.golang.org/genai"
-)
-func NewFileStore(client *genai.Client, config *Config) *FileStore {
-	return &FileStore{
-		client:   client,
-		config:   config,
-		fileInfo: make(map[string]*FileInfo),
-	}
-}
-func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*FileInfo, error) {
-	logger := getLoggerFromContext(ctx)
-	if req.FileName == "" {
-		return nil, errors.New("filename is required")
-	}
-	if req.MimeType == "" {
-		return nil, errors.New("mime type is required")
-	}
-	if len(req.Content) == 0 {
-		return nil, errors.New("content is required")
-	}
-	if int64(len(req.Content)) > fs.config.MaxFileSize {
-		return nil, fmt.Errorf("file size exceeds maximum allowed (%d bytes)", fs.config.MaxFileSize)
-	}
-	mimeTypeAllowed := false
-	for _, allowedType := range fs.config.AllowedFileTypes {
-		if req.MimeType == allowedType {
-			mimeTypeAllowed = true
-			break
-		}
-	}
-	if !mimeTypeAllowed {
-		return nil, fmt.Errorf("mime type %s is not allowed", req.MimeType)
-	}
-	if fs.client == nil || fs.client.Files == nil {
-		logger.Error("Gemini client or Files service not properly initialized")
-		return nil, errors.New("internal error: Gemini client not properly initialized")
-	}
-	opts := &genai.UploadFileConfig{
-		MIMEType: req.MimeType,
-	}
-	if req.DisplayName != "" {
-		opts.DisplayName = req.DisplayName
-	} else {
-		// Use filename as display name if not provided
-		opts.DisplayName = req.FileName
-	}
-	// Upload file to Gemini API
-	logger.Info("Uploading file %s with MIME type %s", req.FileName, req.MimeType)
-	file, err := fs.client.Files.Upload(ctx, bytes.NewReader(req.Content), opts)
-	if err != nil {
-		logger.Error("Failed to upload file: %v", err)
-		return nil, fmt.Errorf("failed to upload file: %w", err)
-	}
-	id := file.Name
-	if strings.HasPrefix(file.Name, "files/") {
-		id = strings.TrimPrefix(file.Name, "files/")
-	}
-	fileInfo := &FileInfo{
-		ID:          id,
-		Name:        file.Name,
-		URI:         file.URI,
-		DisplayName: file.DisplayName,
-		MimeType:    file.MIMEType,
-		Size:        0,
-		UploadedAt:  file.CreateTime,
-	}
-	if file.SizeBytes != nil {
-		fileInfo.Size = *file.SizeBytes
-	} else {
-		fileInfo.Size = int64(len(req.Content))
-	}
-	if !file.ExpirationTime.IsZero() {
-		fileInfo.ExpiresAt = file.ExpirationTime
-	} else {
-		fileInfo.ExpiresAt = time.Now().Add(24 * time.Hour)
-	}
-	if fileInfo.URI == "" {
-		logger.Error("Invalid URI for uploaded file: empty URI")
-		return nil, errors.New("Invalid URI for uploaded file")
-	}
-	logger.Debug("Storing file info with URI: %s", fileInfo.URI)
-	fs.mu.Lock()
-	fs.fileInfo[id] = fileInfo
-	fs.mu.Unlock()
-	logger.Info("File uploaded successfully with ID: %s", id)
-	return fileInfo, nil
-}
-func (fs *FileStore) GetFile(ctx context.Context, id string) (*FileInfo, error) {
-	logger := getLoggerFromContext(ctx)
-	if fs.client == nil {
-		return nil, errors.New("file store client is nil")
-	}
-	fs.mu.RLock()
-	info, ok := fs.fileInfo[id]
-	fs.mu.RUnlock()
-	if ok {
-		logger.Debug("File info for %s found in cache", id)
-		return info, nil
-	}
-	name := id
-	if !strings.HasPrefix(id, "files/") {
-		name = "files/" + id
-	}
-	if fs.client == nil || fs.client.Files == nil {
-		logger.Error("Gemini client or Files service not properly initialized")
-		return nil, errors.New("internal error: Gemini client not properly initialized")
-	}
-	logger.Info("Fetching file info for %s from API", name)
-	file, err := fs.client.Files.Get(ctx, name, nil)
-	if err != nil {
-		logger.Error("Failed to get file from API: %v", err)
-		return nil, fmt.Errorf("failed to get file: %w", err)
-	}
-	fileID := file.Name
-	if strings.HasPrefix(file.Name, "files/") {
-		fileID = strings.TrimPrefix(file.Name, "files/")
-	}
-	fileInfo := &FileInfo{
-		ID:          fileID,
-		Name:        file.Name,
-		URI:         file.URI,
-		DisplayName: file.DisplayName,
-		MimeType:    file.MIMEType,
-		Size:        0,
-		UploadedAt:  file.CreateTime,
-	}
-	if file.SizeBytes != nil {
-		fileInfo.Size = *file.SizeBytes
-	}
-	if !file.ExpirationTime.IsZero() {
-		fileInfo.ExpiresAt = file.ExpirationTime
-	}
-	fs.mu.Lock()
-	fs.fileInfo[fileID] = fileInfo
-	fs.mu.Unlock()
-	logger.Debug("Added file info for %s to cache", fileID)
-	return fileInfo, nil
-}
-func humanReadableSize(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
-}
-</file>
-
 <file path="fetch_models.go">
 package main
+
 import (
 	"context"
 )
+
+// FetchGeminiModels simply uses the predefined fallback models since we only support
+// the 3 specific Gemini 2.5 models: Pro, Flash, and Flash Lite
 func FetchGeminiModels(ctx context.Context, apiKey string) error {
+	// Get logger from context if available
 	var logger Logger
 	loggerValue := ctx.Value(loggerKey)
 	if loggerValue != nil {
@@ -1961,18 +2234,27 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 	} else {
 		logger = NewLogger(LevelInfo)
 	}
+
 	logger.Info("Setting up Gemini 2.5 model families...")
+
+	// Use the 3 predefined Gemini 2.5 models
 	models := fallbackGeminiModels()
+
+	// Update model store with write lock
 	modelStore.Lock()
 	modelStore.models = models
 	modelStore.Unlock()
+
 	logger.Info("Successfully configured %d Gemini 2.5 model families", len(models))
+
+	// Log the configured models for easier debugging
 	for i, model := range models {
 		logger.Debug("Model family %d: %s (%s)", i+1, model.FamilyID, model.Name)
 		for j, version := range model.Versions {
 			logger.Debug("  Version %d.%d: %s (%s)", i+1, j+1, version.ID, version.Name)
 		}
 	}
+
 	return nil
 }
 </file>
@@ -1989,345 +2271,7 @@ go.sum
 .repomix/**
 
 repomix.config.json
-</file>
-
-<file path="main.go">
-package main
-import (
-	"context"
-	"encoding/json"
-	"flag"
-	"fmt"
-	"net/http"
-	"os"
-	"os/signal"
-	"strings"
-	"sync"
-	"syscall"
-	_ "github.com/joho/godotenv/autoload"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
-)
-func main() {
-	geminiModelFlag := flag.String("gemini-model", "", "Gemini model name (overrides env var)")
-	geminiSystemPromptFlag := flag.String("gemini-system-prompt", "", "System prompt (overrides env var)")
-	geminiTemperatureFlag := flag.Float64("gemini-temperature", -1, "Temperature setting (0.0-1.0, overrides env var)")
-	enableCachingFlag := flag.Bool("enable-caching", true, "Enable caching feature (overrides env var)")
-	enableThinkingFlag := flag.Bool("enable-thinking", true, "Enable thinking mode for supported models (overrides env var)")
-	transportFlag := flag.String("transport", "stdio", "Transport mode: 'stdio' (default) or 'http'")
-	authEnabledFlag := flag.Bool("auth-enabled", false, "Enable JWT authentication for HTTP transport (overrides env var)")
-	generateTokenFlag := flag.Bool("generate-token", false, "Generate a JWT token and exit")
-	tokenUserIDFlag := flag.String("token-user-id", "user1", "User ID for token generation")
-	tokenUsernameFlag := flag.String("token-username", "admin", "Username for token generation")
-	tokenRoleFlag := flag.String("token-role", "admin", "Role for token generation")
-	tokenExpirationFlag := flag.Int("token-expiration", 744, "Token expiration in hours (default: 744 = 31 days)")
-	flag.Parse()
-	if *generateTokenFlag {
-		secretKey := os.Getenv("GEMINI_AUTH_SECRET_KEY")
-		CreateTokenCommand(secretKey, *tokenUserIDFlag, *tokenUsernameFlag, *tokenRoleFlag, *tokenExpirationFlag)
-		return
-	}
-	logger := NewLogger(LevelInfo)
-	ctx := context.WithValue(context.Background(), loggerKey, logger)
-	config, err := NewConfig()
-	if err != nil {
-		handleStartupError(ctx, err)
-		return
-	}
-	ctx = context.WithValue(ctx, configKey, config)
-	if config.GeminiAPIKey != "" {
-		logger.Info("Attempting to fetch available Gemini models...")
-		if err := FetchGeminiModels(ctx, config.GeminiAPIKey); err != nil {
-			// Just log the error but continue with fallback models
-			logger.Warn("Could not fetch Gemini models: %v. Using fallback model list.", err)
-		}
-	} else {
-		logger.Warn("No Gemini API key available, using fallback model list")
-	}
-	if *geminiModelFlag != "" {
-		// We'll use the model specified, even if it's not in our known list
-		// This allows for new models and preview versions
-		if err := ValidateModelID(*geminiModelFlag); err != nil {
-			// Just log a warning, we'll still use the model
-			logger.Info("Using custom model: %s (not in known list, but may be valid)", *geminiModelFlag)
-		} else {
-			logger.Info("Using known model: %s", *geminiModelFlag)
-		}
-		config.GeminiModel = *geminiModelFlag
-	}
-	if *geminiSystemPromptFlag != "" {
-		logger.Info("Overriding Gemini system prompt with flag value")
-		config.GeminiSystemPrompt = *geminiSystemPromptFlag
-	}
-	if *geminiTemperatureFlag >= 0 {
-		if *geminiTemperatureFlag > 1.0 {
-			logger.Error("Invalid temperature value: %v. Must be between 0.0 and 1.0", *geminiTemperatureFlag)
-			handleStartupError(ctx, fmt.Errorf("invalid temperature: %v", *geminiTemperatureFlag))
-			return
-		}
-		logger.Info("Overriding Gemini temperature with flag value: %v", *geminiTemperatureFlag)
-		config.GeminiTemperature = *geminiTemperatureFlag
-	}
-	config.EnableCaching = *enableCachingFlag
-	logger.Info("Caching feature is %s", getCachingStatusStr(config.EnableCaching))
-	config.EnableThinking = *enableThinkingFlag
-	logger.Info("Thinking feature is %s", getCachingStatusStr(config.EnableThinking))
-	if *authEnabledFlag {
-		config.AuthEnabled = true
-		logger.Info("Authentication feature enabled via command line flag")
-	}
-	mcpServer := server.NewMCPServer(
-		"gemini",
-		"1.0.0",
-	)
-	if err := setupGeminiServer(ctx, mcpServer, config); err != nil {
-		handleStartupError(ctx, err)
-		return
-	}
-	if *transportFlag != "stdio" && *transportFlag != "http" {
-		logger.Error("Invalid transport mode: %s. Must be 'stdio' or 'http'", *transportFlag)
-		os.Exit(1)
-	}
-	if *transportFlag == "http" {
-		logger.Info("Starting Gemini MCP server with HTTP transport on %s%s", config.HTTPAddress, config.HTTPPath)
-		if err := startHTTPServer(ctx, mcpServer, config, logger); err != nil {
-			logger.Error("HTTP server error: %v", err)
-			os.Exit(1)
-		}
-	} else {
-		logger.Info("Starting Gemini MCP server with stdio transport")
-		if err := server.ServeStdio(mcpServer); err != nil {
-			logger.Error("Server error: %v", err)
-			os.Exit(1)
-		}
-	}
-}
-func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *Config, logger Logger) error {
-	var opts []server.StreamableHTTPOption
-	if config.HTTPHeartbeat > 0 {
-		opts = append(opts, server.WithHeartbeatInterval(config.HTTPHeartbeat))
-	}
-	if config.HTTPStateless {
-		opts = append(opts, server.WithStateLess(true))
-	}
-	opts = append(opts, server.WithEndpointPath(config.HTTPPath))
-	if config.HTTPCORSEnabled || config.AuthEnabled {
-		opts = append(opts, server.WithHTTPContextFunc(createHTTPMiddleware(config, logger)))
-	}
-	httpServer := server.NewStreamableHTTPServer(mcpServer, opts...)
-	customServer := &http.Server{
-		Addr:    config.HTTPAddress,
-		Handler: createCustomHTTPHandler(httpServer, config, logger),
-	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := customServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("HTTP server failed to start: %v", err)
-			cancel()
-		}
-	}()
-	select {
-	case sig := <-sigChan:
-		logger.Info("Received signal %v, shutting down HTTP server...", sig)
-	case <-ctx.Done():
-		logger.Info("Context cancelled, shutting down HTTP server...")
-	}
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), config.HTTPTimeout)
-	defer shutdownCancel()
-	if err := customServer.Shutdown(shutdownCtx); err != nil {
-		logger.Error("HTTP server shutdown error: %v", err)
-		return err
-	}
-	wg.Wait()
-	logger.Info("HTTP server stopped")
-	return nil
-}
-func createHTTPMiddleware(config *Config, logger Logger) server.HTTPContextFunc {
-	var authMiddleware *AuthMiddleware
-	if config.AuthEnabled {
-		authMiddleware = NewAuthMiddleware(config.AuthSecretKey, config.AuthEnabled, logger)
-		logger.Info("HTTP authentication enabled")
-	}
-	return func(ctx context.Context, r *http.Request) context.Context {
-		logger.Info("HTTP %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
-		if authMiddleware != nil {
-			nextFunc := func(ctx context.Context, r *http.Request) context.Context {
-				return ctx
-			}
-			ctx = authMiddleware.HTTPContextFunc(nextFunc)(ctx, r)
-		}
-		if config.HTTPCORSEnabled {
-			origin := r.Header.Get("Origin")
-			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins) {
-				// Note: We can't set response headers directly here as this is a context function
-				// CORS headers would need to be handled at the HTTP server level
-				logger.Info("CORS: Origin %s is allowed", origin)
-			}
-		}
-		ctx = context.WithValue(ctx, "http_method", r.Method)
-		ctx = context.WithValue(ctx, "http_path", r.URL.Path)
-		ctx = context.WithValue(ctx, "http_remote_addr", r.RemoteAddr)
-		return ctx
-	}
-}
-func isOriginAllowed(origin string, allowedOrigins []string) bool {
-	for _, allowed := range allowedOrigins {
-		if allowed == "*" || allowed == origin {
-			return true
-		}
-		if strings.HasPrefix(allowed, "*.") {
-			domain := strings.TrimPrefix(allowed, "*.")
-			if strings.HasSuffix(origin, domain) {
-				return true
-			}
-		}
-	}
-	return false
-}
-func createCustomHTTPHandler(mcpHandler http.Handler, config *Config, logger Logger) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
-		logger.Info("OAuth well-known endpoint accessed from %s", r.RemoteAddr)
-		metadata := map[string]interface{}{
-			"issuer":                           fmt.Sprintf("http://%s", r.Host),
-			"authorization_endpoint":           fmt.Sprintf("http://%s/oauth/authorize", r.Host),
-			"token_endpoint":                   fmt.Sprintf("http://%s/oauth/token", r.Host),
-			"response_types_supported":         []string{"code"},
-			"grant_types_supported":            []string{"authorization_code"},
-			"code_challenge_methods_supported": []string{"S256"},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-		if config.HTTPCORSEnabled {
-			origin := r.Header.Get("Origin")
-			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins) {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			}
-		}
-		if err := json.NewEncoder(w).Encode(metadata); err != nil {
-			logger.Error("Failed to encode OAuth metadata: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
-	})
-	mux.Handle("/", mcpHandler)
-	return mux
-}
-func getCachingStatusStr(enabled bool) string {
-	if enabled {
-		return "enabled"
-	}
-	return "disabled"
-}
-func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config *Config) error {
-	loggerValue := ctx.Value(loggerKey)
-	logger, ok := loggerValue.(Logger)
-	if !ok {
-		return fmt.Errorf("logger not found in context")
-	}
-	geminiSvc, err := NewGeminiServer(ctx, config)
-	if err != nil {
-		return fmt.Errorf("failed to create Gemini service: %w", err)
-	}
-	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(geminiSvc.GeminiAskHandler, "gemini_ask", logger))
-	logger.Info("Registered tool: gemini_ask")
-	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(geminiSvc.GeminiSearchHandler, "gemini_search", logger))
-	logger.Info("Registered tool: gemini_search")
-	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(geminiSvc.GeminiModelsHandler, "gemini_models", logger))
-	logger.Info("Registered tool: gemini_models")
-	logger.Info("File handling: max size %s, allowed types: %v",
-		humanReadableSize(config.MaxFileSize),
-		config.AllowedFileTypes)
-	if config.EnableCaching {
-		logger.Info("Cache settings: default TTL %v", config.DefaultCacheTTL)
-	}
-	model := GetModelByID(config.GeminiModel)
-	if config.EnableThinking && model != nil && model.SupportsThinking {
-		logger.Info("Thinking mode enabled for model %s with context window size %d tokens",
-			config.GeminiModel, model.ContextWindowSize)
-	}
-	promptPreview := config.GeminiSystemPrompt
-	if len(promptPreview) > 50 {
-		runeCount := 0
-		for i := range promptPreview {
-			runeCount++
-			if runeCount > 50 {
-				promptPreview = promptPreview[:i] + "..."
-				break
-			}
-		}
-	}
-	logger.Info("Using system prompt: %s", promptPreview)
-	return nil
-}
-func handleStartupError(ctx context.Context, err error) {
-	loggerValue := ctx.Value(loggerKey)
-	logger, ok := loggerValue.(Logger)
-	if !ok {
-		logger = NewLogger(LevelError)
-	}
-	errorMsg := err.Error()
-	logger.Error("Initialization error: %v", err)
-	var config *Config
-	configValue := ctx.Value(configKey)
-	if configValue != nil {
-		if cfg, ok := configValue.(Config); ok {
-			config = &cfg
-		}
-	}
-	mcpServer := server.NewMCPServer(
-		"gemini",
-		"1.0.0",
-	)
-	errorServer := &ErrorGeminiServer{
-		errorMessage: errorMsg,
-		config:       config,
-	}
-	registerErrorTools(mcpServer, errorServer, logger)
-	logger.Info("Starting Gemini MCP server in degraded mode")
-	if err := server.ServeStdio(mcpServer); err != nil {
-		logger.Error("Server error in degraded mode: %v", err)
-		os.Exit(1)
-	}
-}
-type MCPToolHandlerFunc = server.ToolHandlerFunc
-func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logger Logger) server.ToolHandlerFunc {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		logger.Info("Calling tool '%s'...", toolName)
-		if httpMethod, ok := ctx.Value("http_method").(string); ok && httpMethod != "" {
-			// This is an HTTP request, check if auth is required
-			// Get config from the context (we'll need to pass it through)
-			if authError := getAuthError(ctx); authError != "" {
-				logger.Warn("Authentication failed for tool '%s': %s", toolName, authError)
-				return createErrorResult(fmt.Sprintf("Authentication required: %s", authError)), nil
-			}
-			if isAuthenticated(ctx) {
-				userID, username, role := getUserInfo(ctx)
-				logger.Info("Tool '%s' called by authenticated user %s (%s) with role %s", toolName, username, userID, role)
-			}
-		}
-		resp, err := handler(ctx, req)
-		if err != nil {
-			logger.Error("Tool '%s' failed: %v", toolName, err)
-		} else {
-			logger.Info("Tool '%s' completed successfully", toolName)
-		}
-		return resp, err
-	}
-}
-func registerErrorTools(mcpServer *server.MCPServer, errorServer *ErrorGeminiServer, logger Logger) {
-	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_ask", logger))
-	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_search", logger))
-	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_models", logger))
-	logger.Info("Registered error handlers for all tools")
-}
+.aider*
 </file>
 
 <file path="go.mod">
@@ -2364,131 +2308,691 @@ require (
 )
 </file>
 
+<file path="main.go">
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"sync"
+	"syscall"
+
+	_ "github.com/joho/godotenv/autoload"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+)
+
+// main is the entry point for the application.
+// It sets up the MCP server with the appropriate handlers and starts it.
+func main() {
+	// Define command-line flags for configuration override
+	geminiModelFlag := flag.String("gemini-model", "", "Gemini model name (overrides env var)")
+	geminiSystemPromptFlag := flag.String("gemini-system-prompt", "", "System prompt (overrides env var)")
+	geminiTemperatureFlag := flag.Float64("gemini-temperature", -1, "Temperature setting (0.0-1.0, overrides env var)")
+	enableCachingFlag := flag.Bool("enable-caching", true, "Enable caching feature (overrides env var)")
+	enableThinkingFlag := flag.Bool("enable-thinking", true, "Enable thinking mode for supported models (overrides env var)")
+	transportFlag := flag.String("transport", "stdio", "Transport mode: 'stdio' (default) or 'http'")
+
+	// Authentication flags
+	authEnabledFlag := flag.Bool("auth-enabled", false, "Enable JWT authentication for HTTP transport (overrides env var)")
+	generateTokenFlag := flag.Bool("generate-token", false, "Generate a JWT token and exit")
+	tokenUserIDFlag := flag.String("token-user-id", "user1", "User ID for token generation")
+	tokenUsernameFlag := flag.String("token-username", "admin", "Username for token generation")
+	tokenRoleFlag := flag.String("token-role", "admin", "Role for token generation")
+	tokenExpirationFlag := flag.Int("token-expiration", 744, "Token expiration in hours (default: 744 = 31 days)")
+
+	flag.Parse()
+
+	// Handle token generation if requested
+	if *generateTokenFlag {
+		secretKey := os.Getenv("GEMINI_AUTH_SECRET_KEY")
+		CreateTokenCommand(secretKey, *tokenUserIDFlag, *tokenUsernameFlag, *tokenRoleFlag, *tokenExpirationFlag)
+		return
+	}
+
+	// Create application context with logger
+	logger := NewLogger(LevelInfo)
+	ctx := context.WithValue(context.Background(), loggerKey, logger)
+
+	// Create configuration from environment variables
+	config, err := NewConfig()
+	if err != nil {
+		handleStartupError(ctx, err)
+		return
+	}
+
+	// Store config in context for error handler to access
+	ctx = context.WithValue(ctx, configKey, config)
+
+	// Fetch available Gemini models first if API key is available
+	// This ensures we have the latest models before validation
+	if config.GeminiAPIKey != "" {
+		logger.Info("Attempting to fetch available Gemini models...")
+		if err := FetchGeminiModels(ctx, config.GeminiAPIKey); err != nil {
+			// Just log the error but continue with fallback models
+			logger.Warn("Could not fetch Gemini models: %v. Using fallback model list.", err)
+		}
+	} else {
+		logger.Warn("No Gemini API key available, using fallback model list")
+	}
+
+	// Override with command-line flags if provided
+	if *geminiModelFlag != "" {
+		// We'll use the model specified, even if it's not in our known list
+		// This allows for new models and preview versions
+		if err := ValidateModelID(*geminiModelFlag); err != nil {
+			// Just log a warning, we'll still use the model
+			logger.Info("Using custom model: %s (not in known list, but may be valid)", *geminiModelFlag)
+		} else {
+			logger.Info("Using known model: %s", *geminiModelFlag)
+		}
+		config.GeminiModel = *geminiModelFlag
+	}
+	if *geminiSystemPromptFlag != "" {
+		logger.Info("Overriding Gemini system prompt with flag value")
+		config.GeminiSystemPrompt = *geminiSystemPromptFlag
+	}
+
+	// Override temperature if provided and valid
+	if *geminiTemperatureFlag >= 0 {
+		// Validate temperature is within range
+		if *geminiTemperatureFlag > 1.0 {
+			logger.Error("Invalid temperature value: %v. Must be between 0.0 and 1.0", *geminiTemperatureFlag)
+			handleStartupError(ctx, fmt.Errorf("invalid temperature: %v", *geminiTemperatureFlag))
+			return
+		}
+		logger.Info("Overriding Gemini temperature with flag value: %v", *geminiTemperatureFlag)
+		config.GeminiTemperature = *geminiTemperatureFlag
+	}
+
+	// Override enable caching if flag is provided
+	config.EnableCaching = *enableCachingFlag
+	logger.Info("Caching feature is %s", getCachingStatusStr(config.EnableCaching))
+
+	// Override enable thinking if flag is provided
+	config.EnableThinking = *enableThinkingFlag
+	logger.Info("Thinking feature is %s", getCachingStatusStr(config.EnableThinking))
+
+	// Override authentication if flag is provided
+	if *authEnabledFlag {
+		config.AuthEnabled = true
+		logger.Info("Authentication feature enabled via command line flag")
+	}
+
+	// Store config in context for error handler to access (already done earlier)
+
+	// Create MCP server
+	mcpServer := server.NewMCPServer(
+		"gemini",
+		"1.0.0",
+	)
+
+	// Create and register the Gemini server tools
+	if err := setupGeminiServer(ctx, mcpServer, config); err != nil {
+		handleStartupError(ctx, err)
+		return
+	}
+
+	// Validate transport flag
+	if *transportFlag != "stdio" && *transportFlag != "http" {
+		logger.Error("Invalid transport mode: %s. Must be 'stdio' or 'http'", *transportFlag)
+		os.Exit(1)
+	}
+
+	// Start the appropriate transport based on command-line flag
+	if *transportFlag == "http" {
+		logger.Info("Starting Gemini MCP server with HTTP transport on %s%s", config.HTTPAddress, config.HTTPPath)
+		if err := startHTTPServer(ctx, mcpServer, config, logger); err != nil {
+			logger.Error("HTTP server error: %v", err)
+			os.Exit(1)
+		}
+	} else {
+		logger.Info("Starting Gemini MCP server with stdio transport")
+		if err := server.ServeStdio(mcpServer); err != nil {
+			logger.Error("Server error: %v", err)
+			os.Exit(1)
+		}
+	}
+}
+
+// startHTTPServer starts the HTTP transport server
+func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *Config, logger Logger) error {
+	// Create HTTP server options
+	var opts []server.StreamableHTTPOption
+
+	// Configure heartbeat if enabled
+	if config.HTTPHeartbeat > 0 {
+		opts = append(opts, server.WithHeartbeatInterval(config.HTTPHeartbeat))
+	}
+
+	// Configure stateless mode
+	if config.HTTPStateless {
+		opts = append(opts, server.WithStateLess(true))
+	}
+
+	// Configure endpoint path
+	opts = append(opts, server.WithEndpointPath(config.HTTPPath))
+
+	// Add HTTP context function for CORS, logging, and authentication
+	if config.HTTPCORSEnabled || config.AuthEnabled {
+		opts = append(opts, server.WithHTTPContextFunc(createHTTPMiddleware(config, logger)))
+	}
+
+	// Create streamable HTTP server
+	httpServer := server.NewStreamableHTTPServer(mcpServer, opts...)
+
+	// Create custom HTTP server with OAuth well-known endpoint
+	customServer := &http.Server{
+		Addr:    config.HTTPAddress,
+		Handler: createCustomHTTPHandler(httpServer, config, logger),
+	}
+
+	// Set up graceful shutdown
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Handle shutdown signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	// Start server in goroutine
+	go func() {
+		defer wg.Done()
+		if err := customServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("HTTP server failed to start: %v", err)
+			cancel()
+		}
+	}()
+
+	// Wait for shutdown signal
+	select {
+	case sig := <-sigChan:
+		logger.Info("Received signal %v, shutting down HTTP server...", sig)
+	case <-ctx.Done():
+		logger.Info("Context cancelled, shutting down HTTP server...")
+	}
+
+	// Graceful shutdown
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), config.HTTPTimeout)
+	defer shutdownCancel()
+
+	if err := customServer.Shutdown(shutdownCtx); err != nil {
+		logger.Error("HTTP server shutdown error: %v", err)
+		return err
+	}
+
+	wg.Wait()
+	logger.Info("HTTP server stopped")
+	return nil
+}
+
+// createHTTPMiddleware creates an HTTP context function with CORS, logging, and authentication
+func createHTTPMiddleware(config *Config, logger Logger) server.HTTPContextFunc {
+	// Create authentication middleware
+	var authMiddleware *AuthMiddleware
+	if config.AuthEnabled {
+		authMiddleware = NewAuthMiddleware(config.AuthSecretKey, config.AuthEnabled, logger)
+		logger.Info("HTTP authentication enabled")
+	}
+
+	return func(ctx context.Context, r *http.Request) context.Context {
+		// Log HTTP request
+		logger.Info("HTTP %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+
+		// Apply authentication middleware if enabled
+		if authMiddleware != nil {
+			// Create a wrapper function for the next middleware step
+			nextFunc := func(ctx context.Context, r *http.Request) context.Context {
+				return ctx
+			}
+			// Apply authentication middleware
+			ctx = authMiddleware.HTTPContextFunc(nextFunc)(ctx, r)
+		}
+
+		// Add CORS headers if enabled
+		if config.HTTPCORSEnabled {
+			// Check if request origin is allowed
+			origin := r.Header.Get("Origin")
+			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins) {
+				// Note: We can't set response headers directly here as this is a context function
+				// CORS headers would need to be handled at the HTTP server level
+				logger.Info("CORS: Origin %s is allowed", origin)
+			}
+		}
+
+		// Add request info to context
+		ctx = context.WithValue(ctx, httpMethodKey, r.Method)
+		ctx = context.WithValue(ctx, httpPathKey, r.URL.Path)
+		ctx = context.WithValue(ctx, httpRemoteAddrKey, r.RemoteAddr)
+
+		return ctx
+	}
+}
+
+// isOriginAllowed checks if the origin is in the allowed list
+func isOriginAllowed(origin string, allowedOrigins []string) bool {
+	for _, allowed := range allowedOrigins {
+		if allowed == "*" || allowed == origin {
+			return true
+		}
+		// Support wildcard subdomains (e.g., "*.example.com")
+		if strings.HasPrefix(allowed, "*.") {
+			domain := strings.TrimPrefix(allowed, "*.")
+			if strings.HasSuffix(origin, domain) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// createCustomHTTPHandler creates a custom HTTP handler that includes OAuth well-known endpoint
+func createCustomHTTPHandler(mcpHandler http.Handler, config *Config, logger Logger) http.Handler {
+	mux := http.NewServeMux()
+
+	// Add OAuth well-known endpoint
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		logger.Info("OAuth well-known endpoint accessed from %s", r.RemoteAddr)
+
+		// Create OAuth authorization server metadata
+		metadata := map[string]interface{}{
+			"issuer":                           fmt.Sprintf("http://%s", r.Host),
+			"authorization_endpoint":           fmt.Sprintf("http://%s/oauth/authorize", r.Host),
+			"token_endpoint":                   fmt.Sprintf("http://%s/oauth/token", r.Host),
+			"response_types_supported":         []string{"code"},
+			"grant_types_supported":            []string{"authorization_code"},
+			"code_challenge_methods_supported": []string{"S256"},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+
+		// Add CORS headers if enabled
+		if config.HTTPCORSEnabled {
+			origin := r.Header.Get("Origin")
+			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins) {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			}
+		}
+
+		if err := json.NewEncoder(w).Encode(metadata); err != nil {
+			logger.Error("Failed to encode OAuth metadata: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+	})
+
+	// Handle all other requests with the MCP handler
+	mux.Handle("/", mcpHandler)
+
+	return mux
+}
+
+// Helper function to get caching status as a string
+func getCachingStatusStr(enabled bool) string {
+	if enabled {
+		return "enabled"
+	}
+	return "disabled"
+}
+
+// setupGeminiServer creates and registers Gemini server tools
+func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config *Config) error {
+	loggerValue := ctx.Value(loggerKey)
+	logger, ok := loggerValue.(Logger)
+	if !ok {
+		return fmt.Errorf("logger not found in context")
+	}
+
+	// Create the Gemini service with configuration
+	geminiSvc, err := NewGeminiServer(ctx, config)
+	if err != nil {
+		return fmt.Errorf("failed to create Gemini service: %w", err)
+	}
+
+	// Create handler for gemini_ask using direct handler
+	// Register gemini_ask with logger wrapper using shared tool definition
+	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(geminiSvc.GeminiAskHandler, "gemini_ask", logger))
+	logger.Info("Registered tool: gemini_ask")
+
+	// Use shared tool definition for gemini_search
+
+	// Create handler for gemini_search using direct handler
+	// Register gemini_search with logger wrapper using shared tool definition
+	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(geminiSvc.GeminiSearchHandler, "gemini_search", logger))
+	logger.Info("Registered tool: gemini_search")
+
+	// Use shared tool definition for gemini_models
+
+	// Create handler for gemini_models using direct handler
+	// Register gemini_models with logger wrapper using shared tool definition
+	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(geminiSvc.GeminiModelsHandler, "gemini_models", logger))
+	logger.Info("Registered tool: gemini_models")
+
+	// Log file handling configuration
+	logger.Info("File handling: max size %s, allowed types: %v",
+		humanReadableSize(config.MaxFileSize),
+		config.AllowedFileTypes)
+
+	// Log cache configuration if enabled
+	if config.EnableCaching {
+		logger.Info("Cache settings: default TTL %v", config.DefaultCacheTTL)
+	}
+
+	// Log thinking configuration if enabled
+	model := GetModelByID(config.GeminiModel)
+	if config.EnableThinking && model != nil && model.SupportsThinking {
+		logger.Info("Thinking mode enabled for model %s with context window size %d tokens",
+			config.GeminiModel, model.ContextWindowSize)
+	}
+
+	// Log a truncated version of the system prompt for security/brevity
+	promptPreview := config.GeminiSystemPrompt
+	if len(promptPreview) > 50 {
+		// Use proper UTF-8 safe truncation
+		runeCount := 0
+		for i := range promptPreview {
+			runeCount++
+			if runeCount > 50 {
+				promptPreview = promptPreview[:i] + "..."
+				break
+			}
+		}
+	}
+	logger.Info("Using system prompt: %s", promptPreview)
+
+	return nil
+}
+
+// handleStartupError handles initialization errors by setting up an error server
+func handleStartupError(ctx context.Context, err error) {
+	// Safely extract logger from context
+	loggerValue := ctx.Value(loggerKey)
+	logger, ok := loggerValue.(Logger)
+	if !ok {
+		// Fallback to a new logger if type assertion fails
+		logger = NewLogger(LevelError)
+	}
+	errorMsg := err.Error()
+
+	logger.Error("Initialization error: %v", err)
+
+	// Get config for EnableCaching status (if available)
+	var config *Config
+	configValue := ctx.Value(configKey)
+	if configValue != nil {
+		if cfg, ok := configValue.(Config); ok {
+			config = &cfg
+		}
+	}
+
+	// Create MCP server in degraded mode
+	mcpServer := server.NewMCPServer(
+		"gemini",
+		"1.0.0",
+	)
+
+	// Create error server
+	errorServer := &ErrorGeminiServer{
+		errorMessage: errorMsg,
+		config:       config,
+	}
+
+	// Register error handling for tools
+	registerErrorTools(mcpServer, errorServer, logger)
+
+	// Start server in degraded mode
+	logger.Info("Starting Gemini MCP server in degraded mode")
+	if err := server.ServeStdio(mcpServer); err != nil {
+		logger.Error("Server error in degraded mode: %v", err)
+		os.Exit(1)
+	}
+}
+
+// Define the expected handler signature for tools
+type MCPToolHandlerFunc = server.ToolHandlerFunc
+
+// wrapHandlerWithLogger creates a middleware wrapper for logging and authentication around a tool handler
+func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logger Logger) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		logger.Info("Calling tool '%s'...", toolName)
+
+		// Check authentication for HTTP requests if enabled
+		// Note: We need to check if this is an HTTP request and if auth is enabled
+		if httpMethod, ok := ctx.Value(httpMethodKey).(string); ok && httpMethod != "" {
+			// This is an HTTP request, check if auth is required
+			// Get config from the context (we'll need to pass it through)
+			if authError := getAuthError(ctx); authError != "" {
+				logger.Warn("Authentication failed for tool '%s': %s", toolName, authError)
+				return createErrorResult(fmt.Sprintf("Authentication required: %s", authError)), nil
+			}
+
+			// Log successful authentication if present
+			if isAuthenticated(ctx) {
+				userID, username, role := getUserInfo(ctx)
+				logger.Info("Tool '%s' called by authenticated user %s (%s) with role %s", toolName, username, userID, role)
+			}
+		}
+
+		// Call the actual handler
+		resp, err := handler(ctx, req)
+
+		if err != nil {
+			logger.Error("Tool '%s' failed: %v", toolName, err)
+		} else {
+			logger.Info("Tool '%s' completed successfully", toolName)
+		}
+
+		// Return the original response and error
+		return resp, err
+	}
+}
+
+// Register error handlers for all tools
+func registerErrorTools(mcpServer *server.MCPServer, errorServer *ErrorGeminiServer, logger Logger) {
+	// Register error handlers for all tools using shared tool definitions
+	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_ask", logger))
+	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_search", logger))
+	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_models", logger))
+
+	logger.Info("Registered error handlers for all tools")
+}
+
+// Note: The adapter functions to communicate with the old code have been removed
+// as they are no longer needed with direct handlers using mcp-go types
+</file>
+
 <file path="structs.go">
 package main
+
 import (
 	"context"
 	"fmt"
 	"sync"
 	"time"
+
 	"github.com/mark3labs/mcp-go/mcp"
 	"google.golang.org/genai"
 )
+
+// GeminiServer implements the ToolHandler interface for Gemini API interactions
 type GeminiServer struct {
 	config     *Config
 	client     *genai.Client
 	fileStore  *FileStore
 	cacheStore *CacheStore
 }
+
+// SearchResponse is the JSON response format for the gemini_search tool
 type SearchResponse struct {
 	Answer        string       `json:"answer"`
 	Sources       []SourceInfo `json:"sources,omitempty"`
 	SearchQueries []string     `json:"search_queries,omitempty"`
 }
+
+// SourceInfo represents a source from search results
 type SourceInfo struct {
 	Title string `json:"title"`
 	URL   string `json:"url"`
-	Type  string `json:"type"`
+	Type  string `json:"type"` // "web" or "retrieved_context"
 }
+
+// Config holds all configuration parameters for the application
 type Config struct {
+	// Gemini API settings
 	GeminiAPIKey             string
-	GeminiModel              string
-	GeminiSearchModel        string
+	GeminiModel              string // Default model for 'gemini_ask'
+	GeminiSearchModel        string // Default model for 'gemini_search'
 	GeminiSystemPrompt       string
 	GeminiSearchSystemPrompt string
 	GeminiTemperature        float64
+
+	// HTTP client settings
 	HTTPTimeout time.Duration
-	EnableHTTP      bool
-	HTTPAddress     string
-	HTTPPath        string
-	HTTPStateless   bool
-	HTTPHeartbeat   time.Duration
-	HTTPCORSEnabled bool
-	HTTPCORSOrigins []string
-	AuthEnabled   bool
-	AuthSecretKey string
+
+	// HTTP transport settings
+	EnableHTTP      bool          // Enable HTTP transport
+	HTTPAddress     string        // Server address (default: ":8080")
+	HTTPPath        string        // Base path (default: "/mcp")
+	HTTPStateless   bool          // Stateless mode
+	HTTPHeartbeat   time.Duration // Heartbeat interval
+	HTTPCORSEnabled bool          // Enable CORS
+	HTTPCORSOrigins []string      // Allowed origins
+
+	// Authentication settings
+	AuthEnabled   bool   // Enable JWT authentication for HTTP transport
+	AuthSecretKey string // Secret key for JWT signing and verification
+
+	// Retry settings
 	MaxRetries     int
 	InitialBackoff time.Duration
 	MaxBackoff     time.Duration
-	MaxFileSize      int64
-	AllowedFileTypes []string
-	EnableCaching   bool
-	DefaultCacheTTL time.Duration
-	EnableThinking      bool
-	ThinkingBudget      int
-	ThinkingBudgetLevel string
+
+	// File handling settings
+	MaxFileSize      int64    // Max file size in bytes
+	AllowedFileTypes []string // Allowed MIME types
+
+	// Cache settings
+	EnableCaching   bool          // Enable/disable caching
+	DefaultCacheTTL time.Duration // Default TTL if not specified
+
+	// Thinking settings
+	EnableThinking      bool   // Enable/disable thinking mode for supported models
+	ThinkingBudget      int    // Maximum number of tokens to allocate for thinking
+	ThinkingBudgetLevel string // Thinking budget level (none, low, medium, high)
 }
+
+// CacheRequest represents a request to create a cached context
 type CacheRequest struct {
 	Model        string   `json:"model"`
 	SystemPrompt string   `json:"system_prompt,omitempty"`
 	FileIDs      []string `json:"file_ids,omitempty"`
 	Content      string   `json:"content,omitempty"`
-	TTL          string   `json:"ttl,omitempty"`
+	TTL          string   `json:"ttl,omitempty"` // Duration like "1h", "24h", etc.
 	DisplayName  string   `json:"display_name,omitempty"`
 }
+
+// CacheInfo represents information about a cached context
 type CacheInfo struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
+	ID          string    `json:"id"`   // The unique ID (last part of the Name)
+	Name        string    `json:"name"` // The full resource name
 	DisplayName string    `json:"display_name"`
 	Model       string    `json:"model"`
 	CreatedAt   time.Time `json:"created_at"`
 	ExpiresAt   time.Time `json:"expires_at"`
 	FileIDs     []string  `json:"file_ids,omitempty"`
 }
+
+// CacheStore manages cache metadata
 type CacheStore struct {
 	client    *genai.Client
 	config    *Config
 	fileStore *FileStore
 	mu        sync.RWMutex
-	cacheInfo map[string]*CacheInfo
+	cacheInfo map[string]*CacheInfo // Map of ID -> CacheInfo
 }
+
+// ModelVersion represents an actual API-addressable Gemini model
 type ModelVersion struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	SupportsCaching bool   `json:"supports_caching"`
-	IsPreferred     bool   `json:"is_preferred"`
+	ID              string `json:"id"`               // The version ID used by the API (e.g., "gemini-2.5-pro-exp-03-25")
+	Name            string `json:"name"`             // Human-readable name
+	SupportsCaching bool   `json:"supports_caching"` // Whether this version supports caching
+	IsPreferred     bool   `json:"is_preferred"`     // Whether this is the preferred version of the model family
 }
+
+// GeminiModelInfo represents a family of related models
 type GeminiModelInfo struct {
-	FamilyID             string         `json:"family_id"`
-	Name                 string         `json:"name"`
-	Description          string         `json:"description"`
-	SupportsThinking     bool           `json:"supports_thinking"`
-	ContextWindowSize    int            `json:"context_window_size"`
-	PreferredForThinking bool           `json:"preferred_for_thinking"`
-	PreferredForCaching  bool           `json:"preferred_for_caching"`
-	PreferredForSearch   bool           `json:"preferred_for_search"`
-	Versions             []ModelVersion `json:"versions"`
+	FamilyID             string         `json:"family_id"`              // Model family identifier (e.g., "gemini-2.5-pro")
+	Name                 string         `json:"name"`                   // Human-readable family name
+	Description          string         `json:"description"`            // Description of the model family
+	SupportsThinking     bool           `json:"supports_thinking"`      // Whether this model family supports thinking mode
+	ContextWindowSize    int            `json:"context_window_size"`    // Maximum context window size in tokens
+	PreferredForThinking bool           `json:"preferred_for_thinking"` // Whether this family is preferred for thinking tasks
+	PreferredForCaching  bool           `json:"preferred_for_caching"`  // Whether this family is preferred for caching tasks
+	PreferredForSearch   bool           `json:"preferred_for_search"`   // Whether this family is preferred for search tasks
+	Versions             []ModelVersion `json:"versions"`               // Available versions of this model family
 }
+
+// FileUploadRequest represents a request to upload a file
 type FileUploadRequest struct {
 	FileName    string `json:"filename"`
 	MimeType    string `json:"mime_type"`
 	Content     []byte `json:"content"`
 	DisplayName string `json:"display_name,omitempty"`
 }
+
+// FileInfo represents information about a stored file
 type FileInfo struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	URI         string    `json:"uri"`
-	DisplayName string    `json:"display_name"`
+	ID          string    `json:"id"`           // The unique ID (last part of the Name)
+	Name        string    `json:"name"`         // The full resource name (e.g., "files/abc123")
+	URI         string    `json:"uri"`          // The URI to use in requests
+	DisplayName string    `json:"display_name"` // Human-readable name
 	MimeType    string    `json:"mime_type"`
 	Size        int64     `json:"size"`
 	UploadedAt  time.Time `json:"uploaded_at"`
 	ExpiresAt   time.Time `json:"expires_at"`
 }
+
+// FileStore manages file metadata
 type FileStore struct {
 	client   *genai.Client
 	config   *Config
 	mu       sync.RWMutex
-	fileInfo map[string]*FileInfo
+	fileInfo map[string]*FileInfo // Map of ID -> FileInfo
 }
+
+// GeminiServer implements the ToolHandler interface to provide research capabilities
+// through Google's Gemini API.
+// Defined in gemini.go
+
+// ErrorGeminiServer implements the ToolHandler interface but returns error responses
+// for all calls. Used when the Gemini server is in degraded mode due to initialization errors.
 type ErrorGeminiServer struct {
 	errorMessage string
-	config       *Config
+	config       *Config // Added to check EnableCaching
 }
+
+// handleErrorResponse is a handler function that can be used with mark3labs/mcp-go's AddTool
 func (s *ErrorGeminiServer) handleErrorResponse(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Get logger from context
 	logger := getLoggerFromContext(ctx)
+
+	// Log which tool was attempted
 	toolName := req.Params.Name
 	logger.Info("Tool '%s' called in error mode", toolName)
+
+	// Return an error result with the initialization error message
+	// Include the tool name for better debugging
 	errorMessage := fmt.Sprintf("Error in tool '%s': %s", toolName, s.errorMessage)
 	return createErrorResult(errorMessage), nil
 }
@@ -2496,6 +3000,7 @@ func (s *ErrorGeminiServer) handleErrorResponse(ctx context.Context, req mcp.Cal
 
 <file path="direct_handlers.go">
 package main
+
 import (
 	"bytes"
 	"context"
@@ -2505,36 +3010,56 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
 	"github.com/mark3labs/mcp-go/mcp"
 	"google.golang.org/genai"
 )
+
+// GeminiAskHandler is a handler for the gemini_ask tool that uses mcp-go types directly
 func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Handling gemini_ask request with direct handler")
+
+	// Extract and validate query parameter (required)
 	query, ok := req.GetArguments()["query"].(string)
 	if !ok || query == "" {
 		return createErrorResult("query must be a string and cannot be empty"), nil
 	}
+
+	// Create Gemini model configuration
 	config, modelName, err := createModelConfig(ctx, req, s.config, s.config.GeminiModel)
 	if err != nil {
 		return createErrorResult(fmt.Sprintf("Error creating model configuration: %v", err)), nil
 	}
+
+	// Extract file paths if provided
 	filePaths := extractArgumentStringArray(req, "file_paths")
+
+	// Check if caching is requested
 	useCache := extractArgumentBool(req, "use_cache", false)
 	cacheTTL := extractArgumentString(req, "cache_ttl", "")
+
 	// Check if thinking mode is requested (used to determine if caching should be used)
 	enableThinking := extractArgumentBool(req, "enable_thinking", s.config.EnableThinking)
+
+	// Caching and thinking conflict - prioritize thinking if both are requested
 	if useCache && enableThinking {
 		logger.Warn("Both caching and thinking mode were requested - prioritizing thinking mode")
 		useCache = false
 	}
+
+	// Handle caching if enabled and supported by the model
 	var cacheID string
 	var cacheErr error
+
 	if useCache && s.config.EnableCaching {
+		// Get model information to check if it supports caching
 		modelVersion := GetModelVersion(modelName)
 		if modelVersion != nil && modelVersion.SupportsCaching {
+			// Try to create cache from files if provided
 			cacheID, cacheErr = s.createCacheFromFiles(ctx, query, modelName, filePaths, cacheTTL,
 				extractArgumentString(req, "systemPrompt", s.config.GeminiSystemPrompt))
+
 			if cacheErr != nil {
 				logger.Warn("Failed to create cache, falling back to regular request: %v", cacheErr)
 			} else if cacheID != "" {
@@ -2545,48 +3070,73 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 			logger.Warn("Model %s does not support caching, falling back to regular request", modelName)
 		}
 	}
+
+	// Validate client and models before proceeding
 	if s.client == nil || s.client.Models == nil {
 		logger.Error("Gemini client or Models service not properly initialized")
 		return createErrorResult("Internal error: Gemini client not properly initialized"), nil
 	}
+
+	// Process with files if provided
 	if len(filePaths) > 0 {
 		return s.processWithFiles(ctx, query, filePaths, modelName, config, cacheErr)
 	} else {
 		return s.processWithoutFiles(ctx, query, modelName, config, cacheErr)
 	}
 }
+
+// createCacheFromFiles creates a cache from the provided files and returns the cache ID
 func (s *GeminiServer) createCacheFromFiles(ctx context.Context, query, modelName string,
 	filePaths []string, cacheTTL, systemPrompt string) (string, error) {
+
 	logger := getLoggerFromContext(ctx)
+
+	// Check if file store is properly initialized
 	if s.fileStore == nil {
 		return "", fmt.Errorf("FileStore not properly initialized")
 	}
+
+	// Create a list of file IDs from uploaded files
 	var fileIDs []string
+
+	// Upload each file to the API
 	for _, filePath := range filePaths {
+		// Read the file
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			logger.Error("Failed to read file %s: %v", filePath, err)
 			continue
 		}
+
+		// Get mime type and filename
 		mimeType := getMimeTypeFromPath(filePath)
 		fileName := filepath.Base(filePath)
+
+		// Create upload request
 		uploadReq := &FileUploadRequest{
 			FileName:    fileName,
 			MimeType:    mimeType,
 			Content:     content,
 			DisplayName: fileName,
 		}
+
+		// Upload the file
 		fileInfo, err := s.fileStore.UploadFile(ctx, uploadReq)
 		if err != nil {
 			logger.Error("Failed to upload file %s: %v", filePath, err)
 			continue
 		}
+
 		logger.Info("Successfully uploaded file %s with ID: %s for caching", fileName, fileInfo.ID)
 		fileIDs = append(fileIDs, fileInfo.ID)
 	}
+
+	// If no files were uploaded successfully, return error
 	if len(fileIDs) == 0 && len(filePaths) > 0 {
 		return "", fmt.Errorf("failed to upload any files for caching")
 	}
+
+	// Create cache request
 	cacheReq := &CacheRequest{
 		Model:        modelName,
 		SystemPrompt: systemPrompt,
@@ -2594,135 +3144,206 @@ func (s *GeminiServer) createCacheFromFiles(ctx context.Context, query, modelNam
 		TTL:          cacheTTL,
 		Content:      query,
 	}
+
+	// Create the cache
 	cacheInfo, err := s.cacheStore.CreateCache(ctx, cacheReq)
 	if err != nil {
 		return "", fmt.Errorf("failed to create cache: %w", err)
 	}
+
 	return cacheInfo.ID, nil
 }
+
+// handleQueryWithCacheDirect handles a query with a previously created cache
 func (s *GeminiServer) handleQueryWithCacheDirect(ctx context.Context, cacheID, query string) (*mcp.CallToolResult, error) {
 	logger := getLoggerFromContext(ctx)
+
+	// Get the cache
 	cacheInfo, err := s.cacheStore.GetCache(ctx, cacheID)
 	if err != nil {
 		logger.Error("Failed to get cache with ID %s: %v", cacheID, err)
 		return createErrorResult(fmt.Sprintf("Failed to get cache: %v", err)), nil
 	}
+
+	// Use the cached content for the query
 	contents := []*genai.Content{
 		genai.NewContentFromText(query, genai.RoleUser),
 	}
+
+	// Create the configuration
 	config := &genai.GenerateContentConfig{
 		CachedContent: cacheInfo.Name,
 	}
+
+	// Make the request to the API
 	response, err := s.client.Models.GenerateContent(ctx, cacheInfo.Model, contents, config)
 	if err != nil {
 		logger.Error("Failed to generate content with cached content: %v", err)
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
+
+	// Convert to MCP result
 	return convertGenaiResponseToMCPResult(response), nil
 }
+
+// processWithFiles handles a Gemini API request with file attachments
 func (s *GeminiServer) processWithFiles(ctx context.Context, query string, filePaths []string,
 	modelName string, config *genai.GenerateContentConfig, cacheErr error) (*mcp.CallToolResult, error) {
+
 	logger := getLoggerFromContext(ctx)
+
+	// Create initial content with the query
 	contents := []*genai.Content{
 		genai.NewContentFromText(query, genai.RoleUser),
 	}
+
+	// Process each file
 	for _, filePath := range filePaths {
+		// Read the file
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			logger.Error("Failed to read file %s: %v", filePath, err)
 			continue
 		}
+
+		// Get mime type and filename
 		mimeType := getMimeTypeFromPath(filePath)
 		fileName := filepath.Base(filePath)
+
+		// Upload the file to Gemini
 		logger.Info("Uploading file %s with mime type %s", fileName, mimeType)
 		uploadConfig := &genai.UploadFileConfig{
 			MIMEType:    mimeType,
 			DisplayName: fileName,
 		}
+
 		file, err := s.client.Files.Upload(ctx, bytes.NewReader(content), uploadConfig)
 		if err != nil {
 			logger.Error("Failed to upload file %s: %v - falling back to direct content", filePath, err)
+			// Fallback to direct content if upload fails
 			contents = append(contents, genai.NewContentFromText(string(content), genai.RoleUser))
 			continue
 		}
+
+		// Add file to contents using the URI
 		contents = append(contents, genai.NewContentFromURI(file.URI, mimeType, genai.RoleUser))
 	}
+
+	// Generate content with files
 	response, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	if err != nil {
 		logger.Error("Gemini API error: %v", err)
 		if cacheErr != nil {
+			// If there was also a cache error, include it in the response
 			return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
 		}
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
+
+	// Convert to MCP result
 	return convertGenaiResponseToMCPResult(response), nil
 }
+
+// processWithoutFiles handles a Gemini API request without file attachments
 func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
 	modelName string, config *genai.GenerateContentConfig, cacheErr error) (*mcp.CallToolResult, error) {
+
 	logger := getLoggerFromContext(ctx)
+
+	// Create content with just the query
 	contents := []*genai.Content{
 		genai.NewContentFromText(query, genai.RoleUser),
 	}
+
+	// Generate content
 	response, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	if err != nil {
 		logger.Error("Gemini API error: %v", err)
 		if cacheErr != nil {
+			// If there was also a cache error, include it in the response
 			return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
 		}
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
+
+	// Convert to MCP result
 	return convertGenaiResponseToMCPResult(response), nil
 }
+
+// GeminiSearchHandler is a handler for the gemini_search tool that uses mcp-go types directly
 func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Handling gemini_search request with direct handler")
+
+	// Extract and validate query parameter (required)
 	query, ok := req.GetArguments()["query"].(string)
 	if !ok || query == "" {
 		return createErrorResult("query must be a string and cannot be empty"), nil
 	}
+
+	// Extract optional system prompt - use search-specific prompt as default
 	systemPrompt := extractArgumentString(req, "systemPrompt", s.config.GeminiSearchSystemPrompt)
+
+	// Extract optional model parameter - use search-specific model as default
 	modelName := extractArgumentString(req, "model", s.config.GeminiSearchModel)
 	if err := ValidateModelID(modelName); err != nil {
 		logger.Error("Invalid model requested: %v", err)
 		return createErrorResult(fmt.Sprintf("Invalid model specified: %v", err)), nil
 	}
+
+	// Resolve model ID to ensure we use a valid API-addressable version
 	resolvedModelID := ResolveModelID(modelName)
 	if resolvedModelID != modelName {
 		logger.Info("Resolved model ID from '%s' to '%s'", modelName, resolvedModelID)
 		modelName = resolvedModelID
 	}
 	logger.Info("Using %s model for Google Search integration", modelName)
+
+	// Get model information for context window and thinking capability
 	modelInfo := GetModelByID(modelName)
 	if modelInfo == nil {
 		logger.Warn("Model information not found for %s, using default parameters", modelName)
 	}
+
+	// Create the generate content configuration
 	googleSearch := &genai.GoogleSearch{}
+
+	// Extract and validate time range filter parameters
 	startTimeStr := extractArgumentString(req, "start_time", "")
 	endTimeStr := extractArgumentString(req, "end_time", "")
+
 	// Both must be provided if either is provided
 	if (startTimeStr != "" && endTimeStr == "") || (startTimeStr == "" && endTimeStr != "") {
 		return createErrorResult("Both start_time and end_time must be provided for time range filtering"), nil
 	}
+
+	// If both time parameters are provided, create the time range filter
 	if startTimeStr != "" && endTimeStr != "" {
 		startTime, err := time.Parse(time.RFC3339, startTimeStr)
 		if err != nil {
 			logger.Error("Invalid start_time format: %v", err)
 			return createErrorResult(fmt.Sprintf("Invalid start_time format: %v. Must be RFC3339 format (e.g. '2024-01-01T00:00:00Z')", err)), nil
 		}
+
 		endTime, err := time.Parse(time.RFC3339, endTimeStr)
 		if err != nil {
 			logger.Error("Invalid end_time format: %v", err)
 			return createErrorResult(fmt.Sprintf("Invalid end_time format: %v. Must be RFC3339 format (e.g. '2024-12-31T23:59:59Z')", err)), nil
 		}
+
+		// Ensure start time is before or equal to end time
 		if startTime.After(endTime) {
 			return createErrorResult("start_time must be before or equal to end_time"), nil
 		}
+
+		// Create the time range filter
 		googleSearch.TimeRangeFilter = &genai.Interval{
 			StartTime: startTime,
 			EndTime:   endTime,
 		}
 		logger.Info("Applying time range filter from %s to %s", startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
 	}
+
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
 		Temperature:       genai.Ptr(float32(s.config.GeminiTemperature)),
@@ -2732,28 +3353,38 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 			},
 		},
 	}
+
 	// Configure thinking
 	enableThinking := extractArgumentBool(req, "enable_thinking", s.config.EnableThinking)
 	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
 		thinkingConfig := &genai.ThinkingConfig{
 			IncludeThoughts: true,
 		}
+
+		// Determine thinking budget
 		thinkingBudget := 0
+
+		// Check for level first
 		args := req.GetArguments()
 		if levelStr, ok := args["thinking_budget_level"].(string); ok && levelStr != "" {
 			thinkingBudget = getThinkingBudgetFromLevel(levelStr)
 			logger.Info("Setting thinking budget to %d tokens from level: %s", thinkingBudget, levelStr)
 		} else if budgetRaw, ok := args["thinking_budget"].(float64); ok && budgetRaw >= 0 {
+			// If explicit budget was provided
 			thinkingBudget = int(budgetRaw)
 			logger.Info("Setting thinking budget to %d tokens from explicit value", thinkingBudget)
 		} else if s.config.ThinkingBudget > 0 {
+			// Fall back to config value
 			thinkingBudget = s.config.ThinkingBudget
 			logger.Info("Using default thinking budget of %d tokens", thinkingBudget)
 		}
+
+		// Set thinking budget if greater than 0
 		if thinkingBudget > 0 {
 			budget := int32(thinkingBudget)
 			thinkingConfig.ThinkingBudget = &budget
 		}
+
 		config.ThinkingConfig = thinkingConfig
 		logger.Info("Thinking mode enabled for search request with model %s", modelName)
 	} else if enableThinking {
@@ -2763,37 +3394,57 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 			logger.Warn("Thinking mode requested but unknown if model supports it")
 		}
 	}
+
+	// Configure max tokens (50% of context window by default for search)
 	configureMaxTokensOutput(ctx, config, req, modelInfo, 0.5)
+
+	// Create content with the query
 	contents := []*genai.Content{
 		genai.NewContentFromText(query, genai.RoleUser),
 	}
+
+	// Validate client and models before proceeding
 	if s.client == nil || s.client.Models == nil {
 		logger.Error("Gemini client or Models service not properly initialized")
 		return createErrorResult("Internal error: Gemini client not properly initialized"), nil
 	}
+
+	// Initialize response data
 	responseText := ""
 	var sources []SourceInfo
 	var searchQueries []string
+
 	// Track seen URLs to avoid duplicates
 	seenURLs := make(map[string]bool)
+
 	// Stream the response
 	for result, err := range s.client.Models.GenerateContentStream(ctx, modelName, contents, config) {
 		if err != nil {
 			logger.Error("Gemini Search API error: %v", err)
 			return createErrorResult(fmt.Sprintf("Error from Gemini Search API: %v", err)), nil
 		}
+
+		// Extract text and metadata from the response
 		if len(result.Candidates) > 0 && result.Candidates[0].Content != nil {
 			responseText += result.Text()
+
+			// Extract metadata if available
 			if metadata := result.Candidates[0].GroundingMetadata; metadata != nil {
+				// Collect search queries
 				if len(metadata.WebSearchQueries) > 0 && len(searchQueries) == 0 {
 					searchQueries = metadata.WebSearchQueries
 				}
+
+				// Collect sources from grounding chunks
 				for _, chunk := range metadata.GroundingChunks {
 					var source SourceInfo
+
 					if web := chunk.Web; web != nil {
+						// Skip if we've seen this URL already
 						if seenURLs[web.URI] {
 							continue
 						}
+
 						source = SourceInfo{
 							Title: web.Title,
 							URL:   web.URI,
@@ -2801,9 +3452,11 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 						}
 						seenURLs[web.URI] = true
 					} else if ctx := chunk.RetrievedContext; ctx != nil {
+						// Skip if we've seen this URL already
 						if seenURLs[ctx.URI] {
 							continue
 						}
+
 						source = SourceInfo{
 							Title: ctx.Title,
 							URL:   ctx.URI,
@@ -2811,6 +3464,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 						}
 						seenURLs[ctx.URI] = true
 					}
+
 					if source.URL != "" {
 						sources = append(sources, source)
 					}
@@ -2818,6 +3472,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 			}
 		}
 	}
+
 	// Check for empty content and provide a fallback message
 	if responseText == "" {
 		responseText = `The Gemini Search model returned an empty response.
@@ -2825,48 +3480,64 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 			no relevant information was found. Please try rephrasing your question
 			or providing more specific details.`
 	}
+
 	// Create the response JSON
 	response := SearchResponse{
 		Answer:        responseText,
 		Sources:       sources,
 		SearchQueries: searchQueries,
 	}
+
 	// Convert to JSON and return as text content
 	responseJSON, err := json.Marshal(response)
 	if err != nil {
 		logger.Error("Failed to marshal search response: %v", err)
 		return createErrorResult(fmt.Sprintf("Failed to format search response: %v", err)), nil
 	}
+
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.NewTextContent(string(responseJSON)),
 		},
 	}, nil
 }
+
+// GeminiModelsHandler is a handler for the gemini_models tool that uses mcp-go types directly
 func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Handling gemini_models request with direct handler")
+
+	// Create formatted response using strings.Builder
 	var formattedContent strings.Builder
+
+	// Write the content using helper to make error checking cleaner
 	write := func(format string, args ...interface{}) error {
 		_, err := formattedContent.WriteString(fmt.Sprintf(format, args...))
 		return err
 	}
+
+	// Write the header
 	if err := write("# Available Gemini 2.5 Models\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("This server supports 3 Gemini 2.5 models and provides 2 main tools:\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- `gemini_ask`: For general queries, coding problems (default: code review system prompt)\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- `gemini_search`: For search-grounded queries (default: search assistant system prompt)\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
+	// Gemini 2.5 Pro
 	if err := write("## Gemini 2.5 Pro\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
@@ -2899,6 +3570,8 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
+	// Gemini 2.5 Flash
 	if err := write("## Gemini 2.5 Flash\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
@@ -2931,11 +3604,13 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
+	// Gemini 2.5 Flash Lite
 	if err := write("## Gemini 2.5 Flash Lite\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("- **Model ID**: `gemini-2.5-flash-lite-preview-06-17` (preview)\n"); err != nil {
+	if err := write("- **Model ID**: `gemini-2.5-flash-lite`\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
@@ -2963,174 +3638,227 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
+	// Tool Usage Examples
 	if err := write("## Tool Usage Examples\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
+	// gemini_ask examples
 	if err := write("### gemini_ask Examples\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("**General Problem (non-coding):**\n```json\n{\n  \"query\": \"Explain quantum computing in simple terms\",\n  \"model\": \"gemini-2.5-flash\",\n  \"systemPrompt\": \"You are an expert science communicator. Explain complex topics clearly for a general audience.\"\n}\n```\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("**Coding Problem with Files and Cache:**\n```json\n{\n  \"query\": \"Review this code for security vulnerabilities and performance issues\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\"/path/to/auth.go\", \"/path/to/database.go\"],\n  \"use_cache\": true,\n  \"cache_ttl\": \"30m\",\n  \"enable_thinking\": true\n}\n```\n*Note: Default system prompt optimized for code review will be used*\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("**Custom System Prompt Override:**\n```json\n{\n  \"query\": \"Analyze this code architecture\",\n  \"model\": \"gemini-2.5-pro\",\n  \"systemPrompt\": \"You are a senior software architect. Focus on design patterns, scalability, and maintainability.\",\n  \"file_paths\": [\"/path/to/main.go\"]\n}\n```\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
+	// gemini_search examples
 	if err := write("### gemini_search Examples\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("**Basic Search:**\n```json\n{\n  \"query\": \"What are the latest developments in Go programming language?\",\n  \"model\": \"gemini-2.5-flash-lite-preview-06-17\"\n}\n```\n\n"); err != nil {
+
+	if err := write("**Basic Search:**\n```json\n{\n  \"query\": \"What are the latest developments in Go programming language?\",\n  \"model\": \"gemini-2.5-flash-lite\"\n}\n```\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("**Search with Time Filtering:**\n```json\n{\n  \"query\": \"Recent security vulnerabilities in JavaScript frameworks\",\n  \"model\": \"gemini-2.5-flash\",\n  \"start_time\": \"2024-01-01T00:00:00Z\",\n  \"end_time\": \"2024-12-31T23:59:59Z\"\n}\n```\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
-	if err := write("**Search with Thinking Mode (Flash Lite):**\n```json\n{\n  \"query\": \"Compare the pros and cons of different cloud deployment strategies\",\n  \"model\": \"gemini-2.5-flash-lite-preview-06-17\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\"\n}\n```\n\n"); err != nil {
+
+	if err := write("**Search with Thinking Mode (Flash Lite):**\n```json\n{\n  \"query\": \"Compare the pros and cons of different cloud deployment strategies\",\n  \"model\": \"gemini-2.5-flash-lite\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\"\n}\n```\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
+	// System Prompt Details
 	if err := write("## System Prompt Details\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("**Default System Prompts:**\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- **gemini_ask**: Optimized for thorough code review (senior developer perspective)\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- **gemini_search**: Helpful search assistant for accurate, up-to-date information\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("**Override via:**\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- `systemPrompt` parameter in requests\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- `GEMINI_SYSTEM_PROMPT` env variable (for gemini_ask)\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- `GEMINI_SEARCH_SYSTEM_PROMPT` env variable (for gemini_search)\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- Command line flags: `--gemini-system-prompt`\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
+	// File Attachments
 	if err := write("## File Attachments (gemini_ask only)\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("Attach files to provide context for your queries. This is particularly useful for code review, debugging, and analysis:\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("```json\n// Code review with multiple files\n{\n  \"query\": \"Review this code for potential issues and suggest improvements\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\n    \"/path/to/main.go\",\n    \"/path/to/utils.go\",\n    \"/path/to/config.yaml\"\n  ]\n}\n\n// Documentation analysis\n{\n  \"query\": \"Explain how these components interact and suggest documentation improvements\",\n  \"model\": \"gemini-2.5-flash\",\n  \"file_paths\": [\n    \"/path/to/README.md\",\n    \"/path/to/api.go\"\n  ]\n}\n```\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
+	// Caching
 	if err := write("## Caching (gemini_ask only)\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("**Implicit Caching (Automatic):**\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- 75% token discount for requests with common prefixes\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- Pro: 2048+ tokens minimum\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- Flash: 1024+ tokens minimum\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- Keep content at the beginning of requests the same, add variable content at the end\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("**Explicit Caching (Manual):**\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- Available for Pro and Flash only\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- Use `use_cache: true` parameter\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- Custom TTL with `cache_ttl` (default: 10 minutes)\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("```json\n// Enable explicit caching\n{\n  \"query\": \"Analyze this codebase structure\",\n  \"model\": \"gemini-2.5-flash\",\n  \"file_paths\": [\"/path/to/large/codebase\"],\n  \"use_cache\": true,\n  \"cache_ttl\": \"30m\"\n}\n```\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
+	// Thinking Mode
 	if err := write("## Thinking Mode (both tools)\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("All Gemini 2.5 models support thinking mode, which shows the model's detailed reasoning process. Flash-Lite has thinking off by default for speed/cost optimization.\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("**Thinking Budget Levels:**\n- `none`: 0 tokens (disabled)\n- `low`: 4,096 tokens\n- `medium`: 16,384 tokens\n- `high`: 24,576 tokens (maximum)\n\nOr use `thinking_budget` to set a specific token count (0-24,576).\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("```json\n// Enable thinking with budget level\n{\n  \"query\": \"Solve this complex algorithm problem step by step\",\n  \"model\": \"gemini-2.5-pro\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"high\"\n}\n\n// Custom thinking budget\n{\n  \"query\": \"Debug this complex issue\",\n  \"model\": \"gemini-2.5-pro\",\n  \"enable_thinking\": true,\n  \"thinking_budget\": 12000\n}\n```\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
+	// Time Filtering
 	if err := write("## Time Filtering (gemini_search only)\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("Filter search results by publication date using RFC3339 format:\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- Use `start_time` and `end_time` together (both required)\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("- Format: `YYYY-MM-DDTHH:MM:SSZ`\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
+	// Advanced Examples
 	if err := write("## Advanced Examples\n\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
 	if err := write("```json\n// Comprehensive code review with thinking and caching (gemini_ask)\n{\n  \"query\": \"Perform a thorough security and performance review of this codebase\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\n    \"/path/to/main.go\",\n    \"/path/to/auth.go\",\n    \"/path/to/database.go\"\n  ],\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\",\n  \"use_cache\": true,\n  \"cache_ttl\": \"1h\"\n}\n\n// Custom system prompt with file context (gemini_ask)\n{\n  \"query\": \"Suggest architectural improvements for better scalability\",\n  \"model\": \"gemini-2.5-pro\",\n  \"systemPrompt\": \"You are a senior software architect. Focus on scalability, maintainability, and best practices.\",\n  \"file_paths\": [\"/path/to/architecture/overview.md\"],\n  \"enable_thinking\": true\n}\n```\n"); err != nil {
 		logger.Error("Error writing to response: %v", err)
 		return createErrorResult("Error generating model list"), nil
 	}
+
+	// Return the formatted content
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			mcp.NewTextContent(formattedContent.String()),
@@ -3141,6 +3869,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 
 <file path="config.go">
 package main
+
 import (
 	"errors"
 	"fmt"
@@ -3149,9 +3878,12 @@ import (
 	"strings"
 	"time"
 )
+
+// Default configuration values
 const (
+	// Note: if this value changes, make sure to update the models.go list
 	defaultGeminiModel        = "gemini-2.5-pro"
-	defaultGeminiSearchModel  = "gemini-2.5-flash-lite"
+	defaultGeminiSearchModel  = "gemini-2.5-flash-lite" // Default model specifically for search
 	defaultGeminiTemperature  = 0.4
 	defaultGeminiSystemPrompt = `
 You are a senior developer. Your job is to do a thorough code review of this code.
@@ -3160,30 +3892,43 @@ Include line numbers, and contextual info.
 Your code review will be passed to another teammate, so be thorough.
 Think deeply  before writing the code review. Review every part, and don't hallucinate.
 `
+	// System prompt for search-based queries
 	defaultGeminiSearchSystemPrompt = `
 You are a helpful search assistant. Use the Google Search results to provide accurate and up-to-date information.
 Your answers should be comprehensive but concise, focusing on the most relevant information.
 Cite your sources when appropriate and maintain a neutral, informative tone.
 If the search results don't contain enough information to fully answer the query, acknowledge the limitations.
 `
-	defaultMaxFileSize = int64(10 * 1024 * 1024)
+	// File handling defaults
+	defaultMaxFileSize = int64(10 * 1024 * 1024) // 10MB explicitly as int64
+
+	// HTTP transport defaults
 	defaultEnableHTTP      = false
 	defaultHTTPAddress     = ":8080"
 	defaultHTTPPath        = "/mcp"
 	defaultHTTPStateless   = false
-	defaultHTTPHeartbeat   = 0 * time.Second
+	defaultHTTPHeartbeat   = 0 * time.Second // No heartbeat by default
 	defaultHTTPCORSEnabled = true
-	defaultAuthEnabled = false
+
+	// Authentication defaults
+	defaultAuthEnabled = false // Authentication disabled by default
+
+	// Cache settings defaults
 	defaultEnableCaching   = true
 	defaultDefaultCacheTTL = 1 * time.Hour
+
+	// Thinking settings
 	defaultEnableThinking      = true
-	defaultThinkingBudget      = 4096
-	defaultThinkingBudgetLevel = "low"
-	thinkingBudgetNone         = 0
-	thinkingBudgetLow          = 4096
-	thinkingBudgetMedium       = 16384
-	thinkingBudgetHigh         = 24576
+	defaultThinkingBudgetLevel = "low" // Default thinking budget level
+	thinkingBudgetNone         = 0     // None: Thinking disabled
+	thinkingBudgetLow          = 4096  // Low: 4096 tokens
+	thinkingBudgetMedium       = 16384 // Medium: 16384 tokens
+	thinkingBudgetHigh         = 24576 // High: Maximum allowed by Gemini (24576 tokens)
 )
+
+// Config struct definition moved to structs.go
+
+// getThinkingBudgetFromLevel converts a thinking budget level string to a token count
 func getThinkingBudgetFromLevel(level string) int {
 	switch strings.ToLower(level) {
 	case "none":
@@ -3195,9 +3940,11 @@ func getThinkingBudgetFromLevel(level string) int {
 	case "high":
 		return thinkingBudgetHigh
 	default:
-		return thinkingBudgetLow
+		return thinkingBudgetLow // Default to low if invalid level
 	}
 }
+
+// Helper function to parse an integer environment variable with a default
 func parseEnvVarInt(key string, defaultValue int) int {
 	if str := os.Getenv(key); str != "" {
 		if val, err := strconv.Atoi(str); err == nil {
@@ -3208,6 +3955,8 @@ func parseEnvVarInt(key string, defaultValue int) int {
 	}
 	return defaultValue
 }
+
+// Helper function to parse a float64 environment variable with a default
 func parseEnvVarFloat(key string, defaultValue float64) float64 {
 	if str := os.Getenv(key); str != "" {
 		if val, err := strconv.ParseFloat(str, 64); err == nil {
@@ -3217,6 +3966,8 @@ func parseEnvVarFloat(key string, defaultValue float64) float64 {
 	}
 	return defaultValue
 }
+
+// Helper function to parse a duration environment variable with a default
 func parseEnvVarDuration(key string, defaultValue time.Duration) time.Duration {
 	if str := os.Getenv(key); str != "" {
 		if val, err := time.ParseDuration(str); err == nil {
@@ -3226,6 +3977,8 @@ func parseEnvVarDuration(key string, defaultValue time.Duration) time.Duration {
 	}
 	return defaultValue
 }
+
+// Helper function to parse a boolean environment variable with a default
 func parseEnvVarBool(key string, defaultValue bool) bool {
 	if str := os.Getenv(key); str != "" {
 		if val, err := strconv.ParseBool(str); err == nil {
@@ -3235,47 +3988,64 @@ func parseEnvVarBool(key string, defaultValue bool) bool {
 	}
 	return defaultValue
 }
+
+// NewConfig creates a new configuration from environment variables
 func NewConfig() (*Config, error) {
+	// No longer validating default model at startup - will be checked when needed
+	// This allows for new models not in our hardcoded list
+	// Get Gemini API key - required
 	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
 	if geminiAPIKey == "" {
 		return nil, errors.New("GEMINI_API_KEY environment variable is required")
 	}
+
+	// Get Gemini model - optional with default
 	geminiModel := os.Getenv("GEMINI_MODEL")
 	if geminiModel == "" {
 		geminiModel = defaultGeminiModel // Default model if not specified
 	}
 	// Note: We no longer validate the model here to allow for new models
 	// and preview versions not in our hardcoded list
+
 	// Get Gemini search model - optional with default
 	geminiSearchModel := os.Getenv("GEMINI_SEARCH_MODEL")
 	if geminiSearchModel == "" {
 		geminiSearchModel = defaultGeminiSearchModel // Default search model if not specified
 	}
 	// Note: We also don't validate the search model here
+
 	// Get Gemini system prompt - optional with default
 	geminiSystemPrompt := os.Getenv("GEMINI_SYSTEM_PROMPT")
 	if geminiSystemPrompt == "" {
 		geminiSystemPrompt = defaultGeminiSystemPrompt // Default system prompt if not specified
 	}
+
 	// Get Gemini search system prompt - optional with default
 	geminiSearchSystemPrompt := os.Getenv("GEMINI_SEARCH_SYSTEM_PROMPT")
 	if geminiSearchSystemPrompt == "" {
 		geminiSearchSystemPrompt = defaultGeminiSearchSystemPrompt // Default search system prompt if not specified
 	}
+
 	// Use helper functions to parse environment variables
 	timeout := parseEnvVarDuration("GEMINI_TIMEOUT", 90*time.Second)
 	maxRetries := parseEnvVarInt("GEMINI_MAX_RETRIES", 2)
 	initialBackoff := parseEnvVarDuration("GEMINI_INITIAL_BACKOFF", 1*time.Second)
 	maxBackoff := parseEnvVarDuration("GEMINI_MAX_BACKOFF", 10*time.Second)
+
+	// Set default temperature or override with environment variable
 	geminiTemperature := parseEnvVarFloat("GEMINI_TEMPERATURE", defaultGeminiTemperature)
+	// Specific validation for temperature range, as it's a critical parameter
 	if geminiTemperature < 0.0 || geminiTemperature > 1.0 {
 		return nil, fmt.Errorf("GEMINI_TEMPERATURE must be between 0.0 and 1.0, got %v", geminiTemperature)
 	}
+
+	// File handling settings
 	maxFileSize := int64(parseEnvVarInt("GEMINI_MAX_FILE_SIZE", int(defaultMaxFileSize)))
 	if maxFileSize <= 0 {
 		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_MAX_FILE_SIZE must be positive. Using default: %d\n", defaultMaxFileSize)
 		maxFileSize = defaultMaxFileSize
 	}
+
 	var allowedFileTypes []string
 	if typesStr := os.Getenv("GEMINI_ALLOWED_FILE_TYPES"); typesStr != "" {
 		parts := strings.Split(typesStr, ",")
@@ -3292,13 +4062,19 @@ func NewConfig() (*Config, error) {
 			"application/json", "text/yaml", "application/octet-stream",
 		}
 	}
+
+	// Cache settings
 	enableCaching := parseEnvVarBool("GEMINI_ENABLE_CACHING", defaultEnableCaching)
 	defaultCacheTTL := parseEnvVarDuration("GEMINI_DEFAULT_CACHE_TTL", defaultDefaultCacheTTL)
 	if defaultCacheTTL <= 0 {
 		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_DEFAULT_CACHE_TTL must be positive. Using default: %s\n", defaultDefaultCacheTTL.String())
 		defaultCacheTTL = defaultDefaultCacheTTL
 	}
+
+	// Thinking settings
 	enableThinking := parseEnvVarBool("GEMINI_ENABLE_THINKING", defaultEnableThinking)
+
+	// Set thinking budget level from environment variable or use default
 	thinkingBudgetLevel := defaultThinkingBudgetLevel
 	if levelStr := os.Getenv("GEMINI_THINKING_BUDGET_LEVEL"); levelStr != "" {
 		level := strings.ToLower(levelStr)
@@ -3309,8 +4085,14 @@ func NewConfig() (*Config, error) {
 				levelStr, defaultThinkingBudgetLevel)
 		}
 	}
+
+	// Set thinking budget from environment variable or derive from level
 	thinkingBudget := getThinkingBudgetFromLevel(thinkingBudgetLevel)
+	// If GEMINI_THINKING_BUDGET is set, it overrides the level-derived value.
+	// The helper will use the level-derived budget as a fallback if parsing fails.
 	thinkingBudget = parseEnvVarInt("GEMINI_THINKING_BUDGET", thinkingBudget)
+
+	// HTTP transport settings
 	enableHTTP := parseEnvVarBool("GEMINI_ENABLE_HTTP", defaultEnableHTTP)
 	httpAddress := os.Getenv("GEMINI_HTTP_ADDRESS")
 	if httpAddress == "" {
@@ -3339,19 +4121,25 @@ func NewConfig() (*Config, error) {
 	if len(httpCORSOrigins) == 0 {
 		httpCORSOrigins = []string{"*"} // Default allow all origins
 	}
+
 	// Authentication settings
 	authEnabled := parseEnvVarBool("GEMINI_AUTH_ENABLED", defaultAuthEnabled)
 	authSecretKey := os.Getenv("GEMINI_AUTH_SECRET_KEY")
+
+	// If authentication is enabled, require secret key
 	if authEnabled && authSecretKey == "" {
 		return nil, fmt.Errorf("GEMINI_AUTH_SECRET_KEY is required when GEMINI_AUTH_ENABLED=true")
 	}
+
+	// Warn if secret key is too short (for security)
 	if authEnabled && len(authSecretKey) < 32 {
 		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_AUTH_SECRET_KEY should be at least 32 characters for security\n")
 	}
+
 	return &Config{
 		GeminiAPIKey:             geminiAPIKey,
 		GeminiModel:              geminiModel,
-		GeminiSearchModel:        geminiSearchModel,
+		GeminiSearchModel:        geminiSearchModel, // Assign the read value
 		GeminiSystemPrompt:       geminiSystemPrompt,
 		GeminiSearchSystemPrompt: geminiSearchSystemPrompt,
 		GeminiTemperature:        geminiTemperature,
@@ -3744,10 +4532,10 @@ Key supported models (as detailed by the `gemini_models` tool):
     *   Balanced price-performance, 32K token context window.
     *   Best for: General programming tasks, standard code review.
     *   Capabilities: Thinking mode, implicit caching (1024+ token minimum), explicit caching.
--   **`gemini-2.5-flash-lite-preview-06-17`** (preview):
+-   **`gemini-2.5-flash-lite`** (production):
     *   Optimized for cost efficiency and low latency, 32K token context window.
     *   Best for: Search queries, lightweight tasks, quick responses.
-    *   Capabilities: Thinking mode (off by default), no implicit or explicit caching (preview limitation).
+    *   Capabilities: Thinking mode (off by default), no implicit or explicit caching.
 
 **Always use the `gemini_models` tool to get the most current details, capabilities, and example usage for each model as presented by the server.**
 
@@ -3952,345 +4740,151 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 <instruction>
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+GeminiMCP is an Model Control Protocol (MCP) server bridging MCP clients with Google's Gemini 2.5 family models (Pro, Flash, Flash-Lite).
 
-## Project Overview
-
-GeminiMCP is a Model Control Protocol (MCP) server that integrates with Google's Gemini API. It serves as a bridge between MCP-compatible clients (like Claude Desktop) and Google's Gemini models, providing a standardized interface for model interactions.
-
-**Note: This server exclusively supports Gemini 2.5 family models.** Only Gemini 2.5 models (Pro, Flash, Flash Lite) are supported as they provide optimal thinking mode and implicit caching capabilities.
-
-## Build and Development Commands
-
-### Building the Project
+## Build Commands
 
 ```bash
-# Build the binary
+# Build
 go build -o ./bin/mcp-gemini .
+
+# Test & Format (run before commits)
+./run_test.sh
+./run_format.sh
+./run_lint.sh
 ```
 
-### Testing
+## Architecture
+
+**Core Files:**
+- `main.go` - Server initialization, transport handling
+- `config.go` - Environment variables, CLI flags, defaults
+- `tools.go` - MCP tool definitions (gemini_ask, gemini_search, gemini_models)
+- `direct_handlers.go` - Tool request handlers, Gemini API interaction
+- `fetch_models.go`, `fallback_models.go` - Dynamic model management
+- `cache.go` - Context caching for repeated queries
+- `auth.go` - JWT authentication for HTTP transport
+
+**Key Functions:**
+- `ResolveModelID()` - Convert family IDs to specific version IDs (ALWAYS use before API calls)
+- `ValidateModelID()` - Check model ID validity
+- `NewConfig()` - Parse environment variables and flags
+
+## Supported Models (As of GA Release)
+
+- `gemini-2.5-pro` (production) - Advanced thinking, caching, 1M context
+- `gemini-2.5-flash` (production) - Balanced performance, caching, 32K context  
+- `gemini-2.5-flash-lite` (production) - Cost-optimized, no caching, 32K context
+
+## Configuration
+
+**Required:**
+- `GEMINI_API_KEY` - Google AI Studio API key
+
+**Key Environment Variables:**
+```bash
+GEMINI_MODEL="gemini-2.5-pro"                  # Default ask model
+GEMINI_SEARCH_MODEL="gemini-2.5-flash-lite"   # Default search model
+GEMINI_ENABLE_CACHING="true"                   # Context caching
+GEMINI_ENABLE_THINKING="true"                  # Thinking mode
+GEMINI_LOG_LEVEL="info"                        # debug|info|warn|error
+```
+
+**HTTP Transport:**
+```bash
+GEMINI_ENABLE_HTTP="true"
+GEMINI_HTTP_ADDRESS=":8081"
+GEMINI_HTTP_PATH="/mcp"
+```
+
+**Authentication (HTTP only):**
+```bash
+GEMINI_AUTH_ENABLED="true"
+GEMINI_AUTH_SECRET_KEY="32char-minimum-secret"
+```
+
+## CLI Flags (Override Environment)
 
 ```bash
-# Run all tests (sets PATH for Go binary)
-./run_test.sh
+./bin/mcp-gemini --transport=http --gemini-model=gemini-2.5-flash --enable-caching=false
+./bin/mcp-gemini --generate-token --token-username=admin --token-role=admin
+```
 
-# Run tests with verbose output
-go test -v ./...
+## Transport Modes
 
-# Run specific test
+**Stdio (default):** `./bin/mcp-gemini`
+**HTTP:** `./bin/mcp-gemini --transport=http`
+
+## HTTP Endpoints
+
+- `POST /mcp` - MCP protocol messages  
+- `GET /mcp` - Server-Sent Events
+- `GET /.well-known/oauth-authorization-server` - OAuth metadata
+
+## Development Workflows
+
+**Add Tool:**
+1. Define in `tools.go` using `mcp.NewTool()`
+2. Implement handler in `direct_handlers.go`
+3. Register in `setupGeminiServer()` in `main.go`
+4. Add error handler in `registerErrorTools()`
+
+**Modify Config:**
+1. Update defaults in `config.go`
+2. Add parsing in `NewConfig()`
+3. Update `Config` struct in `structs.go`
+4. Add CLI flag in `main.go` if needed
+
+**Update Models:**
+1. Modify `fetch_models.go` or `fallback_models.go`
+2. Use `ResolveModelID()` for API calls
+3. Test model resolution
+
+## Recent Changes
+
+- **Commit 9158646:** Updated Gemini 2.5 Flash Lite to GA model (`gemini-2.5-flash-lite`)
+- **Commit 01b642f:** Added OAuth well-known endpoint (`/.well-known/oauth-authorization-server`)
+- **Commit 48098fa, f3d47d8:** Improved authentication error handling and stderr logging
+- **Commit 9f6ab9a:** Implemented JWT authentication for HTTP transport
+- **Commit f78ae6c:** Added HTTP transport option
+
+## Key Dependencies
+
+- `github.com/mark3labs/mcp-go/mcp` - MCP protocol
+- `google.golang.org/genai` - Gemini API SDK
+- `github.com/joho/godotenv` - Environment loading
+
+## Testing
+
+```bash
+# Configuration tests
 go test -v -run TestConfigDefaults
 
-# Run tests with coverage
-go test -cover ./...
+# API integration tests (requires GEMINI_API_KEY)
+go test -v -run TestGeminiServer
 ```
 
-### Code Formatting and Linting
+## Debug Commands
 
 ```bash
-# Format code with gofmt
-./run_format.sh
-
-# Run linter (golangci-lint)
-./run_lint.sh
-
-# Both scripts should be run before committing changes
-```
-
-### Debugging and Troubleshooting
-
-```bash
-# Run server with debug logging
+# Debug logging
 GEMINI_LOG_LEVEL=debug ./bin/mcp-gemini
 
-# Run server with HTTP transport
-./bin/mcp-gemini --transport=http
-
-# Run server with custom settings via command line
-./bin/mcp-gemini --gemini-model=gemini-2.5-flash --enable-caching=true --transport=http
-
-# Test MCP server locally (requires MCP client)
-# Check server responds to MCP protocol messages
-
-# Validate configuration and see available options
-./bin/mcp-gemini --help
-```
-
-### Development Environment Setup
-
-```bash
-# Essential environment variables for development
-export GEMINI_API_KEY="your_api_key_here"
-export GEMINI_MODEL="gemini-2.5-pro-06-05"
-export GEMINI_SEARCH_MODEL="gemini-2.5-flash-preview-05-20"
-
-# Optional development settings
-export GEMINI_LOG_LEVEL="debug"
-export GEMINI_ENABLE_CACHING="true"
-export GEMINI_ENABLE_THINKING="true"
-
-# HTTP transport settings (optional)
-export GEMINI_ENABLE_HTTP="true"
-export GEMINI_HTTP_ADDRESS=":8081"
-export GEMINI_HTTP_PATH="/mcp"
-export GEMINI_HTTP_STATELESS="false"
-export GEMINI_HTTP_HEARTBEAT="30s"
-export GEMINI_HTTP_CORS_ENABLED="true"
-export GEMINI_HTTP_CORS_ORIGINS="*"
-```
-
-## Architecture Overview
-
-The GeminiMCP server follows a clean, modular architecture:
-
-1. **Server Initialization** (`main.go`): Entry point that configures and launches the MCP server.
-
-2. **Configuration** (`config.go`): Handles environment variables, flags, and defaults for the server.
-
-3. **Tool Definitions** (`tools.go`): Defines the MCP tools (gemini_ask, gemini_search, gemini_models) exposed by the server.
-
-4. **Handlers** (`direct_handlers.go`): Implements the tool handlers that process requests and interact with the Gemini API.
-
-5. **Model Management** (`fetch_models.go`, `fallback_models.go`): Fetches available models from the Gemini API and maintains model metadata.
-
-6. **Context Caching** (`cache.go`): Implements caching for Gemini contexts to improve performance for repeated queries.
-
-7. **File Handling** (`files.go`): Manages file uploads for providing context to Gemini.
-
-8. **Utility Components**:
-   - `logger.go`: Logger for consistent log output
-   - `context.go`: Context key definitions
-   - `middleware.go`: Request processing middleware
-   - `structs.go`: Shared data structures
-   - `gemini_utils.go`: Utility functions for interacting with Gemini API
-
-## Key Concepts
-
-### Transport Modes
-
-The server supports two transport modes, configurable via the `--transport` command-line flag:
-
-1. **Stdio Transport** (default): Traditional stdin/stdout communication for command-line MCP clients
-   ```bash
-   ./bin/mcp-gemini --transport=stdio  # or just ./bin/mcp-gemini
-   ```
-
-2. **HTTP Transport**: RESTful HTTP endpoints with optional WebSocket upgrade for real-time communication
-   ```bash
-   ./bin/mcp-gemini --transport=http
-   ```
-
-### MCP Integration
-
-The server implements the Model Control Protocol to provide a standardized interface for AI model interactions. The `github.com/mark3labs/mcp-go` library handles the protocol specifics.
-
-### Tool Handlers
-
-Three primary tools are exposed:
-
-1. **gemini_ask**: For general queries, code analysis, and creative tasks
-2. **gemini_search**: For grounded search queries using Google Search
-3. **gemini_models**: For listing available Gemini models
-
-### Model Management
-
-The server dynamically fetches available Gemini models at startup and organizes them by preferences and capabilities. Models are categorized for specific tasks (thinking, caching, search).
-
-### Caching System
-
-A sophisticated caching system allows for efficient repeated queries, particularly useful for code analysis. Only models with specific version suffixes (e.g., `-001`) support caching.
-
-### Thinking Mode
-
-Certain Gemini models (primarily Pro models) support "thinking mode" which exposes the model's reasoning process. The server configures thinking with adjustable budget levels.
-
-### Error Handling
-
-The server implements graceful degradation with fallback models and a dedicated error server mode when initialization fails.
-
-## HTTP Transport Usage
-
-### Starting with HTTP Transport
-
-```bash
-# Enable HTTP transport
-export GEMINI_ENABLE_HTTP=true
-export GEMINI_HTTP_ADDRESS=":8081"
-
-# Start the server
-./bin/mcp-gemini
-```
-
-### Authentication for HTTP Transport
-
-The server supports JWT-based authentication for HTTP transport to secure API access.
-
-#### Configuration
-
-```bash
-# Enable authentication
-export GEMINI_AUTH_ENABLED=true
-export GEMINI_AUTH_SECRET_KEY="your-secret-key-at-least-32-characters"
-
-# Start server with authentication
+# HTTP with auth
 ./bin/mcp-gemini --transport=http --auth-enabled=true
-```
 
-#### Generate Authentication Tokens
+# Generate auth token
+export GEMINI_AUTH_SECRET_KEY="your-32char-secret"
+./bin/mcp-gemini --generate-token --token-username=admin
 
-```bash
-# Generate a token for an admin user (31 days expiration by default)
-export GEMINI_AUTH_SECRET_KEY="your-secret-key-at-least-32-characters"
-./bin/mcp-gemini --generate-token --token-username=admin --token-role=admin
-
-# Generate a token for a regular user (24-hour expiration)
-./bin/mcp-gemini --generate-token --token-username=user1 --token-role=user --token-expiration=24
-```
-
-#### Using Authentication Tokens
-
-Include the JWT token in HTTP requests using the Authorization header:
-
-```bash
-# Store the token (replace with actual token from generation command)
-TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-
-# Use token in API requests
-curl -X POST http://localhost:8081/mcp \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
+# Test HTTP endpoint
+curl -X POST http://localhost:8081/mcp -H "Content-Type: application/json" \
   -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
 ```
 
 **Security Notes:**
-- The secret key should be at least 32 characters long for security
-- Tokens are signed with HMAC-SHA256
-- Authentication only applies to HTTP transport, not stdio transport
-- Failed authentication attempts are logged with IP addresses
-
-### HTTP Endpoints
-
-When HTTP transport is enabled, the following endpoints are available:
-
-- `GET /mcp` - Server-Sent Events (SSE) endpoint for real-time communication
-- `POST /mcp` - Message endpoint for request/response communication
-
-### Example HTTP Requests
-
-```bash
-# List available tools
-curl -X POST http://localhost:8081/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
-
-# Call gemini_ask tool
-curl -X POST http://localhost:8081/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 2,
-    "method": "tools/call",
-    "params": {
-      "name": "gemini_ask",
-      "arguments": {
-        "query": "Explain the MCP protocol"
-      }
-    }
-  }'
-```
-
-### CORS Configuration
-
-For web applications, configure CORS settings:
-
-```bash
-export GEMINI_HTTP_CORS_ENABLED=true
-export GEMINI_HTTP_CORS_ORIGINS="https://myapp.com,https://localhost:3000"
-```
-
-## Common Workflows
-
-### Adding a New Tool
-
-1. Define the tool specification in `tools.go` using the `mcp.NewTool` function with appropriate parameters
-2. Create a handler function in `direct_handlers.go` following existing patterns
-3. Register the tool in `setupGeminiServer` in `main.go`
-4. Add error handling in `registerErrorTools` in `main.go`
-
-### Modifying Configuration
-
-1. Update default values or variable names in `config.go`
-2. Add env variable parsing in `NewConfig` function
-3. Update the `Config` struct in `structs.go` if needed
-4. Add flag handling in `main.go` if the setting should be configurable via CLI
-
-### Updating Model Handling
-
-1. Modify model capabilities and preferences in `fetch_models.go`
-2. If adding fallbacks, update `fallback_models.go`
-3. Test with different model IDs to ensure proper resolution
-4. **Important**: Always use `ResolveModelID()` when passing model names to the Gemini API to convert family IDs (like `gemini-2.5-flash`) to specific version IDs (like `gemini-2.5-flash-preview-05-20`)
-
-### Running Tests
-
-The project has comprehensive test coverage for core functionality:
-
-1. **Configuration Tests** (`config_test.go`): Validates environment variable parsing, defaults, and overrides
-2. **API Integration Tests** (`gemini_test.go`): Tests actual Gemini API interactions (requires API key)
-
-When modifying configuration or API handling code, always run the relevant tests to ensure functionality remains intact.
-
-### Key Dependencies
-
-This project uses specific Go libraries that should be maintained:
-
-- `github.com/mark3labs/mcp-go/mcp` - Core MCP protocol implementation
-- `google.golang.org/genai` - Official Google Generative AI SDK
-- `github.com/joho/godotenv` - Environment variable loading (auto-loaded via import)
-
-The project targets Go 1.24+ and should maintain backward compatibility within the Go 1.x series.
-
-### Command-Line Options
-
-The server supports several command-line flags that override environment variables:
-
-```bash
-./bin/mcp-gemini [OPTIONS]
-
-Available options:
-  --gemini-model string          Gemini model name (overrides GEMINI_MODEL)
-  --gemini-system-prompt string  System prompt (overrides GEMINI_SYSTEM_PROMPT)
-  --gemini-temperature float     Temperature setting 0.0-1.0 (overrides GEMINI_TEMPERATURE)
-  --enable-caching              Enable caching feature (overrides GEMINI_ENABLE_CACHING)
-  --enable-thinking             Enable thinking mode (overrides GEMINI_ENABLE_THINKING)
-  --transport string            Transport mode: 'stdio' (default) or 'http'
-  --auth-enabled                Enable JWT authentication for HTTP transport (overrides GEMINI_AUTH_ENABLED)
-  --generate-token              Generate a JWT token and exit
-  --token-user-id string        User ID for token generation (default: "user1")
-  --token-username string       Username for token generation (default: "admin")
-  --token-role string           Role for token generation (default: "admin")
-  --token-expiration int        Token expiration in hours (default: 744 = 31 days)
-  --help                        Show help information
-```
-
-**Examples:**
-```bash
-# Start with HTTP transport and custom model
-./bin/mcp-gemini --transport=http --gemini-model=gemini-2.5-flash
-
-# Enable HTTP transport with authentication
-./bin/mcp-gemini --transport=http --auth-enabled=true
-
-# Disable caching and thinking mode
-./bin/mcp-gemini --enable-caching=false --enable-thinking=false
-
-# Set custom temperature and system prompt
-./bin/mcp-gemini --gemini-temperature=0.8 --gemini-system-prompt="You are a helpful assistant"
-
-# Generate a JWT token for authentication (31 days expiration by default)
-export GEMINI_AUTH_SECRET_KEY="your-secret-key-at-least-32-characters"
-./bin/mcp-gemini --generate-token --token-username=admin --token-role=admin
-```
-
-
+- Auth only applies to HTTP transport
+- Secret key must be 32+ characters
+- Tokens use HMAC-SHA256 signing
+- Failed auth attempts logged with IP
 </instruction>
