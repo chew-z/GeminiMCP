@@ -111,4 +111,9 @@ For each vulnerability you identify, provide:
 - The file path and line number where the vulnerability exists.
 - A clear recommendation on how to remediate the vulnerability, including a corrected code snippet where possible.`,
 	),
+	NewPromptDefinition(
+		"research_question",
+		"Research current information and trends using Google Search integration",
+		"", // Use default search system prompt from config
+	),
 }

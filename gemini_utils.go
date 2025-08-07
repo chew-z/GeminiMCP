@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -87,89 +85,3 @@ func getMimeTypeFromPath(path string) string {
 }
 
 // This function has been removed as it was unused after refactoring to use convertGenaiResponseToMCPResult
-
-// expandFilePaths expands file paths to handle both individual files and directories
-func expandFilePaths(paths []string) ([]string, error) {
-	var expandedPaths []string
-
-	for _, path := range paths {
-		info, err := os.Stat(path)
-		if err != nil {
-			return nil, fmt.Errorf("failed to access path %s: %w", path, err)
-		}
-
-		if info.IsDir() {
-			// Handle directory - find code files
-			files, err := findCodeFilesInDir(path)
-			if err != nil {
-				return nil, fmt.Errorf("failed to find code files in directory %s: %w", path, err)
-			}
-			expandedPaths = append(expandedPaths, files...)
-		} else {
-			// Handle single file
-			expandedPaths = append(expandedPaths, path)
-		}
-	}
-
-	return expandedPaths, nil
-}
-
-// findCodeFilesInDir recursively finds code files in a directory
-func findCodeFilesInDir(dirPath string) ([]string, error) {
-	var codeFiles []string
-
-	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip hidden files and directories
-		if strings.HasPrefix(info.Name(), ".") {
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		// Skip common non-code directories
-		if info.IsDir() {
-			dirName := strings.ToLower(info.Name())
-			skipDirs := []string{"node_modules", "vendor", "build", "dist", "target", "__pycache__", ".git", ".svn", ".hg"}
-			for _, skip := range skipDirs {
-				if dirName == skip {
-					return filepath.SkipDir
-				}
-			}
-			return nil
-		}
-
-		// Add file to the list
-		codeFiles = append(codeFiles, path)
-
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return codeFiles, nil
-}
-
-// parseFilePaths parses a comma-separated string or single path into a slice
-func parseFilePaths(filesArg string) []string {
-	// Handle comma-separated paths
-	if strings.Contains(filesArg, ",") {
-		paths := strings.Split(filesArg, ",")
-		var trimmedPaths []string
-		for _, path := range paths {
-			if trimmed := strings.TrimSpace(path); trimmed != "" {
-				trimmedPaths = append(trimmedPaths, trimmed)
-			}
-		}
-		return trimmedPaths
-	}
-
-	// Handle single path
-	return []string{strings.TrimSpace(filesArg)}
-}

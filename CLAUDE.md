@@ -27,26 +27,6 @@ This project is a Go-based MCP (Model Control Protocol) server that acts as a br
 - **Error Handling**: The server has a "degraded mode" to handle initialization errors gracefully.
 - **Logging**: A custom logger is used throughout the application.
 
-## Key Dependencies & Integrations
-- **Google Gemini API**: The core integration. Requires a `GEMINI_API_KEY`.
-- **MCP**: The server implements the Model Control Protocol.
-
-## Configuration
-The server is configured via environment variables, which can be overridden by CLI flags.
-**Required:**
-- `GEMINI_API_KEY`: Your Google AI Studio API key.
-
-**Key Environment Variables:**
-- `GEMINI_MODEL`: Default model for `gemini_ask` (e.g., `gemini-2.5-pro`).
-- `GEMINI_SEARCH_MODEL`: Default model for `gemini_search` (e.g., `gemini-2.5-flash-lite`).
-- `GEMINI_ENABLE_CACHING`: Enable/disable context caching (`true`/`false`).
-- `GEMINI_ENABLE_THINKING`: Enable/disable thinking mode (`true`/`false`).
-- `GEMINI_LOG_LEVEL`: Logging level (`debug`, `info`, `warn`, `error`).
-- `GEMINI_ENABLE_HTTP`: Enable the HTTP transport (`true`/`false`).
-- `GEMINI_HTTP_ADDRESS`: HTTP server address (e.g., `:8081`).
-- `GEMINI_AUTH_ENABLED`: Enable JWT authentication for HTTP (`true`/`false`).
-- `GEMINI_AUTH_SECRET_KEY`: Secret key for JWT.
-
 ## AI Assistant Guidelines
 - When adding a new tool, define it in `tools.go`, implement the handler in `direct_handlers.go`, and register it in `setupGeminiServer()` in `main.go`.
 - When adding a new prompt, define it in `prompts.go`, implement the handler in `prompt_handlers.go` using the `server.PromptHandlerFunc` type, and register it in `setupGeminiServer()`.
