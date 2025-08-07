@@ -77,6 +77,7 @@ type Config struct {
 	ThinkingBudgetLevel string // Thinking budget level (none, low, medium, high)
 
 	// Prompt defaults
+	ProjectLanguage         string // Default language for code analysis (e.g., "go", "python")
 	PromptDefaultAudience   string // Default audience level for code explanations (beginner, intermediate, expert)
 	PromptDefaultFocus      string // Default focus areas for analysis (security, performance, style, etc.)
 	PromptDefaultSeverity   string // Default minimum severity level for issues (info, warning, error)

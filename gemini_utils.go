@@ -88,126 +88,6 @@ func getMimeTypeFromPath(path string) string {
 
 // This function has been removed as it was unused after refactoring to use convertGenaiResponseToMCPResult
 
-// readLocalFiles reads multiple files from local filesystem and combines their content
-func readLocalFiles(filePaths []string, maxSize int64) (content string, detectedLang string, error error) {
-	var contentParts []string
-	var languages []string
-
-	for _, path := range filePaths {
-		// Read file content
-		fileContent, err := os.ReadFile(path)
-		if err != nil {
-			return "", "", fmt.Errorf("failed to read file %s: %w", path, err)
-		}
-
-		// Validate file size
-		if int64(len(fileContent)) > maxSize {
-			return "", "", fmt.Errorf("file %s size (%d bytes) exceeds maximum allowed (%d bytes)",
-				path, len(fileContent), maxSize)
-		}
-
-		// Detect language from file extension
-		lang := detectLanguageFromPath(path)
-		if lang != "auto-detect" {
-			languages = append(languages, lang)
-		}
-
-		// Format content with file separator
-		contentParts = append(contentParts, fmt.Sprintf("=== File: %s ===\n%s\n", path, string(fileContent)))
-	}
-
-	// Combine all file contents
-	content = strings.Join(contentParts, "\n")
-
-	// Determine primary language
-	detectedLang = detectPrimaryLanguage(languages)
-
-	return content, detectedLang, nil
-}
-
-// detectLanguageFromPath detects programming language from file extension
-func detectLanguageFromPath(path string) string {
-	ext := strings.ToLower(filepath.Ext(path))
-
-	switch ext {
-	case ".go":
-		return "go"
-	case ".py":
-		return "python"
-	case ".js":
-		return "javascript"
-	case ".ts":
-		return "typescript"
-	case ".java":
-		return "java"
-	case ".cpp", ".cc", ".cxx":
-		return "c++"
-	case ".c":
-		return "c"
-	case ".h", ".hpp":
-		return "c++"
-	case ".rs":
-		return "rust"
-	case ".rb":
-		return "ruby"
-	case ".php":
-		return "php"
-	case ".swift":
-		return "swift"
-	case ".kt", ".kts":
-		return "kotlin"
-	case ".cs":
-		return "csharp"
-	case ".sh", ".bash":
-		return "bash"
-	case ".ps1":
-		return "powershell"
-	case ".sql":
-		return "sql"
-	case ".html", ".htm":
-		return "html"
-	case ".css":
-		return "css"
-	case ".xml":
-		return "xml"
-	case ".json":
-		return "json"
-	case ".yaml", ".yml":
-		return "yaml"
-	case ".md":
-		return "markdown"
-	case ".txt":
-		return "text"
-	default:
-		return "auto-detect"
-	}
-}
-
-// detectPrimaryLanguage determines the most common language from a list
-func detectPrimaryLanguage(languages []string) string {
-	if len(languages) == 0 {
-		return "auto-detect"
-	}
-
-	// Count occurrences of each language
-	langCount := make(map[string]int)
-	for _, lang := range languages {
-		langCount[lang]++
-	}
-
-	// Find the most frequent language
-	maxCount := 0
-	primaryLang := languages[0]
-	for lang, count := range langCount {
-		if count > maxCount {
-			maxCount = count
-			primaryLang = lang
-		}
-	}
-
-	return primaryLang
-}
-
 // expandFilePaths expands file paths to handle both individual files and directories
 func expandFilePaths(paths []string) ([]string, error) {
 	var expandedPaths []string
@@ -238,16 +118,6 @@ func expandFilePaths(paths []string) ([]string, error) {
 func findCodeFilesInDir(dirPath string) ([]string, error) {
 	var codeFiles []string
 
-	// Define code file extensions to look for
-	codeExtensions := map[string]bool{
-		".go": true, ".py": true, ".js": true, ".ts": true, ".java": true,
-		".cpp": true, ".cc": true, ".cxx": true, ".c": true, ".h": true, ".hpp": true,
-		".rs": true, ".rb": true, ".php": true, ".swift": true, ".kt": true, ".kts": true,
-		".cs": true, ".sh": true, ".bash": true, ".ps1": true, ".sql": true,
-		".html": true, ".htm": true, ".css": true, ".xml": true, ".json": true,
-		".yaml": true, ".yml": true, ".md": true, ".txt": true,
-	}
-
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -273,11 +143,8 @@ func findCodeFilesInDir(dirPath string) ([]string, error) {
 			return nil
 		}
 
-		// Check if file has a code extension
-		ext := strings.ToLower(filepath.Ext(path))
-		if codeExtensions[ext] {
-			codeFiles = append(codeFiles, path)
-		}
+		// Add file to the list
+		codeFiles = append(codeFiles, path)
 
 		return nil
 	})

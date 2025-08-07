@@ -63,7 +63,10 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 	}
 
 	// Extract system prompt
-	systemPrompt := extractArgumentString(req, "systemPrompt", config.GeminiSystemPrompt)
+	systemPrompt := config.GeminiSystemPrompt
+	if sp, ok := req.GetArguments()["systemPrompt"].(string); ok {
+		systemPrompt = sp
+	}
 
 	// Get model information
 	modelInfo := GetModelByID(modelName)

@@ -267,6 +267,11 @@ func NewConfig() (*Config, error) {
 	}
 
 	// Prompt defaults
+	projectLanguage := os.Getenv("GEMINI_PROJECT_LANGUAGE")
+	if projectLanguage == "" {
+		projectLanguage = "go"
+	}
+
 	promptDefaultAudience := os.Getenv("GEMINI_PROMPT_DEFAULT_AUDIENCE")
 	if promptDefaultAudience == "" {
 		promptDefaultAudience = "intermediate"
@@ -329,6 +334,7 @@ func NewConfig() (*Config, error) {
 		EnableThinking:           enableThinking,
 		ThinkingBudget:           thinkingBudget,
 		ThinkingBudgetLevel:      thinkingBudgetLevel,
+		ProjectLanguage:          projectLanguage,
 		PromptDefaultAudience:    promptDefaultAudience,
 		PromptDefaultFocus:       promptDefaultFocus,
 		PromptDefaultSeverity:    promptDefaultSeverity,

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -11,7 +12,14 @@ import (
 // PromptHandlerFunc defines the signature for prompt handlers
 type PromptHandlerFunc func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error)
 
-type PromptBuilder func(req mcp.GetPromptRequest, codeContent, detectedLang string) (string, string)
+// PromptTemplate represents the structured output of a prompt handler
+type PromptTemplate struct {
+	SystemPrompt      string   `json:"system_prompt"`
+	UserPromptTemplate string   `json:"user_prompt_template"`
+	FilePaths          []string `json:"file_paths"`
+}
+
+type PromptBuilder func(req mcp.GetPromptRequest, language string) (string, string)
 
 func (s *GeminiServer) handlePrompt(
 	ctx context.Context,
@@ -24,68 +32,47 @@ func (s *GeminiServer) handlePrompt(
 
 	filesArg, ok := req.Params.Arguments["files"]
 	if !ok || filesArg == "" {
-		return createPromptErrorResult("Error: files argument is required"), nil
+		return nil, fmt.Errorf("files argument is required")
 	}
 
 	filePaths := parseFilePaths(filesArg)
 	expandedPaths, err := expandFilePaths(filePaths)
 	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error processing file paths: %v", err)), nil
+		return nil, fmt.Errorf("failed to expand file paths: %w", err)
 	}
 
-	codeContent, detectedLang, err := readLocalFiles(expandedPaths, s.config.MaxFileSize)
+	language := s.config.ProjectLanguage
+	if lang, ok := req.Params.Arguments["language"]; ok && lang != "" {
+		language = lang
+	}
+
+	systemPrompt, userPromptTemplate := builder(req, language)
+
+	template := PromptTemplate{
+		SystemPrompt:      systemPrompt,
+		UserPromptTemplate: userPromptTemplate,
+		FilePaths:          expandedPaths,
+	}
+
+	jsonResult, err := json.Marshal(template)
 	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error reading files: %v", err)), nil
+		return nil, fmt.Errorf("failed to marshal prompt template: %w", err)
 	}
-
-	systemPrompt, userPrompt := builder(req, codeContent, detectedLang)
-	combinedPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
 
 	return &mcp.GetPromptResult{
-		Description: description,
-		Messages: []mcp.PromptMessage{
-			{
-				Role: mcp.RoleUser,
-				Content: mcp.TextContent{
-					Type: "text",
-					Text: combinedPrompt,
-				},
-			},
-		},
+		Description: string(jsonResult),
+		Messages:    []mcp.PromptMessage{},
 	}, nil
 }
 
 // CodeReviewHandler handles the code_review prompt
 func (s *GeminiServer) CodeReviewHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling code_review prompt")
+	result, err := s.handlePrompt(ctx, req, "Code review analysis prompt",
+		func(req mcp.GetPromptRequest, language string) (string, string) {
+			focus := extractPromptArgWithConfig(req, "focus", s.config.PromptDefaultFocus, "general best practices")
+			severity := extractPromptArgWithConfig(req, "severity", s.config.PromptDefaultSeverity, "warning")
 
-	// Extract required argument
-	filesArg, ok := req.Params.Arguments["files"]
-	if !ok || filesArg == "" {
-		return createPromptErrorResult("Error: files argument is required"), nil
-	}
-
-	// Parse and expand file paths
-	filePaths := parseFilePaths(filesArg)
-	expandedPaths, err := expandFilePaths(filePaths)
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error processing file paths: %v", err)), nil
-	}
-
-	// Read file contents
-	codeContent, detectedLang, err := readLocalFiles(expandedPaths, s.config.MaxFileSize)
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error reading files: %v", err)), nil
-	}
-
-	// Extract optional arguments with config-aware defaults
-	language := extractPromptArgWithConfig(req, "language", "", detectedLang)
-	focus := extractPromptArgWithConfig(req, "focus", s.config.PromptDefaultFocus, "general best practices")
-	severity := extractPromptArgWithConfig(req, "severity", s.config.PromptDefaultSeverity, "warning")
-
-	// Build system prompt for code review
-	systemPrompt := fmt.Sprintf(`You are an expert code reviewer. Analyze the provided code for:
+			systemPrompt := fmt.Sprintf(`You are an expert code reviewer. Analyze the provided code for:
 - Code quality and best practices
 - Potential bugs and issues
 - Security vulnerabilities
@@ -98,57 +85,25 @@ Language: %s
 
 Provide specific, actionable feedback with line references where applicable.`, focus, severity, language)
 
-	// Build user prompt with file content
-	userPrompt := fmt.Sprintf("Please review this code:\n\n```%s\n%s\n```", language, codeContent)
+			userPromptTemplate := "Please review this code:\n\n```%s\n{{file_content}}\n```"
+			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
+		})
 
-	// Combine system instructions with user prompt since MCP only supports user/assistant roles
-	combinedPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
-
-	return &mcp.GetPromptResult{
-		Description: "Code review analysis prompt",
-		Messages: []mcp.PromptMessage{
-			{
-				Role: mcp.RoleUser,
-				Content: mcp.TextContent{
-					Type: "text",
-					Text: combinedPrompt,
-				},
-			},
-		},
-	}, nil
+	if err != nil {
+		return createPromptErrorResult(fmt.Sprintf("Error in code_review prompt: %v", err)), nil
+	}
+	return result, nil
 }
 
 // ExplainCodeHandler handles the explain_code prompt
 func (s *GeminiServer) ExplainCodeHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling explain_code prompt")
+	result, err := s.handlePrompt(ctx, req, "Code explanation prompt",
+		func(req mcp.GetPromptRequest, language string) (string, string) {
+			audience := extractPromptArgWithConfig(req, "audience", s.config.PromptDefaultAudience, "intermediate")
+			includeExamples := extractPromptArgString(req, "include_examples", "true")
+			focusAreas := extractPromptArgString(req, "focus_areas", "overall functionality")
 
-	// Extract required argument
-	filesArg, ok := req.Params.Arguments["files"]
-	if !ok || filesArg == "" {
-		return createPromptErrorResult("Error: files argument is required"), nil
-	}
-
-	// Parse and expand file paths
-	filePaths := parseFilePaths(filesArg)
-	expandedPaths, err := expandFilePaths(filePaths)
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error processing file paths: %v", err)), nil
-	}
-
-	// Read file contents
-	codeContent, detectedLang, err := readLocalFiles(expandedPaths, s.config.MaxFileSize)
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error reading files: %v", err)), nil
-	}
-
-	// Extract optional arguments with config-aware defaults
-	audience := extractPromptArgWithConfig(req, "audience", s.config.PromptDefaultAudience, "intermediate")
-	includeExamples := extractPromptArgString(req, "include_examples", "true")
-	focusAreas := extractPromptArgString(req, "focus_areas", "overall functionality")
-
-	// Build system prompt
-	systemPrompt := fmt.Sprintf(`You are an expert software engineer and educator. Explain the provided code in a clear, comprehensive manner.
+			systemPrompt := fmt.Sprintf(`You are an expert software engineer and educator. Explain the provided code in a clear, comprehensive manner.
 
 Target audience: %s developers
 Focus on: %s
@@ -163,57 +118,25 @@ Structure your explanation with:
 
 Make the explanation appropriate for the target audience level.`, audience, focusAreas, includeExamples)
 
-	// Build user prompt with file content
-	userPrompt := fmt.Sprintf("Please explain how this code works:\n\n```%s\n%s\n```", detectedLang, codeContent)
+			userPromptTemplate := "Please explain how this code works:\n\n```%s\n{{file_content}}\n```"
+			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
+		})
 
-	// Combine system instructions with user prompt since MCP only supports user/assistant roles
-	combinedPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
-
-	return &mcp.GetPromptResult{
-		Description: "Code explanation prompt",
-		Messages: []mcp.PromptMessage{
-			{
-				Role: mcp.RoleUser,
-				Content: mcp.TextContent{
-					Type: "text",
-					Text: combinedPrompt,
-				},
-			},
-		},
-	}, nil
+	if err != nil {
+		return createPromptErrorResult(fmt.Sprintf("Error in explain_code prompt: %v", err)), nil
+	}
+	return result, nil
 }
 
 // DebugHelpHandler handles the debug_help prompt
 func (s *GeminiServer) DebugHelpHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling debug_help prompt")
+	result, err := s.handlePrompt(ctx, req, "Debug assistance prompt",
+		func(req mcp.GetPromptRequest, language string) (string, string) {
+			errorMessage := extractPromptArgString(req, "error_message", "")
+			expectedBehavior := extractPromptArgString(req, "expected_behavior", "")
+			context := extractPromptArgString(req, "context", "")
 
-	// Extract required argument
-	filesArg, ok := req.Params.Arguments["files"]
-	if !ok || filesArg == "" {
-		return createPromptErrorResult("Error: files argument is required"), nil
-	}
-
-	// Parse and expand file paths
-	filePaths := parseFilePaths(filesArg)
-	expandedPaths, err := expandFilePaths(filePaths)
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error processing file paths: %v", err)), nil
-	}
-
-	// Read file contents
-	codeContent, detectedLang, err := readLocalFiles(expandedPaths, s.config.MaxFileSize)
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error reading files: %v", err)), nil
-	}
-
-	// Extract optional arguments
-	errorMessage := extractPromptArgString(req, "error_message", "")
-	expectedBehavior := extractPromptArgString(req, "expected_behavior", "")
-	context := extractPromptArgString(req, "context", "")
-
-	// Build system prompt
-	systemPrompt := `You are an expert debugging assistant. Help identify and solve the issue in the provided code.
+			systemPrompt := `You are an expert debugging assistant. Help identify and solve the issue in the provided code.
 
 Follow this debugging approach:
 1. Analyze the code for potential issues
@@ -225,46 +148,36 @@ Follow this debugging approach:
 
 Be thorough and provide step-by-step guidance for resolving the problem.`
 
-	// Build user prompt with available information
-	var userPromptParts []string
-	userPromptParts = append(userPromptParts, "Please help debug this issue:")
-	userPromptParts = append(userPromptParts, fmt.Sprintf("\n**Code:**\n```%s\n%s\n```", detectedLang, codeContent))
+			var userPromptParts []string
+			userPromptParts = append(userPromptParts, "Please help debug this issue:")
+			userPromptParts = append(userPromptParts, fmt.Sprintf("\n**Code:**\n```%s\n{{file_content}}\n```", language))
 
-	if errorMessage != "" {
-		userPromptParts = append(userPromptParts, fmt.Sprintf("\n**Error Message:**\n%s", errorMessage))
+			if errorMessage != "" {
+				userPromptParts = append(userPromptParts, fmt.Sprintf("\n**Error Message:**\n%s", errorMessage))
+			}
+
+			if expectedBehavior != "" {
+				userPromptParts = append(userPromptParts, fmt.Sprintf("\n**Expected Behavior:**\n%s", expectedBehavior))
+			}
+
+			if context != "" {
+				userPromptParts = append(userPromptParts, fmt.Sprintf("\n**Additional Context:**\n%s", context))
+			}
+
+			userPromptTemplate := strings.Join(userPromptParts, "\n")
+			return systemPrompt, userPromptTemplate
+		})
+
+	if err != nil {
+		return createPromptErrorResult(fmt.Sprintf("Error in debug_help prompt: %v", err)), nil
 	}
-
-	if expectedBehavior != "" {
-		userPromptParts = append(userPromptParts, fmt.Sprintf("\n**Expected Behavior:**\n%s", expectedBehavior))
-	}
-
-	if context != "" {
-		userPromptParts = append(userPromptParts, fmt.Sprintf("\n**Additional Context:**\n%s", context))
-	}
-
-	userPrompt := strings.Join(userPromptParts, "\n")
-
-	// Combine system instructions with user prompt since MCP only supports user/assistant roles
-	combinedPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
-
-	return &mcp.GetPromptResult{
-		Description: "Debug assistance prompt",
-		Messages: []mcp.PromptMessage{
-			{
-				Role: mcp.RoleUser,
-				Content: mcp.TextContent{
-					Type: "text",
-					Text: combinedPrompt,
-				},
-			},
-		},
-	}, nil
+	return result, nil
 }
 
 // RefactorSuggestionsHandler handles the refactor_suggestions prompt
 func (s *GeminiServer) RefactorSuggestionsHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	return s.handlePrompt(ctx, req, "Refactoring suggestions prompt",
-		func(req mcp.GetPromptRequest, codeContent, detectedLang string) (string, string) {
+	result, err := s.handlePrompt(ctx, req, "Refactoring suggestions prompt",
+		func(req mcp.GetPromptRequest, language string) (string, string) {
 			goals := extractPromptArgString(req, "goals", "improve code quality and maintainability")
 			constraints := extractPromptArgString(req, "constraints", "maintain existing functionality")
 			includeExamples := extractPromptArgString(req, "include_examples", "true")
@@ -285,15 +198,20 @@ Focus on:
 
 Provide prioritized suggestions with clear explanations of benefits and trade-offs.`, goals, constraints, includeExamples)
 
-			userPrompt := fmt.Sprintf("Please analyze this code and suggest refactoring improvements:\n\n```%s\n%s\n```", detectedLang, codeContent)
-			return systemPrompt, userPrompt
+			userPromptTemplate := "Please analyze this code and suggest refactoring improvements:\n\n```%s\n{{file_content}}\n```"
+			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
 		})
+
+	if err != nil {
+		return createPromptErrorResult(fmt.Sprintf("Error in refactor_suggestions prompt: %v", err)), nil
+	}
+	return result, nil
 }
 
 // ArchitectureAnalysisHandler handles the architecture_analysis prompt
 func (s *GeminiServer) ArchitectureAnalysisHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	return s.handlePrompt(ctx, req, "Architecture analysis prompt",
-		func(req mcp.GetPromptRequest, codeContent, detectedLang string) (string, string) {
+	result, err := s.handlePrompt(ctx, req, "Architecture analysis prompt",
+		func(req mcp.GetPromptRequest, language string) (string, string) {
 			scope := extractPromptArgString(req, "scope", "system")
 			focus := extractPromptArgString(req, "focus", "overall architecture")
 			includeRecommendations := extractPromptArgString(req, "include_recommendations", "true")
@@ -315,15 +233,20 @@ Examine:
 
 Provide a comprehensive architectural assessment with insights and actionable recommendations.`, scope, focus, includeRecommendations)
 
-			userPrompt := fmt.Sprintf("Please analyze the architecture of this code:\n\n```%s\n%s\n```", detectedLang, codeContent)
-			return systemPrompt, userPrompt
+			userPromptTemplate := "Please analyze the architecture of this code:\n\n```%s\n{{file_content}}\n```"
+			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
 		})
+
+	if err != nil {
+		return createPromptErrorResult(fmt.Sprintf("Error in architecture_analysis prompt: %v", err)), nil
+	}
+	return result, nil
 }
 
 // DocGenerateHandler handles the doc_generate prompt
 func (s *GeminiServer) DocGenerateHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	return s.handlePrompt(ctx, req, "Documentation generation prompt",
-		func(req mcp.GetPromptRequest, codeContent, detectedLang string) (string, string) {
+	result, err := s.handlePrompt(ctx, req, "Documentation generation prompt",
+		func(req mcp.GetPromptRequest, language string) (string, string) {
 			docType := extractPromptArgString(req, "doc_type", "technical")
 			format := extractPromptArgWithConfig(req, "format", s.config.PromptDefaultDocFormat, "markdown")
 			includeExamples := extractPromptArgString(req, "include_examples", "true")
@@ -345,42 +268,25 @@ Create documentation that includes:
 
 Make the documentation clear, accurate, and user-friendly.`, docType, format, includeExamples)
 
-			userPrompt := fmt.Sprintf("Please generate documentation for this code:\n\n`%s\n%s`", detectedLang, codeContent)
-			return systemPrompt, userPrompt
+			userPromptTemplate := "Please generate documentation for this code:\n\n`%s\n{{file_content}}`"
+			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
 		})
+
+	if err != nil {
+		return createPromptErrorResult(fmt.Sprintf("Error in doc_generate prompt: %v", err)), nil
+	}
+	return result, nil
 }
 
 // TestGenerateHandler handles the test_generate prompt
 func (s *GeminiServer) TestGenerateHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling test_generate prompt")
+	result, err := s.handlePrompt(ctx, req, "Test generation prompt",
+		func(req mcp.GetPromptRequest, language string) (string, string) {
+			testType := extractPromptArgString(req, "test_type", "unit")
+			framework := extractPromptArgWithConfig(req, "framework", s.config.PromptDefaultFramework, "standard library")
+			coverage := extractPromptArgWithConfig(req, "coverage", s.config.PromptDefaultCoverage, "comprehensive")
 
-	// Extract required argument
-	filesArg, ok := req.Params.Arguments["files"]
-	if !ok || filesArg == "" {
-		return createPromptErrorResult("Error: files argument is required"), nil
-	}
-
-	// Parse and expand file paths
-	filePaths := parseFilePaths(filesArg)
-	expandedPaths, err := expandFilePaths(filePaths)
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error processing file paths: %v", err)), nil
-	}
-
-	// Read file contents
-	codeContent, detectedLang, err := readLocalFiles(expandedPaths, s.config.MaxFileSize)
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error reading files: %v", err)), nil
-	}
-
-	// Extract optional arguments with config-aware defaults
-	testType := extractPromptArgString(req, "test_type", "unit")
-	framework := extractPromptArgWithConfig(req, "framework", s.config.PromptDefaultFramework, "standard library")
-	coverage := extractPromptArgWithConfig(req, "coverage", s.config.PromptDefaultCoverage, "comprehensive")
-
-	// Build system prompt
-	systemPrompt := fmt.Sprintf(`You are a test engineering expert. Generate comprehensive test cases for the provided code.
+			systemPrompt := fmt.Sprintf(`You are a test engineering expert. Generate comprehensive test cases for the provided code.
 
 Test type: %s tests
 Framework: %s
@@ -401,30 +307,20 @@ Follow testing best practices:
 
 Make tests maintainable and easy to understand.`, testType, framework, coverage)
 
-	// Build user prompt with file content
-	userPrompt := fmt.Sprintf("Please generate test cases for this code:\n\n```%s\n%s\n```", detectedLang, codeContent)
+			userPromptTemplate := "Please generate test cases for this code:\n\n```%s\n{{file_content}}\n```"
+			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
+		})
 
-	// Combine system instructions with user prompt since MCP only supports user/assistant roles
-	combinedPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
-
-	return &mcp.GetPromptResult{
-		Description: "Test generation prompt",
-		Messages: []mcp.PromptMessage{
-			{
-				Role: mcp.RoleUser,
-				Content: mcp.TextContent{
-					Type: "text",
-					Text: combinedPrompt,
-				},
-			},
-		},
-	}, nil
+	if err != nil {
+		return createPromptErrorResult(fmt.Sprintf("Error in test_generate prompt: %v", err)), nil
+	}
+	return result, nil
 }
 
 // SecurityAnalysisHandler handles the security_analysis prompt
 func (s *GeminiServer) SecurityAnalysisHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	return s.handlePrompt(ctx, req, "Security analysis prompt",
-		func(req mcp.GetPromptRequest, codeContent, detectedLang string) (string, string) {
+	result, err := s.handlePrompt(ctx, req, "Security analysis prompt",
+		func(req mcp.GetPromptRequest, language string) (string, string) {
 			scope := extractPromptArgString(req, "scope", "general security analysis")
 			compliance := extractPromptArgWithConfig(req, "compliance", s.config.PromptDefaultCompliance, "OWASP guidelines")
 			includeFixes := extractPromptArgString(req, "include_fixes", "true")
@@ -453,9 +349,14 @@ Provide detailed analysis with:
 
 Prioritize findings by risk level and exploitability.`, scope, compliance, includeFixes)
 
-			userPrompt := fmt.Sprintf("Please perform a security analysis of this code:\n\n```%s\n%s\n```", detectedLang, codeContent)
-			return systemPrompt, userPrompt
+			userPromptTemplate := "Please perform a security analysis of this code:\n\n```%s\n{{file_content}}\n```"
+			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
 		})
+
+	if err != nil {
+		return createPromptErrorResult(fmt.Sprintf("Error in security_analysis prompt: %v", err)), nil
+	}
+	return result, nil
 }
 
 // Helper function to extract string arguments from prompt requests
