@@ -28,7 +28,7 @@ func (s *GeminiServer) handlePrompt(
 	builder PromptBuilder,
 ) (*mcp.GetPromptResult, error) {
 	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling prompt", "description", description)
+	logger.Info(fmt.Sprintf("Handling prompt: %s", description))
 
 	filesArg, ok := req.Params.Arguments["files"]
 	if !ok || filesArg == "" {
@@ -387,8 +387,10 @@ func extractPromptArgWithConfig(req mcp.GetPromptRequest, key string, configDefa
 
 // createPromptErrorResult creates a prompt result with an error message
 func createPromptErrorResult(errorMsg string) *mcp.GetPromptResult {
-	return &mcp.GetPromptResult{
-		Description: errorMsg,
-		Messages:    []mcp.PromptMessage{},
-	}
+	return mcp.NewGetPromptResult(
+		"Error processing prompt",
+		[]mcp.PromptMessage{
+			mcp.NewPromptMessage(mcp.RoleAssistant, mcp.NewTextContent(errorMsg)),
+		},
+	)
 }
