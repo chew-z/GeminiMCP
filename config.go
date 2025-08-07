@@ -266,6 +266,42 @@ func NewConfig() (*Config, error) {
 		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_AUTH_SECRET_KEY should be at least 32 characters for security\n")
 	}
 
+	// Prompt defaults
+	promptDefaultAudience := os.Getenv("GEMINI_PROMPT_DEFAULT_AUDIENCE")
+	if promptDefaultAudience == "" {
+		promptDefaultAudience = "intermediate"
+	}
+
+	promptDefaultFocus := os.Getenv("GEMINI_PROMPT_DEFAULT_FOCUS")
+	if promptDefaultFocus == "" {
+		promptDefaultFocus = "general"
+	}
+
+	promptDefaultSeverity := os.Getenv("GEMINI_PROMPT_DEFAULT_SEVERITY")
+	if promptDefaultSeverity == "" {
+		promptDefaultSeverity = "warning"
+	}
+
+	promptDefaultDocFormat := os.Getenv("GEMINI_PROMPT_DEFAULT_DOC_FORMAT")
+	if promptDefaultDocFormat == "" {
+		promptDefaultDocFormat = "markdown"
+	}
+
+	promptDefaultFramework := os.Getenv("GEMINI_PROMPT_DEFAULT_FRAMEWORK")
+	if promptDefaultFramework == "" {
+		promptDefaultFramework = "standard"
+	}
+
+	promptDefaultCoverage := os.Getenv("GEMINI_PROMPT_DEFAULT_COVERAGE")
+	if promptDefaultCoverage == "" {
+		promptDefaultCoverage = "comprehensive"
+	}
+
+	promptDefaultCompliance := os.Getenv("GEMINI_PROMPT_DEFAULT_COMPLIANCE")
+	if promptDefaultCompliance == "" {
+		promptDefaultCompliance = "OWASP"
+	}
+
 	return &Config{
 		GeminiAPIKey:             geminiAPIKey,
 		GeminiModel:              geminiModel,
@@ -293,5 +329,12 @@ func NewConfig() (*Config, error) {
 		EnableThinking:           enableThinking,
 		ThinkingBudget:           thinkingBudget,
 		ThinkingBudgetLevel:      thinkingBudgetLevel,
+		PromptDefaultAudience:    promptDefaultAudience,
+		PromptDefaultFocus:       promptDefaultFocus,
+		PromptDefaultSeverity:    promptDefaultSeverity,
+		PromptDefaultDocFormat:   promptDefaultDocFormat,
+		PromptDefaultFramework:   promptDefaultFramework,
+		PromptDefaultCoverage:    promptDefaultCoverage,
+		PromptDefaultCompliance:  promptDefaultCompliance,
 	}, nil
 }

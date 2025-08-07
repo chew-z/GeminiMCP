@@ -75,6 +75,15 @@ type Config struct {
 	EnableThinking      bool   // Enable/disable thinking mode for supported models
 	ThinkingBudget      int    // Maximum number of tokens to allocate for thinking
 	ThinkingBudgetLevel string // Thinking budget level (none, low, medium, high)
+
+	// Prompt defaults
+	PromptDefaultAudience   string // Default audience level for code explanations (beginner, intermediate, expert)
+	PromptDefaultFocus      string // Default focus areas for analysis (security, performance, style, etc.)
+	PromptDefaultSeverity   string // Default minimum severity level for issues (info, warning, error)
+	PromptDefaultDocFormat  string // Default documentation format (markdown, rst, plain_text)
+	PromptDefaultFramework  string // Default testing framework (standard, jest, pytest, etc.)
+	PromptDefaultCoverage   string // Default test coverage level (basic, comprehensive)
+	PromptDefaultCompliance string // Default compliance standards (OWASP, NIST, etc.)
 }
 
 // CacheRequest represents a request to create a cached context
