@@ -65,8 +65,8 @@ type SearchResponse struct {
 // SourceInfo represents a source from search results
 type SourceInfo struct {
 	Title string `json:"title"`
-	URL   string `json:"url"`
-	Type  string `json:"type"` // "web" or "retrieved_context"
+	URL   string `json:"-"` // "web" or "retrieved_context"
+	Type  string `json:"type"`
 }
 
 // Config holds all configuration parameters for the application

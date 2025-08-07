@@ -61,13 +61,19 @@ gemini_test.go
 gemini_utils.go
 go.mod
 handlers_common.go
+http_server.go
 logger.go
 main.go
 model_functions.go
+prompt_handlers.go
+prompts_test.go
+prompts.go
 README.md
+refactoring_plan.md
 run_format.sh
 run_lint.sh
 run_test.sh
+server_handlers.go
 structs.go
 tools.go
 </directory_structure>
@@ -227,6 +233,262 @@ const (
 )
 </file>
 
+<file path="http_server.go">
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"sync"
+	"syscall"
+
+	"github.com/mark3labs/mcp-go/server"
+)
+
+// startHTTPServer starts the HTTP transport server
+func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *Config, logger Logger) error {
+	// Create HTTP server options
+	var opts []server.StreamableHTTPOption
+
+	// Configure heartbeat if enabled
+	if config.HTTPHeartbeat > 0 {
+		opts = append(opts, server.WithHeartbeatInterval(config.HTTPHeartbeat))
+	}
+
+	// Configure stateless mode
+	if config.HTTPStateless {
+		opts = append(opts, server.WithStateLess(true))
+	}
+
+	// Configure endpoint path
+	opts = append(opts, server.WithEndpointPath(config.HTTPPath))
+
+	// Add HTTP context function for CORS, logging, and authentication
+	if config.HTTPCORSEnabled || config.AuthEnabled {
+		opts = append(opts, server.WithHTTPContextFunc(createHTTPMiddleware(config, logger)))
+	}
+
+	// Create streamable HTTP server
+	httpServer := server.NewStreamableHTTPServer(mcpServer, opts...)
+
+	// Create custom HTTP server with OAuth well-known endpoint
+	customServer := &http.Server{
+		Addr:    config.HTTPAddress,
+		Handler: createCustomHTTPHandler(httpServer, config, logger),
+	}
+
+	// Set up graceful shutdown
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Handle shutdown signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	// Start server in goroutine
+	go func() {
+		defer wg.Done()
+		if err := customServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("HTTP server failed to start: %v", err)
+			cancel()
+		}
+	}()
+
+	// Wait for shutdown signal
+	select {
+	case sig := <-sigChan:
+		logger.Info("Received signal %v, shutting down HTTP server...", sig)
+	case <-ctx.Done():
+		logger.Info("Context cancelled, shutting down HTTP server...")
+	}
+
+	// Graceful shutdown
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), config.HTTPTimeout)
+	defer shutdownCancel()
+
+	if err := customServer.Shutdown(shutdownCtx); err != nil {
+		logger.Error("HTTP server shutdown error: %v", err)
+		return err
+	}
+
+	wg.Wait()
+	logger.Info("HTTP server stopped")
+	return nil
+}
+
+// createHTTPMiddleware creates an HTTP context function with CORS, logging, and authentication
+func createHTTPMiddleware(config *Config, logger Logger) server.HTTPContextFunc {
+	// Create authentication middleware
+	var authMiddleware *AuthMiddleware
+	if config.AuthEnabled {
+		authMiddleware = NewAuthMiddleware(config.AuthSecretKey, config.AuthEnabled, logger)
+		logger.Info("HTTP authentication enabled")
+	}
+
+	return func(ctx context.Context, r *http.Request) context.Context {
+		// Log HTTP request
+		logger.Info("HTTP %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+
+		// Apply authentication middleware if enabled
+		if authMiddleware != nil {
+			// Create a wrapper function for the next middleware step
+			nextFunc := func(ctx context.Context, r *http.Request) context.Context {
+				return ctx
+			}
+			// Apply authentication middleware
+			ctx = authMiddleware.HTTPContextFunc(nextFunc)(ctx, r)
+		}
+
+		// Add CORS headers if enabled
+		if config.HTTPCORSEnabled {
+			// Check if request origin is allowed
+			origin := r.Header.Get("Origin")
+			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins) {
+				// Note: We can't set response headers directly here as this is a context function
+				// CORS headers would need to be handled at the HTTP server level
+				logger.Info("CORS: Origin %s is allowed", origin)
+			}
+		}
+
+		// Add request info to context
+		ctx = context.WithValue(ctx, httpMethodKey, r.Method)
+		ctx = context.WithValue(ctx, httpPathKey, r.URL.Path)
+		ctx = context.WithValue(ctx, httpRemoteAddrKey, r.RemoteAddr)
+
+		return ctx
+	}
+}
+
+// isOriginAllowed checks if the origin is in the allowed list
+func isOriginAllowed(origin string, allowedOrigins []string) bool {
+	for _, allowed := range allowedOrigins {
+		if allowed == "*" || allowed == origin {
+			return true
+		}
+		// Support wildcard subdomains (e.g., "*.example.com")
+		if strings.HasPrefix(allowed, "*.") {
+			domain := strings.TrimPrefix(allowed, "*.")
+			if strings.HasSuffix(origin, domain) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// createCustomHTTPHandler creates a custom HTTP handler that includes OAuth well-known endpoint
+func createCustomHTTPHandler(mcpHandler http.Handler, config *Config, logger Logger) http.Handler {
+	mux := http.NewServeMux()
+
+	// Add OAuth well-known endpoint
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		logger.Info("OAuth well-known endpoint accessed from %s", r.RemoteAddr)
+
+		// Create OAuth authorization server metadata
+		metadata := map[string]interface{}{
+			"issuer":                           fmt.Sprintf("http://%s", r.Host),
+			"authorization_endpoint":           fmt.Sprintf("http://%s/oauth/authorize", r.Host),
+			"token_endpoint":                   fmt.Sprintf("http://%s/oauth/token", r.Host),
+			"response_types_supported":         []string{"code"},
+			"grant_types_supported":            []string{"authorization_code"},
+			"code_challenge_methods_supported": []string{"S256"},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+
+		// Add CORS headers if enabled
+		if config.HTTPCORSEnabled {
+			origin := r.Header.Get("Origin")
+			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins) {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			}
+		}
+
+		if err := json.NewEncoder(w).Encode(metadata); err != nil {
+			logger.Error("Failed to encode OAuth metadata: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+	})
+
+	// Handle all other requests with the MCP handler
+	mux.Handle("/", mcpHandler)
+
+	return mux
+}
+</file>
+
+<file path="refactoring_plan.md">
+### Proposed Refactoring Plan
+
+Here is a detailed, step-by-step plan to implement the new, more efficient architecture.
+
+---
+
+#### **Phase 1: Redefine the Prompt Handler's Role**
+
+The goal of this phase is to make prompt handlers act as "template generators," not file processors.
+
+1.  **Modify `prompt_handlers.go` - Refactor `handlePrompt`:**
+    *   The function will no longer call `readLocalFiles`. Its responsibility will end at expanding file paths.
+    *   The `PromptBuilder` function signature will be changed to `func(req mcp.GetPromptRequest, language string) (string, string)`, removing the `codeContent` parameter.
+    *   The function will now return a structured JSON object containing the `system_prompt`, `user_prompt_template`, and the list of `file_paths`. This JSON will be returned in the `Description` field of the `mcp.GetPromptResult`. The `Messages` field will be empty.
+
+2.  **Modify `prompt_handlers.go` - Update All Prompt Handlers:**
+    *   Each handler (e.g., `CodeReviewHandler`, `DocGenerateHandler`) will be updated to use the new `handlePrompt`.
+    *   The `PromptBuilder` they provide will now generate a `user_prompt_template` with a placeholder (e.g., `Please review the following code:
+
+{{file_content}}`) instead of the actual code.
+
+---
+
+#### **Phase 2: Clean Up Utilities and Configuration**
+
+This phase removes the now-unnecessary code.
+
+1.  **Modify `gemini_utils.go`:**
+    *   Remove the `readLocalFiles`, `detectLanguageFromPath`, and `detectPrimaryLanguage` functions entirely.
+    *   The `ProjectLanguage` setting from the config will now be passed directly to the `PromptBuilder` in `handlePrompt`.
+
+2.  **Modify `config.go` and `structs.go`:**
+    *   The `ProjectLanguage` configuration will be kept as it's still useful for the templates. No other changes are needed here.
+
+---
+
+#### **Phase 3: Empower the `gemini_ask` Tool**
+
+This phase makes the `gemini_ask` tool flexible enough to handle the new workflow.
+
+1.  **Modify `direct_handlers.go` - Update `GeminiAskHandler`:**
+    *   I will adjust the logic for handling the `systemPrompt` parameter.
+    *   The new logic will be:
+        1.  Check if the `systemPrompt` argument exists in the request.
+        2.  If it exists (even if it's an empty string), use the value provided by the client.
+        3.  If the argument does **not** exist, then and only then fall back to the default `config.GeminiSystemPrompt`.
+    *   This change is critical as it allows the client to suppress the default system prompt, preventing the "double prompt" issue.
+
+---
+
+#### **Phase 4: Update Tests**
+
+The tests must be updated to reflect the new architecture.
+
+1.  **Modify `prompts_test.go`:**
+    *   The tests will be rewritten to validate the new JSON output from the prompt handlers.
+    *   Instead of checking for file content in the result, the tests will parse the JSON from the `Description` field and assert that the `system_prompt`, `user_prompt_template`, and `file_paths` are correct.
+    *   Tests for file I/O within the prompt handlers will be removed.
+</file>
+
 <file path="run_format.sh">
 #!/bin/sh
 
@@ -255,6 +517,225 @@ export PATH="/usr/local/go/bin:$PATH"
 
 # Run tests
 go test -v ./...
+</file>
+
+<file path="server_handlers.go">
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+)
+
+// setupGeminiServer creates and registers Gemini server tools
+func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config *Config) error {
+	loggerValue := ctx.Value(loggerKey)
+	logger, ok := loggerValue.(Logger)
+	if !ok {
+		return fmt.Errorf("logger not found in context")
+	}
+
+	// Create the Gemini service with configuration
+	geminiSvc, err := NewGeminiServer(ctx, config)
+	if err != nil {
+		return fmt.Errorf("failed to create Gemini service: %w", err)
+	}
+
+	// Create handler for gemini_ask using direct handler
+	// Register gemini_ask with logger wrapper using shared tool definition
+	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(geminiSvc.GeminiAskHandler, "gemini_ask", logger))
+	logger.Info("Registered tool: gemini_ask")
+
+	// Use shared tool definition for gemini_search
+
+	// Create handler for gemini_search using direct handler
+	// Register gemini_search with logger wrapper using shared tool definition
+	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(geminiSvc.GeminiSearchHandler, "gemini_search", logger))
+	logger.Info("Registered tool: gemini_search")
+
+	// Use shared tool definition for gemini_models
+
+	// Create handler for gemini_models using direct handler
+	// Register gemini_models with logger wrapper using shared tool definition
+	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(geminiSvc.GeminiModelsHandler, "gemini_models", logger))
+	logger.Info("Registered tool: gemini_models")
+
+	// Register all prompts from the definitions
+	for _, p := range Prompts {
+		handler := geminiSvc.promptHandler(p)
+		mcpServer.AddPrompt(*p.Prompt, wrapPromptHandlerWithLogger(handler, p.Name, logger))
+		logger.Info("Registered prompt: %s", p.Name)
+	}
+
+	// Log file handling configuration
+	logger.Info("File handling: max size %s, allowed types: %v",
+		humanReadableSize(config.MaxFileSize),
+		config.AllowedFileTypes)
+
+	// Log cache configuration if enabled
+	if config.EnableCaching {
+		logger.Info("Cache settings: default TTL %v", config.DefaultCacheTTL)
+	}
+
+	// Log thinking configuration if enabled
+	model := GetModelByID(config.GeminiModel)
+	if config.EnableThinking && model != nil && model.SupportsThinking {
+		logger.Info("Thinking mode enabled for model %s with context window size %d tokens",
+			config.GeminiModel, model.ContextWindowSize)
+	}
+
+	// Log a truncated version of the system prompt for security/brevity
+	promptPreview := config.GeminiSystemPrompt
+	if len(promptPreview) > 50 {
+		// Use proper UTF-8 safe truncation
+		runeCount := 0
+		for i := range promptPreview {
+			runeCount++
+			if runeCount > 50 {
+				promptPreview = promptPreview[:i] + "..."
+				break
+			}
+		}
+	}
+	logger.Info("Using system prompt: %s", promptPreview)
+
+	return nil
+}
+
+// handleStartupError handles initialization errors by setting up an error server
+func handleStartupError(ctx context.Context, err error) {
+	// Safely extract logger from context
+	loggerValue := ctx.Value(loggerKey)
+	logger, ok := loggerValue.(Logger)
+	if !ok {
+		// Fallback to a new logger if type assertion fails
+		logger = NewLogger(LevelError)
+	}
+	errorMsg := err.Error()
+
+	logger.Error("Initialization error: %v", err)
+
+	// Get config for EnableCaching status (if available)
+	var config *Config
+	configValue := ctx.Value(configKey)
+	if configValue != nil {
+		if cfg, ok := configValue.(Config); ok {
+			config = &cfg
+		}
+	}
+
+	// Create MCP server in degraded mode
+	mcpServer := server.NewMCPServer(
+		"gemini",
+		"1.0.0",
+	)
+
+	// Create error server
+	errorServer := &ErrorGeminiServer{
+		errorMessage: errorMsg,
+		config:       config,
+	}
+
+	// Register error handling for tools
+	registerErrorTools(mcpServer, errorServer, logger)
+
+	// Start server in degraded mode
+	logger.Info("Starting Gemini MCP server in degraded mode")
+	if err := server.ServeStdio(mcpServer); err != nil {
+		logger.Error("Server error in degraded mode: %v", err)
+		os.Exit(1)
+	}
+}
+
+// Define the expected handler signature for tools
+type MCPToolHandlerFunc = server.ToolHandlerFunc
+
+// wrapHandlerWithLogger creates a middleware wrapper for logging and authentication around a tool handler
+func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logger Logger) server.ToolHandlerFunc {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		logger.Info("Calling tool '%s'...", toolName)
+
+		// Check authentication for HTTP requests if enabled
+		// Note: We need to check if this is an HTTP request and if auth is enabled
+		if httpMethod, ok := ctx.Value(httpMethodKey).(string); ok && httpMethod != "" {
+			// This is an HTTP request, check if auth is required
+			// Get config from the context (we'll need to pass it through)
+			if authError := getAuthError(ctx); authError != "" {
+				logger.Warn("Authentication failed for tool '%s': %s", toolName, authError)
+				return createErrorResult(fmt.Sprintf("Authentication required: %s", authError)), nil
+			}
+
+			// Log successful authentication if present
+			if isAuthenticated(ctx) {
+				userID, username, role := getUserInfo(ctx)
+				logger.Info("Tool '%s' called by authenticated user %s (%s) with role %s", toolName, username, userID, role)
+			}
+		}
+
+		// Call the actual handler
+		resp, err := handler(ctx, req)
+
+		if err != nil {
+			logger.Error("Tool '%s' failed: %v", toolName, err)
+		} else {
+			logger.Info("Tool '%s' completed successfully", toolName)
+		}
+
+		// Return the original response and error
+		return resp, err
+	}
+}
+
+// wrapPromptHandlerWithLogger creates a middleware wrapper for logging and authentication around a prompt handler
+func wrapPromptHandlerWithLogger(handler server.PromptHandlerFunc, promptName string, logger Logger) server.PromptHandlerFunc {
+	return func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		logger.Info("Calling prompt '%s'...", promptName)
+
+		// Check authentication for HTTP requests if enabled
+		if httpMethod, ok := ctx.Value(httpMethodKey).(string); ok && httpMethod != "" {
+			// This is an HTTP request, check if auth is required
+			if authError := getAuthError(ctx); authError != "" {
+				logger.Warn("Authentication failed for prompt '%s': %s", promptName, authError)
+				return &mcp.GetPromptResult{
+					Description: fmt.Sprintf("Authentication required: %s", authError),
+					Messages:    []mcp.PromptMessage{},
+				}, nil
+			}
+
+			// Log successful authentication if present
+			if isAuthenticated(ctx) {
+				userID, username, role := getUserInfo(ctx)
+				logger.Info("Prompt '%s' called by authenticated user %s (%s) with role %s", promptName, username, userID, role)
+			}
+		}
+
+		// Call the actual handler
+		resp, err := handler(ctx, req)
+
+		if err != nil {
+			logger.Error("Prompt '%s' failed: %v", promptName, err)
+		} else {
+			logger.Info("Prompt '%s' completed successfully", promptName)
+		}
+
+		// Return the original response and error
+		return resp, err
+	}
+}
+
+// Register error handlers for all tools
+func registerErrorTools(mcpServer *server.MCPServer, errorServer *ErrorGeminiServer, logger Logger) {
+	// Register error handlers for all tools using shared tool definitions
+	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_ask", logger))
+	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_search", logger))
+	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_models", logger))
+
+	logger.Info("Registered error handlers for all tools")
+}
 </file>
 
 <file path="tools.go">
@@ -298,6 +779,474 @@ var GeminiModelsTool = mcp.NewTool(
 	"gemini_models",
 	mcp.WithDescription("List available Gemini models with descriptions"),
 )
+</file>
+
+<file path="cache.go">
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"google.golang.org/genai"
+)
+
+// CacheRequest struct definition moved to structs.go
+// CacheInfo struct definition moved to structs.go
+// CacheStore struct definition moved to structs.go
+
+// NewCacheStore creates a new cache store
+func NewCacheStore(client *genai.Client, config *Config, fileStore *FileStore) *CacheStore {
+	return &CacheStore{
+		client:    client,
+		config:    config,
+		fileStore: fileStore,
+		cacheInfo: make(map[string]*CacheInfo),
+	}
+}
+
+// CreateCache creates a cached context
+func (cs *CacheStore) CreateCache(ctx context.Context, req *CacheRequest) (*CacheInfo, error) {
+	logger := getLoggerFromContext(ctx)
+
+	// Check if caching is enabled
+	if !cs.config.EnableCaching {
+		return nil, errors.New("caching is disabled")
+	}
+
+	// Input validation
+	if req.Model == "" {
+		return nil, errors.New("model is required")
+	}
+
+	// Validate the model
+	if err := ValidateModelID(req.Model); err != nil {
+		return nil, fmt.Errorf("invalid model: %w", err)
+	}
+
+	// Parse TTL
+	var ttl time.Duration
+	if req.TTL == "" {
+		ttl = cs.config.DefaultCacheTTL
+	} else {
+		var err error
+		ttl, err = time.ParseDuration(req.TTL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid TTL format: %w", err)
+		}
+	}
+
+	// Create config with TTL
+	config := &genai.CreateCachedContentConfig{
+		TTL: ttl,
+	}
+
+	// Set up display name if provided
+	if req.DisplayName != "" {
+		config.DisplayName = req.DisplayName
+	}
+
+	// Set up system instruction if provided
+	if req.SystemPrompt != "" {
+		config.SystemInstruction = genai.NewContentFromText(req.SystemPrompt, "")
+	}
+
+	// Build contents with files and text
+	contents := []*genai.Content{}
+
+	// Add files if provided
+	if len(req.FileIDs) > 0 {
+		logger.Info("Adding %d files to cache context", len(req.FileIDs))
+		for _, fileID := range req.FileIDs {
+			// Get file info
+			fileInfo, err := cs.fileStore.GetFile(ctx, fileID)
+			if err != nil {
+				logger.Error("Failed to get file with ID %s: %v", fileID, err)
+				return nil, fmt.Errorf("failed to get file with ID %s: %w", fileID, err)
+			}
+
+			// Add file to contents
+			logger.Info("Adding file %s with URI %s to cache context", fileID, fileInfo.URI)
+			logger.Debug("File details: Name=%s, MimeType=%s, Size=%d", fileInfo.DisplayName, fileInfo.MimeType, fileInfo.Size)
+			contents = append(contents, genai.NewContentFromURI(fileInfo.URI, fileInfo.MimeType, genai.RoleUser))
+		}
+	}
+
+	// Add text content if provided
+	if req.Content != "" {
+		logger.Debug("Adding text content to cache context")
+		contents = append(contents, genai.NewContentFromText(req.Content, genai.RoleUser))
+	}
+
+	// Add contents to config if we have any
+	if len(contents) > 0 {
+		config.Contents = contents
+	}
+
+	// Create the cached content
+	logger.Info("Creating cached content with model %s", req.Model)
+	cc, err := cs.client.Caches.Create(ctx, req.Model, config)
+	if err != nil {
+		logger.Error("Failed to create cached content: %v", err)
+		return nil, fmt.Errorf("failed to create cached content: %w", err)
+	}
+
+	// Extract ID from name (format: "cachedContents/abc123")
+	id := cc.Name
+	if strings.HasPrefix(cc.Name, "cachedContents/") {
+		id = strings.TrimPrefix(cc.Name, "cachedContents/")
+	}
+
+	// Calculate expiration time
+	expiresAt := cc.ExpireTime
+
+	// Create cache info
+	cacheInfo := &CacheInfo{
+		ID:          id,
+		Name:        cc.Name,
+		DisplayName: cc.DisplayName,
+		Model:       cc.Model,
+		CreatedAt:   cc.CreateTime,
+		ExpiresAt:   expiresAt,
+		FileIDs:     req.FileIDs,
+	}
+
+	// Store cache info
+	cs.mu.Lock()
+	cs.cacheInfo[id] = cacheInfo
+	cs.mu.Unlock()
+
+	logger.Info("Cache created successfully with ID: %s", id)
+	return cacheInfo, nil
+}
+
+// GetCache gets cache information by ID
+func (cs *CacheStore) GetCache(ctx context.Context, id string) (*CacheInfo, error) {
+	logger := getLoggerFromContext(ctx)
+
+	// Check cache first
+	cs.mu.RLock()
+	info, ok := cs.cacheInfo[id]
+	cs.mu.RUnlock()
+
+	if ok {
+		logger.Debug("Cache info for %s found in local cache", id)
+		return info, nil
+	}
+
+	// If not in cache, try to get from API
+	name := id
+	if !strings.HasPrefix(id, "cachedContents/") {
+		name = "cachedContents/" + id
+	}
+
+	logger.Info("Fetching cache info for %s from API", name)
+	cc, err := cs.client.Caches.Get(ctx, name, nil)
+	if err != nil {
+		logger.Error("Failed to get cached content: %v", err)
+		return nil, fmt.Errorf("failed to get cached content: %w", err)
+	}
+
+	// Extract ID from name
+	cacheID := cc.Name
+	if strings.HasPrefix(cc.Name, "cachedContents/") {
+		cacheID = strings.TrimPrefix(cc.Name, "cachedContents/")
+	}
+
+	// Get expiration time
+	expiresAt := cc.ExpireTime
+
+	// Create cache info
+	cacheInfo := &CacheInfo{
+		ID:          cacheID,
+		Name:        cc.Name,
+		DisplayName: cc.DisplayName,
+		Model:       cc.Model,
+		CreatedAt:   cc.CreateTime,
+		ExpiresAt:   expiresAt,
+		// Note: We can't get file IDs from the API, so this will be empty
+	}
+
+	// Store in cache
+	cs.mu.Lock()
+	cs.cacheInfo[cacheID] = cacheInfo
+	cs.mu.Unlock()
+
+	logger.Debug("Added cache info for %s to local cache", cacheID)
+	return cacheInfo, nil
+}
+</file>
+
+<file path="gemini_test.go">
+//go:build ignore
+// +build ignore
+
+package main
+
+import (
+	"context"
+	"testing"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"google.golang.org/genai"
+)
+
+// TestNewGeminiServer tests the creation of a new GeminiServer
+func TestNewGeminiServer(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      *Config
+		expectError bool
+	}{
+		{
+			name:        "nil config",
+			config:      nil,
+			expectError: true,
+		},
+		{
+			name: "empty API key",
+			config: &Config{
+				GeminiAPIKey: "",
+				GeminiModel:  "gemini-pro",
+			},
+			expectError: true,
+		},
+		// Note: We can't easily test successful creation without mocking the genai.NewClient constructor
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewGeminiServer(context.Background(), tc.config)
+			if tc.expectError && err == nil {
+				t.Errorf("expected error but got none")
+			}
+			if !tc.expectError && err != nil {
+				t.Errorf("did not expect error but got: %v", err)
+			}
+		})
+	}
+}
+
+// TestGeminiServerListTools tests the ListTools method of GeminiServer
+func TestGeminiServerListTools(t *testing.T) {
+	// Create a mock GeminiServer
+	server := &GeminiServer{
+		config: &Config{
+			GeminiAPIKey: "test-key",
+			GeminiModel:  "gemini-pro",
+		},
+		// We don't need a real client for this test
+	}
+
+	// Test ListTools
+	resp, err := server.ListTools(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify response
+	if len(resp) != 3 {
+		t.Errorf("expected 3 tools, got %d", len(resp))
+	}
+	if resp[0].Name != "gemini_ask" {
+		t.Errorf("expected tool name 'gemini_ask', got '%s'", resp[0].Name)
+	}
+	if resp[1].Name != "gemini_search" {
+		t.Errorf("expected tool name 'gemini_search', got '%s'", resp[1].Name)
+	}
+	if resp[2].Name != "gemini_models" {
+		t.Errorf("expected tool name 'gemini_models', got '%s'", resp[2].Name)
+	}
+}
+
+// TestErrorGeminiServerListTools tests the ListTools method of ErrorGeminiServer
+func TestErrorGeminiServerListTools(t *testing.T) {
+	// Create an ErrorGeminiServer
+	server := &ErrorGeminiServer{
+		errorMessage: "test error",
+	}
+
+	// Test ListTools
+	resp, err := server.ListTools(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify response
+	if len(resp) != 3 {
+		t.Errorf("expected 3 tools, got %d", len(resp))
+	}
+	if resp[0].Name != "gemini_ask" {
+		t.Errorf("expected tool name 'gemini_ask', got '%s'", resp[0].Name)
+	}
+	if resp[1].Name != "gemini_search" {
+		t.Errorf("expected tool name 'gemini_search', got '%s'", resp[1].Name)
+	}
+	if resp[2].Name != "gemini_models" {
+		t.Errorf("expected tool name 'gemini_models', got '%s'", resp[2].Name)
+	}
+}
+
+// TestErrorGeminiServerCallTool tests the CallTool method of ErrorGeminiServer
+func TestErrorGeminiServerCallTool(t *testing.T) {
+	// Create an ErrorGeminiServer
+	errorMsg := "initialization failed"
+	server := &ErrorGeminiServer{
+		errorMessage: errorMsg,
+	}
+
+	// Test CallTool
+	req := mcp.CallToolRequest{}
+	req.Params.Name = "gemini_ask"
+	req.Params.Arguments = map[string]interface{}{
+		"query": "test query",
+	}
+
+	resp, err := server.CallTool(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify response
+	if !resp.IsError {
+		t.Error("expected IsError to be true")
+	}
+	if len(resp.Content) != 1 {
+		t.Fatalf("expected 1 content item, got %d", len(resp.Content))
+	}
+	content, ok := resp.Content[0].(mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected content type TextContent, got %T", resp.Content[0])
+	}
+	if content.Text != errorMsg {
+		t.Errorf("expected error message '%s', got '%s'", errorMsg, content.Text)
+	}
+}
+
+// MockGenerateContentResponse creates a mock Gemini API response for testing
+func MockGenerateContentResponse(content string) *genai.GenerateContentResponse {
+	return &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []*genai.Part{
+						{Text: content},
+					},
+					Role: genai.RoleModel,
+				},
+			},
+		},
+	}
+}
+
+// TestFormatMCPResponse tests the formatMCPResponse method of GeminiServer
+func TestFormatMCPResponse(t *testing.T) {
+	// Create a GeminiServer
+	server := &GeminiServer{
+		config: &Config{
+			GeminiAPIKey: "test-key",
+			GeminiModel:  "gemini-pro",
+		},
+	}
+
+	// Create a mock response
+	mockContent := "This is a test response from Gemini."
+	mockResp := MockGenerateContentResponse(mockContent)
+
+	// Test formatMCPResponse
+	resp := server.formatMCPResponse(mockResp)
+
+	// Verify response
+	if len(resp.Content) != 1 {
+		t.Fatalf("expected 1 content item, got %d", len(resp.Content))
+	}
+	content, ok := resp.Content[0].(mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected content type TextContent, got %T", resp.Content[0])
+	}
+	if content.Text != mockContent {
+		t.Errorf("expected content '%s', got '%s'", mockContent, content.Text)
+	}
+}
+
+// TestGeminiServerCallTool_InvalidTool tests CallTool with an invalid tool name
+func TestGeminiServerCallTool_InvalidTool(t *testing.T) {
+	// Create a GeminiServer
+	server := &GeminiServer{
+		config: &Config{
+			GeminiAPIKey: "test-key",
+			GeminiModel:  "gemini-pro",
+		},
+	}
+
+	// Test with invalid tool name
+	req := mcp.CallToolRequest{}
+	req.Params.Name = "invalid_tool"
+	req.Params.Arguments = map[string]interface{}{
+		"query": "test query",
+	}
+
+	resp, err := server.CallTool(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify response
+	if !resp.IsError {
+		t.Error("expected IsError to be true")
+	}
+	if len(resp.Content) != 1 {
+		t.Fatalf("expected 1 content item, got %d", len(resp.Content))
+	}
+	content, ok := resp.Content[0].(mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected content type TextContent, got %T", resp.Content[0])
+	}
+	if content.Text != "unknown tool: invalid_tool" {
+		t.Errorf("expected error message 'unknown tool: invalid_tool', got '%s'", content.Text)
+	}
+}
+
+// TestGeminiServerCallTool_InvalidArgument tests CallTool with an invalid argument
+func TestGeminiServerCallTool_InvalidArgument(t *testing.T) {
+	// Create a GeminiServer
+	server := &GeminiServer{
+		config: &Config{
+			GeminiAPIKey: "test-key",
+			GeminiModel:  "gemini-pro",
+		},
+	}
+
+	// Test with invalid argument
+	req := mcp.CallToolRequest{}
+	req.Params.Name = "gemini_ask"
+	req.Params.Arguments = map[string]interface{}{
+		"query": 123, // Not a string
+	}
+
+	resp, err := server.CallTool(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify response
+	if !resp.IsError {
+		t.Error("expected IsError to be true")
+	}
+	if len(resp.Content) != 1 {
+		t.Fatalf("expected 1 content item, got %d", len(resp.Content))
+	}
+	content, ok := resp.Content[0].(mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected content type TextContent, got %T", resp.Content[0])
+	}
+	if content.Text != "query must be a string" {
+		t.Errorf("expected error message 'query must be a string', got '%s'", content.Text)
+	}
+}
 </file>
 
 <file path="auth.go">
@@ -636,7 +1585,7 @@ func TestNewConfig(t *testing.T) {
 
 	t.Run("custom timeout", func(t *testing.T) {
 		os.Setenv("GEMINI_API_KEY", "test-api-key")
-		os.Setenv("GEMINI_TIMEOUT", "180")
+		os.Setenv("GEMINI_TIMEOUT", "180s")
 
 		config, err := NewConfig()
 
@@ -654,8 +1603,8 @@ func TestNewConfig(t *testing.T) {
 	t.Run("custom retry settings", func(t *testing.T) {
 		os.Setenv("GEMINI_API_KEY", "test-api-key")
 		os.Setenv("GEMINI_MAX_RETRIES", "3")
-		os.Setenv("GEMINI_INITIAL_BACKOFF", "2")
-		os.Setenv("GEMINI_MAX_BACKOFF", "15")
+		os.Setenv("GEMINI_INITIAL_BACKOFF", "2s")
+		os.Setenv("GEMINI_MAX_BACKOFF", "15s")
 
 		config, err := NewConfig()
 
@@ -1000,807 +1949,6 @@ func ValidateModelID(modelID string) error {
 }
 </file>
 
-<file path="cache.go">
-package main
-
-import (
-	"context"
-	"errors"
-	"fmt"
-	"strings"
-	"time"
-
-	"google.golang.org/genai"
-)
-
-// CacheRequest struct definition moved to structs.go
-// CacheInfo struct definition moved to structs.go
-// CacheStore struct definition moved to structs.go
-
-// NewCacheStore creates a new cache store
-func NewCacheStore(client *genai.Client, config *Config, fileStore *FileStore) *CacheStore {
-	return &CacheStore{
-		client:    client,
-		config:    config,
-		fileStore: fileStore,
-		cacheInfo: make(map[string]*CacheInfo),
-	}
-}
-
-// CreateCache creates a cached context
-func (cs *CacheStore) CreateCache(ctx context.Context, req *CacheRequest) (*CacheInfo, error) {
-	logger := getLoggerFromContext(ctx)
-
-	// Check if caching is enabled
-	if !cs.config.EnableCaching {
-		return nil, errors.New("caching is disabled")
-	}
-
-	// Input validation
-	if req.Model == "" {
-		return nil, errors.New("model is required")
-	}
-
-	// Validate the model
-	if err := ValidateModelID(req.Model); err != nil {
-		return nil, fmt.Errorf("invalid model: %w", err)
-	}
-
-	// Parse TTL
-	var ttl time.Duration
-	if req.TTL == "" {
-		ttl = cs.config.DefaultCacheTTL
-	} else {
-		var err error
-		ttl, err = time.ParseDuration(req.TTL)
-		if err != nil {
-			return nil, fmt.Errorf("invalid TTL format: %w", err)
-		}
-	}
-
-	// Create config with TTL
-	config := &genai.CreateCachedContentConfig{
-		TTL: ttl,
-	}
-
-	// Set up display name if provided
-	if req.DisplayName != "" {
-		config.DisplayName = req.DisplayName
-	}
-
-	// Set up system instruction if provided
-	if req.SystemPrompt != "" {
-		config.SystemInstruction = genai.NewContentFromText(req.SystemPrompt, "")
-	}
-
-	// Build contents with files and text
-	contents := []*genai.Content{}
-
-	// Add files if provided
-	if len(req.FileIDs) > 0 {
-		logger.Info("Adding %d files to cache context", len(req.FileIDs))
-		for _, fileID := range req.FileIDs {
-			// Get file info
-			fileInfo, err := cs.fileStore.GetFile(ctx, fileID)
-			if err != nil {
-				logger.Error("Failed to get file with ID %s: %v", fileID, err)
-				return nil, fmt.Errorf("failed to get file with ID %s: %w", fileID, err)
-			}
-
-			// Add file to contents
-			logger.Info("Adding file %s with URI %s to cache context", fileID, fileInfo.URI)
-			logger.Debug("File details: Name=%s, MimeType=%s, Size=%d", fileInfo.DisplayName, fileInfo.MimeType, fileInfo.Size)
-			contents = append(contents, genai.NewContentFromURI(fileInfo.URI, fileInfo.MimeType, genai.RoleUser))
-		}
-	}
-
-	// Add text content if provided
-	if req.Content != "" {
-		logger.Debug("Adding text content to cache context")
-		contents = append(contents, genai.NewContentFromText(req.Content, genai.RoleUser))
-	}
-
-	// Add contents to config if we have any
-	if len(contents) > 0 {
-		config.Contents = contents
-	}
-
-	// Create the cached content
-	logger.Info("Creating cached content with model %s", req.Model)
-	cc, err := cs.client.Caches.Create(ctx, req.Model, config)
-	if err != nil {
-		logger.Error("Failed to create cached content: %v", err)
-		return nil, fmt.Errorf("failed to create cached content: %w", err)
-	}
-
-	// Extract ID from name (format: "cachedContents/abc123")
-	id := cc.Name
-	if strings.HasPrefix(cc.Name, "cachedContents/") {
-		id = strings.TrimPrefix(cc.Name, "cachedContents/")
-	}
-
-	// Calculate expiration time
-	expiresAt := cc.ExpireTime
-
-	// Create cache info
-	cacheInfo := &CacheInfo{
-		ID:          id,
-		Name:        cc.Name,
-		DisplayName: cc.DisplayName,
-		Model:       cc.Model,
-		CreatedAt:   cc.CreateTime,
-		ExpiresAt:   expiresAt,
-		FileIDs:     req.FileIDs,
-	}
-
-	// Store cache info
-	cs.mu.Lock()
-	cs.cacheInfo[id] = cacheInfo
-	cs.mu.Unlock()
-
-	logger.Info("Cache created successfully with ID: %s", id)
-	return cacheInfo, nil
-}
-
-// GetCache gets cache information by ID
-func (cs *CacheStore) GetCache(ctx context.Context, id string) (*CacheInfo, error) {
-	logger := getLoggerFromContext(ctx)
-
-	// Check cache first
-	cs.mu.RLock()
-	info, ok := cs.cacheInfo[id]
-	cs.mu.RUnlock()
-
-	if ok {
-		logger.Debug("Cache info for %s found in local cache", id)
-		return info, nil
-	}
-
-	// If not in cache, try to get from API
-	name := id
-	if !strings.HasPrefix(id, "cachedContents/") {
-		name = "cachedContents/" + id
-	}
-
-	logger.Info("Fetching cache info for %s from API", name)
-	cc, err := cs.client.Caches.Get(ctx, name, nil)
-	if err != nil {
-		logger.Error("Failed to get cached content: %v", err)
-		return nil, fmt.Errorf("failed to get cached content: %w", err)
-	}
-
-	// Extract ID from name
-	cacheID := cc.Name
-	if strings.HasPrefix(cc.Name, "cachedContents/") {
-		cacheID = strings.TrimPrefix(cc.Name, "cachedContents/")
-	}
-
-	// Get expiration time
-	expiresAt := cc.ExpireTime
-
-	// Create cache info
-	cacheInfo := &CacheInfo{
-		ID:          cacheID,
-		Name:        cc.Name,
-		DisplayName: cc.DisplayName,
-		Model:       cc.Model,
-		CreatedAt:   cc.CreateTime,
-		ExpiresAt:   expiresAt,
-		// Note: We can't get file IDs from the API, so this will be empty
-	}
-
-	// Store in cache
-	cs.mu.Lock()
-	cs.cacheInfo[cacheID] = cacheInfo
-	cs.mu.Unlock()
-
-	logger.Debug("Added cache info for %s to local cache", cacheID)
-	return cacheInfo, nil
-}
-</file>
-
-<file path="CLAUDE.md">
-# CLAUDE.md
-
-GeminiMCP is an Model Control Protocol (MCP) server bridging MCP clients with Google's Gemini 2.5 family models (Pro, Flash, Flash-Lite).
-
-## Build Commands
-
-```bash
-# Build
-go build -o ./bin/mcp-gemini .
-
-# Test & Format (run before commits)
-./run_test.sh
-./run_format.sh
-./run_lint.sh
-```
-
-## Architecture
-
-**Core Files:**
-- `main.go` - Server initialization, transport handling
-- `config.go` - Environment variables, CLI flags, defaults
-- `tools.go` - MCP tool definitions (gemini_ask, gemini_search, gemini_models)
-- `direct_handlers.go` - Tool request handlers, Gemini API interaction
-- `fetch_models.go`, `fallback_models.go` - Dynamic model management
-- `cache.go` - Context caching for repeated queries
-- `auth.go` - JWT authentication for HTTP transport
-
-**Key Functions:**
-- `ResolveModelID()` - Convert family IDs to specific version IDs (ALWAYS use before API calls)
-- `ValidateModelID()` - Check model ID validity
-- `NewConfig()` - Parse environment variables and flags
-
-## Supported Models (As of GA Release)
-
-- `gemini-2.5-pro` (production) - Advanced thinking, caching, 1M context
-- `gemini-2.5-flash` (production) - Balanced performance, caching, 32K context  
-- `gemini-2.5-flash-lite` (production) - Cost-optimized, no caching, 32K context
-
-## Configuration
-
-**Required:**
-- `GEMINI_API_KEY` - Google AI Studio API key
-
-**Key Environment Variables:**
-```bash
-GEMINI_MODEL="gemini-2.5-pro"                  # Default ask model
-GEMINI_SEARCH_MODEL="gemini-2.5-flash-lite"   # Default search model
-GEMINI_ENABLE_CACHING="true"                   # Context caching
-GEMINI_ENABLE_THINKING="true"                  # Thinking mode
-GEMINI_LOG_LEVEL="info"                        # debug|info|warn|error
-```
-
-**HTTP Transport:**
-```bash
-GEMINI_ENABLE_HTTP="true"
-GEMINI_HTTP_ADDRESS=":8081"
-GEMINI_HTTP_PATH="/mcp"
-```
-
-**Authentication (HTTP only):**
-```bash
-GEMINI_AUTH_ENABLED="true"
-GEMINI_AUTH_SECRET_KEY="32char-minimum-secret"
-```
-
-## CLI Flags (Override Environment)
-
-```bash
-./bin/mcp-gemini --transport=http --gemini-model=gemini-2.5-flash --enable-caching=false
-./bin/mcp-gemini --generate-token --token-username=admin --token-role=admin
-```
-
-## Transport Modes
-
-**Stdio (default):** `./bin/mcp-gemini`
-**HTTP:** `./bin/mcp-gemini --transport=http`
-
-## HTTP Endpoints
-
-- `POST /mcp` - MCP protocol messages  
-- `GET /mcp` - Server-Sent Events
-- `GET /.well-known/oauth-authorization-server` - OAuth metadata
-
-## Development Workflows
-
-**Add Tool:**
-1. Define in `tools.go` using `mcp.NewTool()`
-2. Implement handler in `direct_handlers.go`
-3. Register in `setupGeminiServer()` in `main.go`
-4. Add error handler in `registerErrorTools()`
-
-**Modify Config:**
-1. Update defaults in `config.go`
-2. Add parsing in `NewConfig()`
-3. Update `Config` struct in `structs.go`
-4. Add CLI flag in `main.go` if needed
-
-**Update Models:**
-1. Modify `fetch_models.go` or `fallback_models.go`
-2. Use `ResolveModelID()` for API calls
-3. Test model resolution
-
-## Recent Changes
-
-- **Commit 9158646:** Updated Gemini 2.5 Flash Lite to GA model (`gemini-2.5-flash-lite`)
-- **Commit 01b642f:** Added OAuth well-known endpoint (`/.well-known/oauth-authorization-server`)
-- **Commit 48098fa, f3d47d8:** Improved authentication error handling and stderr logging
-- **Commit 9f6ab9a:** Implemented JWT authentication for HTTP transport
-- **Commit f78ae6c:** Added HTTP transport option
-
-## Key Dependencies
-
-- `github.com/mark3labs/mcp-go/mcp` - MCP protocol
-- `google.golang.org/genai` - Gemini API SDK
-- `github.com/joho/godotenv` - Environment loading
-
-## Testing
-
-```bash
-# Configuration tests
-go test -v -run TestConfigDefaults
-
-# API integration tests (requires GEMINI_API_KEY)
-go test -v -run TestGeminiServer
-```
-
-## Debug Commands
-
-```bash
-# Debug logging
-GEMINI_LOG_LEVEL=debug ./bin/mcp-gemini
-
-# HTTP with auth
-./bin/mcp-gemini --transport=http --auth-enabled=true
-
-# Generate auth token
-export GEMINI_AUTH_SECRET_KEY="your-32char-secret"
-./bin/mcp-gemini --generate-token --token-username=admin
-
-# Test HTTP endpoint
-curl -X POST http://localhost:8081/mcp -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
-```
-
-**Security Notes:**
-- Auth only applies to HTTP transport
-- Secret key must be 32+ characters
-- Tokens use HMAC-SHA256 signing
-- Failed auth attempts logged with IP
-</file>
-
-<file path="gemini_test.go">
-//go:build ignore
-// +build ignore
-
-package main
-
-import (
-	"context"
-	"testing"
-
-	"github.com/mark3labs/mcp-go/mcp"
-	"google.golang.org/genai"
-)
-
-// TestNewGeminiServer tests the creation of a new GeminiServer
-func TestNewGeminiServer(t *testing.T) {
-	tests := []struct {
-		name        string
-		config      *Config
-		expectError bool
-	}{
-		{
-			name:        "nil config",
-			config:      nil,
-			expectError: true,
-		},
-		{
-			name: "empty API key",
-			config: &Config{
-				GeminiAPIKey: "",
-				GeminiModel:  "gemini-pro",
-			},
-			expectError: true,
-		},
-		// Note: We can't easily test successful creation without mocking the genai.NewClient constructor
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := NewGeminiServer(context.Background(), tc.config)
-			if tc.expectError && err == nil {
-				t.Errorf("expected error but got none")
-			}
-			if !tc.expectError && err != nil {
-				t.Errorf("did not expect error but got: %v", err)
-			}
-		})
-	}
-}
-
-// TestGeminiServerListTools tests the ListTools method of GeminiServer
-func TestGeminiServerListTools(t *testing.T) {
-	// Create a mock GeminiServer
-	server := &GeminiServer{
-		config: &Config{
-			GeminiAPIKey: "test-key",
-			GeminiModel:  "gemini-pro",
-		},
-		// We don't need a real client for this test
-	}
-
-	// Test ListTools
-	resp, err := server.ListTools(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify response
-	if len(resp) != 3 {
-		t.Errorf("expected 3 tools, got %d", len(resp))
-	}
-	if resp[0].Name != "gemini_ask" {
-		t.Errorf("expected tool name 'gemini_ask', got '%s'", resp[0].Name)
-	}
-	if resp[1].Name != "gemini_search" {
-		t.Errorf("expected tool name 'gemini_search', got '%s'", resp[1].Name)
-	}
-	if resp[2].Name != "gemini_models" {
-		t.Errorf("expected tool name 'gemini_models', got '%s'", resp[2].Name)
-	}
-}
-
-// TestErrorGeminiServerListTools tests the ListTools method of ErrorGeminiServer
-func TestErrorGeminiServerListTools(t *testing.T) {
-	// Create an ErrorGeminiServer
-	server := &ErrorGeminiServer{
-		errorMessage: "test error",
-	}
-
-	// Test ListTools
-	resp, err := server.ListTools(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify response
-	if len(resp) != 3 {
-		t.Errorf("expected 3 tools, got %d", len(resp))
-	}
-	if resp[0].Name != "gemini_ask" {
-		t.Errorf("expected tool name 'gemini_ask', got '%s'", resp[0].Name)
-	}
-	if resp[1].Name != "gemini_search" {
-		t.Errorf("expected tool name 'gemini_search', got '%s'", resp[1].Name)
-	}
-	if resp[2].Name != "gemini_models" {
-		t.Errorf("expected tool name 'gemini_models', got '%s'", resp[2].Name)
-	}
-}
-
-// TestErrorGeminiServerCallTool tests the CallTool method of ErrorGeminiServer
-func TestErrorGeminiServerCallTool(t *testing.T) {
-	// Create an ErrorGeminiServer
-	errorMsg := "initialization failed"
-	server := &ErrorGeminiServer{
-		errorMessage: errorMsg,
-	}
-
-	// Test CallTool
-	req := mcp.CallToolRequest{}
-	req.Params.Name = "gemini_ask"
-	req.Params.Arguments = map[string]interface{}{
-		"query": "test query",
-	}
-
-	resp, err := server.CallTool(context.Background(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify response
-	if !resp.IsError {
-		t.Error("expected IsError to be true")
-	}
-	if len(resp.Content) != 1 {
-		t.Fatalf("expected 1 content item, got %d", len(resp.Content))
-	}
-	content, ok := resp.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected content type TextContent, got %T", resp.Content[0])
-	}
-	if content.Text != errorMsg {
-		t.Errorf("expected error message '%s', got '%s'", errorMsg, content.Text)
-	}
-}
-
-// MockGenerateContentResponse creates a mock Gemini API response for testing
-func MockGenerateContentResponse(content string) *genai.GenerateContentResponse {
-	return &genai.GenerateContentResponse{
-		Candidates: []*genai.Candidate{
-			{
-				Content: &genai.Content{
-					Parts: []*genai.Part{
-						{Text: content},
-					},
-					Role: genai.RoleModel,
-				},
-			},
-		},
-	}
-}
-
-// TestFormatMCPResponse tests the formatMCPResponse method of GeminiServer
-func TestFormatMCPResponse(t *testing.T) {
-	// Create a GeminiServer
-	server := &GeminiServer{
-		config: &Config{
-			GeminiAPIKey: "test-key",
-			GeminiModel:  "gemini-pro",
-		},
-	}
-
-	// Create a mock response
-	mockContent := "This is a test response from Gemini."
-	mockResp := MockGenerateContentResponse(mockContent)
-
-	// Test formatMCPResponse
-	resp := server.formatMCPResponse(mockResp)
-
-	// Verify response
-	if len(resp.Content) != 1 {
-		t.Fatalf("expected 1 content item, got %d", len(resp.Content))
-	}
-	content, ok := resp.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected content type TextContent, got %T", resp.Content[0])
-	}
-	if content.Text != mockContent {
-		t.Errorf("expected content '%s', got '%s'", mockContent, content.Text)
-	}
-}
-
-// TestGeminiServerCallTool_InvalidTool tests CallTool with an invalid tool name
-func TestGeminiServerCallTool_InvalidTool(t *testing.T) {
-	// Create a GeminiServer
-	server := &GeminiServer{
-		config: &Config{
-			GeminiAPIKey: "test-key",
-			GeminiModel:  "gemini-pro",
-		},
-	}
-
-	// Test with invalid tool name
-	req := mcp.CallToolRequest{}
-	req.Params.Name = "invalid_tool"
-	req.Params.Arguments = map[string]interface{}{
-		"query": "test query",
-	}
-
-	resp, err := server.CallTool(context.Background(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify response
-	if !resp.IsError {
-		t.Error("expected IsError to be true")
-	}
-	if len(resp.Content) != 1 {
-		t.Fatalf("expected 1 content item, got %d", len(resp.Content))
-	}
-	content, ok := resp.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected content type TextContent, got %T", resp.Content[0])
-	}
-	if content.Text != "unknown tool: invalid_tool" {
-		t.Errorf("expected error message 'unknown tool: invalid_tool', got '%s'", content.Text)
-	}
-}
-
-// TestGeminiServerCallTool_InvalidArgument tests CallTool with an invalid argument
-func TestGeminiServerCallTool_InvalidArgument(t *testing.T) {
-	// Create a GeminiServer
-	server := &GeminiServer{
-		config: &Config{
-			GeminiAPIKey: "test-key",
-			GeminiModel:  "gemini-pro",
-		},
-	}
-
-	// Test with invalid argument
-	req := mcp.CallToolRequest{}
-	req.Params.Name = "gemini_ask"
-	req.Params.Arguments = map[string]interface{}{
-		"query": 123, // Not a string
-	}
-
-	resp, err := server.CallTool(context.Background(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify response
-	if !resp.IsError {
-		t.Error("expected IsError to be true")
-	}
-	if len(resp.Content) != 1 {
-		t.Fatalf("expected 1 content item, got %d", len(resp.Content))
-	}
-	content, ok := resp.Content[0].(mcp.TextContent)
-	if !ok {
-		t.Fatalf("expected content type TextContent, got %T", resp.Content[0])
-	}
-	if content.Text != "query must be a string" {
-		t.Errorf("expected error message 'query must be a string', got '%s'", content.Text)
-	}
-}
-</file>
-
-<file path="gemini_server.go">
-package main
-
-import (
-	"context"
-	"errors"
-	"fmt"
-
-	"google.golang.org/genai"
-)
-
-// NewGeminiServer creates a new GeminiServer with the provided configuration
-func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error) {
-	if config == nil {
-		return nil, errors.New("config cannot be nil")
-	}
-
-	if config.GeminiAPIKey == "" {
-		return nil, errors.New("gemini API key is required")
-	}
-
-	// Initialize the Gemini client
-	clientConfig := &genai.ClientConfig{
-		APIKey: config.GeminiAPIKey,
-	}
-	client, err := genai.NewClient(ctx, clientConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
-	}
-
-	// Create the file and cache stores
-	fileStore := NewFileStore(client, config)
-	cacheStore := NewCacheStore(client, config, fileStore)
-
-	return &GeminiServer{
-		config:     config,
-		client:     client,
-		fileStore:  fileStore,
-		cacheStore: cacheStore,
-	}, nil
-}
-</file>
-
-<file path="gemini_utils.go">
-package main
-
-import (
-	"context"
-	"path/filepath"
-	"strings"
-)
-
-// getLoggerFromContext safely extracts a logger from the context or creates a new one
-func getLoggerFromContext(ctx context.Context) Logger {
-	loggerValue := ctx.Value(loggerKey)
-	if loggerValue != nil {
-		if l, ok := loggerValue.(Logger); ok {
-			return l
-		}
-	}
-	// Create a new logger if one isn't in the context or type assertion fails
-	return NewLogger(LevelInfo)
-}
-
-// This function has been removed after refactoring to use direct MCP types
-
-// This function has been removed after refactoring to use formatMCPResponse and direct MCP types
-
-// Helper function to get MIME type from file path
-func getMimeTypeFromPath(path string) string {
-	ext := strings.ToLower(filepath.Ext(path))
-
-	switch ext {
-	case ".txt":
-		return "text/plain"
-	case ".html", ".htm":
-		return "text/html"
-	case ".css":
-		return "text/css"
-	case ".js":
-		return "application/javascript"
-	case ".json":
-		return "application/json"
-	case ".xml":
-		return "application/xml"
-	case ".pdf":
-		return "application/pdf"
-	case ".png":
-		return "image/png"
-	case ".jpg", ".jpeg":
-		return "image/jpeg"
-	case ".gif":
-		return "image/gif"
-	case ".svg":
-		return "image/svg+xml"
-	case ".mp3":
-		return "audio/mpeg"
-	case ".mp4":
-		return "video/mp4"
-	case ".wav":
-		return "audio/wav"
-	case ".doc", ".docx":
-		return "application/msword"
-	case ".xls", ".xlsx":
-		return "application/vnd.ms-excel"
-	case ".ppt", ".pptx":
-		return "application/vnd.ms-powerpoint"
-	case ".zip":
-		return "application/zip"
-	case ".csv":
-		return "text/csv"
-	case ".go":
-		return "text/plain" // Changed from "text/x-go" to "text/plain"
-	case ".py":
-		return "text/plain" // Changed from "text/x-python" to "text/plain"
-	case ".java":
-		return "text/plain" // Changed from "text/x-java" to "text/plain"
-	case ".c", ".cpp", ".h", ".hpp":
-		return "text/plain" // Changed from "text/x-c" to "text/plain"
-	case ".rb":
-		return "text/plain"
-	case ".php":
-		return "text/plain"
-	case ".md":
-		return "text/markdown"
-	default:
-		return "application/octet-stream"
-	}
-}
-
-// This function has been removed as it was unused after refactoring to use convertGenaiResponseToMCPResult
-</file>
-
-<file path="fallback_models.go">
-package main
-
-// fallbackGeminiModels provides the 3 actual Gemini 2.5 models as documented by Google
-func fallbackGeminiModels() []GeminiModelInfo {
-	return []GeminiModelInfo{
-		// Gemini 2.5 Pro - Production model
-		{
-			FamilyID:             "gemini-2.5-pro",
-			Name:                 "Gemini 2.5 Pro",
-			Description:          "Our most powerful thinking model with maximum response accuracy and state-of-the-art performance",
-			SupportsThinking:     true,
-			ContextWindowSize:    1048576,
-			PreferredForThinking: true,
-			PreferredForCaching:  true,
-			PreferredForSearch:   false,
-			Versions:             []ModelVersion{}, // Production model uses family ID directly
-		},
-
-		// Gemini 2.5 Flash - Production model
-		{
-			FamilyID:             "gemini-2.5-flash",
-			Name:                 "Gemini 2.5 Flash",
-			Description:          "Best model in terms of price-performance, offering well-rounded capabilities",
-			SupportsThinking:     true,
-			ContextWindowSize:    32768,
-			PreferredForThinking: false,
-			PreferredForCaching:  true,
-			PreferredForSearch:   false,
-			Versions:             []ModelVersion{}, // Production model uses family ID directly
-		},
-
-		// Gemini 2.5 Flash Lite - GA model
-		{
-			FamilyID:             "gemini-2.5-flash-lite",
-			Name:                 "Gemini 2.5 Flash Lite",
-			Description:          "Optimized for cost efficiency and low latency",
-			SupportsThinking:     true,
-			ContextWindowSize:    32768,
-			PreferredForThinking: false,
-			PreferredForCaching:  false,
-			PreferredForSearch:   true,
-			Versions:             []ModelVersion{}, // Production model uses family ID directly
-		},
-	}
-}
-</file>
-
 <file path="files.go">
 package main
 
@@ -2030,6 +2178,325 @@ func humanReadableSize(bytes int64) string {
 // Moved to gemini_utils.go
 </file>
 
+<file path="prompts.go">
+package main
+
+// Prompts defines all the available prompts for the server.
+var Prompts = []*PromptDefinition{
+	NewPromptDefinition(
+		"code_review",
+		"Review code for best practices, potential issues, and improvements",
+		`You are an expert code reviewer with years of experience in software engineering. Your task is to conduct a thorough analysis of the provided code.
+
+Focus on the following areas:
+- **Code Quality & Best Practices:** Adherence to language-specific idioms, code formatting, and established best practices.
+- **Potential Bugs:** Logical errors, race conditions, null pointer issues, and other potential bugs.
+- **Security Vulnerabilities:** Identify any potential security risks, such as injection vulnerabilities, insecure data handling, or authentication/authorization flaws. Follow OWASP Top 10 guidelines.
+- **Performance Concerns:** Look for inefficient algorithms, memory leaks, or other performance bottlenecks.
+- **Maintainability & Readability:** Assess the code's clarity, modularity, and ease of maintenance.
+
+Provide specific, actionable feedback. For each issue, include the file path (if available), the relevant line number(s), and a clear explanation of the problem and your suggested improvement.`,
+	),
+	NewPromptDefinition(
+		"explain_code",
+		"Explain how code works in detail, including algorithms and design patterns",
+		`You are an expert software engineer and a skilled educator. Your goal is to explain the provided code in a clear, comprehensive, and easy-to-understand manner.
+
+Structure your explanation as follows:
+1.  **High-Level Overview:** Start with a summary of what the code does and its primary purpose.
+2.  **Detailed Breakdown:** Go through the code section by section, explaining the logic, algorithms, and data structures used.
+3.  **Key Concepts:** Highlight any important design patterns, architectural decisions, or programming concepts demonstrated in the code.
+4.  **Usage:** If applicable, provide a simple example of how to use the code.
+
+Tailor the complexity of your explanation to be suitable for an intermediate-level developer.`,
+	),
+	NewPromptDefinition(
+		"debug_help",
+		"Help debug issues by analyzing code, error messages, and context",
+		`You are an expert debugger. Your mission is to analyze the provided code and the user's problem description to identify the root cause of a bug and suggest a solution.
+
+Follow this systematic debugging process:
+1.  **Analyze the Code:** Carefully review the provided code for potential logical errors, incorrect assumptions, or other issues related to the problem description.
+2.  **Identify the Root Cause:** Based on your analysis, pinpoint the most likely cause of the bug.
+3.  **Propose a Fix:** Provide a specific, corrected code snippet to fix the bug.
+4.  **Explain the Solution:** Clearly explain why the bug occurred and why your proposed solution resolves it.`,
+	),
+	NewPromptDefinition(
+		"refactor_suggestions",
+		"Suggest improvements and refactoring opportunities for existing code",
+		`You are an expert software architect specializing in code modernization and refactoring. Your task is to analyze the provided code and suggest concrete improvements.
+
+Your suggestions should focus on:
+- **Improving Code Structure:** Enhancing modularity, separation of concerns, and overall organization.
+- **Applying Design Patterns:** Identifying opportunities to use appropriate design patterns to solve common problems.
+- **Increasing Readability & Maintainability:** Making the code easier to understand and modify in the future.
+- **Optimizing Performance:** Where applicable, suggest changes to improve efficiency without sacrificing clarity.
+
+For each suggestion, provide a code example demonstrating the change and explain the benefits of the proposed refactoring.`,
+	),
+	NewPromptDefinition(
+		"architecture_analysis",
+		"Analyze system architecture, design patterns, and structural decisions",
+		`You are a seasoned software architect. Your task is to conduct a high-level analysis of the provided codebase to understand its architecture.
+
+Your analysis should cover:
+- **Overall Design:** Describe the main architectural pattern (e.g., Monolith, Microservices, MVC, etc.).
+- **Component Breakdown:** Identify the key components, their responsibilities, and how they interact.
+- **Data Flow:** Explain how data flows through the system.
+- **Dependencies:** List the major external dependencies and their roles.
+- **Potential Issues:** Highlight any potential architectural weaknesses, bottlenecks, or areas for improvement regarding scalability, maintainability, or security.
+
+Provide a clear and concise summary of the architecture.`,
+	),
+	NewPromptDefinition(
+		"doc_generate",
+		"Generate comprehensive documentation for code, APIs, or systems",
+		`You are a professional technical writer. Your task is to generate clear, concise, and comprehensive documentation for the provided code.
+
+The documentation should be in Markdown format and include the following sections for each major component or function:
+- **Purpose:** A brief description of what the code does.
+- **Parameters:** A list of all input parameters, their types, and a description of each.
+- **Return Value:** A description of what the function or component returns.
+- **Usage Example:** A simple code snippet demonstrating how to use the code.
+
+Ensure the documentation is accurate and easy for other developers to understand.`,
+	),
+	NewPromptDefinition(
+		"test_generate",
+		"Generate unit tests, integration tests, or test cases for code",
+		`You are a test engineering expert. Your task is to generate comprehensive unit tests for the provided code.
+
+The generated tests should:
+- Be written using the standard testing library for the given language.
+- Cover happy-path scenarios, edge cases, and error conditions.
+- Follow best practices for testing, including clear test descriptions, and proper assertions.
+- Be easy to read and maintain.
+
+For each function or method, provide a set of corresponding test cases.`,
+	),
+	NewPromptDefinition(
+		"security_analysis",
+		"Analyze code for security vulnerabilities and best practices",
+		`You are a cybersecurity expert specializing in secure code review. Your task is to analyze the provided code for security vulnerabilities and risks.
+
+Focus on identifying common vulnerabilities, including but not limited to:
+- Injection attacks (SQL, Command, etc.)
+- Cross-Site Scripting (XSS)
+- Insecure Deserialization
+- Broken Authentication and Access Control
+- Security Misconfiguration
+- Sensitive Data Exposure
+
+For each vulnerability you identify, provide:
+- A description of the vulnerability and its potential impact.
+- The file path and line number where the vulnerability exists.
+- A clear recommendation on how to remediate the vulnerability, including a corrected code snippet where possible.`,
+	),
+	NewPromptDefinition(
+		"research_question",
+		"Research current information and trends using Google Search integration",
+		"", // Use default search system prompt from config
+	),
+}
+</file>
+
+<file path="gemini_server.go">
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"google.golang.org/genai"
+)
+
+// NewGeminiServer creates a new GeminiServer with the provided configuration
+func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error) {
+	if config == nil {
+		return nil, errors.New("config cannot be nil")
+	}
+
+	if config.GeminiAPIKey == "" {
+		return nil, errors.New("gemini API key is required")
+	}
+
+	// Initialize the Gemini client
+	clientConfig := &genai.ClientConfig{
+		APIKey: config.GeminiAPIKey,
+	}
+	client, err := genai.NewClient(ctx, clientConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
+	}
+
+	// Create the file and cache stores
+	fileStore := NewFileStore(client, config)
+	cacheStore := NewCacheStore(client, config, fileStore)
+
+	return &GeminiServer{
+		config:     config,
+		client:     client,
+		fileStore:  fileStore,
+		cacheStore: cacheStore,
+	}, nil
+}
+</file>
+
+<file path="fallback_models.go">
+package main
+
+// fallbackGeminiModels provides the 3 actual Gemini 2.5 models as documented by Google
+func fallbackGeminiModels() []GeminiModelInfo {
+	return []GeminiModelInfo{
+		// Gemini 2.5 Pro - Production model
+		{
+			FamilyID:             "gemini-2.5-pro",
+			Name:                 "Gemini 2.5 Pro",
+			Description:          "Our most powerful thinking model with maximum response accuracy and state-of-the-art performance",
+			SupportsThinking:     true,
+			ContextWindowSize:    1048576,
+			PreferredForThinking: true,
+			PreferredForCaching:  true,
+			PreferredForSearch:   false,
+			Versions:             []ModelVersion{}, // Production model uses family ID directly
+		},
+
+		// Gemini 2.5 Flash - Production model
+		{
+			FamilyID:             "gemini-2.5-flash",
+			Name:                 "Gemini 2.5 Flash",
+			Description:          "Best model in terms of price-performance, offering well-rounded capabilities",
+			SupportsThinking:     true,
+			ContextWindowSize:    32768,
+			PreferredForThinking: false,
+			PreferredForCaching:  true,
+			PreferredForSearch:   false,
+			Versions:             []ModelVersion{}, // Production model uses family ID directly
+		},
+
+		// Gemini 2.5 Flash Lite - GA model
+		{
+			FamilyID:             "gemini-2.5-flash-lite",
+			Name:                 "Gemini 2.5 Flash Lite",
+			Description:          "Optimized for cost efficiency and low latency",
+			SupportsThinking:     true,
+			ContextWindowSize:    32768,
+			PreferredForThinking: false,
+			PreferredForCaching:  false,
+			PreferredForSearch:   true,
+			Versions:             []ModelVersion{}, // Production model uses family ID directly
+		},
+	}
+}
+</file>
+
+<file path="prompts_test.go">
+package main
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/mark3labs/mcp-go/mcp"
+)
+
+// TestPromptHandlers is a table-driven test that covers all prompt handlers.
+func TestPromptHandlers(t *testing.T) {
+	// Create a test config and server instance.
+	config := &Config{
+		GeminiAPIKey: "test-key",
+		GeminiModel:  "gemini-2.5-pro",
+	}
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, loggerKey, NewLogger(LevelInfo))
+	geminiSvc, err := NewGeminiServer(ctx, config)
+	if err != nil {
+		t.Fatalf("Skipping tests: could not create GeminiServer instance: %v", err)
+	}
+
+	problemStatement := "Please check my code for potential issues."
+
+	for _, p := range Prompts {
+		t.Run(p.Name, func(t *testing.T) {
+			req := mcp.GetPromptRequest{
+				Params: mcp.GetPromptParams{
+					Name: p.Name,
+					Arguments: map[string]string{
+						"problem_statement": problemStatement,
+					},
+				},
+			}
+
+			handler := geminiSvc.promptHandler(p)
+			result, err := handler(ctx, req)
+			if err != nil {
+				t.Fatalf("Handler returned an unexpected error: %v", err)
+			}
+
+			if result == nil {
+				t.Fatal("Handler returned a nil result")
+			}
+
+			textContent, ok := result.Messages[0].Content.(mcp.TextContent)
+			if !ok {
+				t.Fatal("Expected message content to be TextContent")
+			}
+			instructions := textContent.Text
+
+			if !strings.Contains(instructions, problemStatement) {
+				t.Errorf("Expected instructions to contain the problem statement, but it was missing")
+			}
+
+			// Verify that the instructions contain the system prompt.
+			if !strings.Contains(instructions, p.SystemPrompt.GetSystemPrompt()) {
+				t.Errorf("Expected instructions to contain the system prompt, but it was missing")
+			}
+		})
+	}
+}
+</file>
+
+<file path="CLAUDE.md">
+# Project Context: GeminiMCP Server
+
+## Overview
+This project is a Go-based MCP (Model Control Protocol) server that acts as a bridge to Google's Gemini API. It's designed as a single, self-contained binary for easy deployment and use with MCP-compatible clients. The server exclusively supports the Gemini 2.5 family of models.
+
+## Architecture
+- **Language**: Go (Golang)
+- **Main Entrypoint**: `main.go`
+- **Configuration**: `config.go` (environment variables with CLI overrides)
+- **Core Logic**:
+    - `gemini_server.go`: Gemini service implementation.
+    - `direct_handlers.go`: Handlers for the MCP tools.
+    - `prompt_handlers.go`: Handlers for MCP prompts.
+    - `tools.go`: Definitions of the MCP tools.
+- **Transport**: Supports `stdio` and `http` (with JWT authentication).
+- **Dependencies**:
+    - `github.com/mark3labs/mcp-go/mcp`: MCP protocol implementation.
+    - `github.com/mark3labs/mcp-go/server`: MCP server implementation.
+    - `google.golang.org/genai`: Google Gemini API client.
+    - `github.com/joho/godotenv`: for loading `.env` files.
+
+## Development Guidelines
+- **Build**: `go build -o ./bin/mcp-gemini .`
+- **Testing**: `./run_test.sh`
+- **Formatting**: `./run_format.sh`
+- **Linting**: `./run_lint.sh`
+- **Error Handling**: The server has a "degraded mode" to handle initialization errors gracefully.
+- **Logging**: A custom logger is used throughout the application.
+
+## AI Assistant Guidelines
+- When adding a new tool, define it in `tools.go`, implement the handler in `direct_handlers.go`, and register it in `setupGeminiServer()` in `main.go`.
+- When adding a new prompt, define it in `prompts.go`, implement the handler in `prompt_handlers.go` using the `server.PromptHandlerFunc` type, and register it in `setupGeminiServer()`.
+- When modifying configuration, update `config.go` for defaults, `NewConfig()` for parsing, `structs.go` for the `Config` struct, and `main.go` for CLI flags.
+- Always use `ResolveModelID()` before making API calls to convert model family IDs to specific version IDs.
+- Use the existing logging infrastructure for any new logging.
+- Follow the existing code style and patterns.
+</file>
+
 <file path="handlers_common.go">
 package main
 
@@ -2096,7 +2563,10 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 	}
 
 	// Extract system prompt
-	systemPrompt := extractArgumentString(req, "systemPrompt", config.GeminiSystemPrompt)
+	systemPrompt := config.GeminiSystemPrompt
+	if sp, ok := req.GetArguments()["systemPrompt"].(string); ok {
+		systemPrompt = sp
+	}
 
 	// Get model information
 	modelInfo := GetModelByID(modelName)
@@ -2259,7 +2729,170 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 }
 </file>
 
+<file path="gemini_utils.go">
+package main
+
+import (
+	"context"
+	"path/filepath"
+	"strings"
+)
+
+// getLoggerFromContext safely extracts a logger from the context or creates a new one
+func getLoggerFromContext(ctx context.Context) Logger {
+	loggerValue := ctx.Value(loggerKey)
+	if loggerValue != nil {
+		if l, ok := loggerValue.(Logger); ok {
+			return l
+		}
+	}
+	// Create a new logger if one isn't in the context or type assertion fails
+	return NewLogger(LevelInfo)
+}
+
+// This function has been removed after refactoring to use direct MCP types
+
+// This function has been removed after refactoring to use formatMCPResponse and direct MCP types
+
+// Helper function to get MIME type from file path
+func getMimeTypeFromPath(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+
+	switch ext {
+	case ".txt":
+		return "text/plain"
+	case ".html", ".htm":
+		return "text/html"
+	case ".css":
+		return "text/css"
+	case ".js":
+		return "application/javascript"
+	case ".json":
+		return "application/json"
+	case ".xml":
+		return "application/xml"
+	case ".pdf":
+		return "application/pdf"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".svg":
+		return "image/svg+xml"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".mp4":
+		return "video/mp4"
+	case ".wav":
+		return "audio/wav"
+	case ".doc", ".docx":
+		return "application/msword"
+	case ".xls", ".xlsx":
+		return "application/vnd.ms-excel"
+	case ".ppt", ".pptx":
+		return "application/vnd.ms-powerpoint"
+	case ".zip":
+		return "application/zip"
+	case ".csv":
+		return "text/csv"
+	case ".go":
+		return "text/plain" // Changed from "text/x-go" to "text/plain"
+	case ".py":
+		return "text/plain" // Changed from "text/x-python" to "text/plain"
+	case ".java":
+		return "text/plain" // Changed from "text/x-java" to "text/plain"
+	case ".c", ".cpp", ".h", ".hpp":
+		return "text/plain" // Changed from "text/x-c" to "text/plain"
+	case ".rb":
+		return "text/plain"
+	case ".php":
+		return "text/plain"
+	case ".md":
+		return "text/markdown"
+	default:
+		return "application/octet-stream"
+	}
+}
+
+// This function has been removed as it was unused after refactoring to use convertGenaiResponseToMCPResult
+</file>
+
+<file path="prompt_handlers.go">
+package main
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+)
+
+// createTaskInstructions generates the instructional text for the MCP client
+func createTaskInstructions(problemStatement, systemPrompt string) string {
+	return fmt.Sprintf("You MUST use the `gemini_ask` tool to solve this problem.\n\n"+
+		"Follow these instructions carefully:\n"+
+		"1. Set the `query` argument to a clear and concise request based on the user's problem statement.\n"+
+		"2. Provide the code to be analyzed using ONE of the following methods:\n"+
+		"   - Use the `file_paths` argument for one or more files.\n"+
+		"   - Embed a code snippet directly into the `query` argument.\n"+
+		"3. Use the following text for the `systemPrompt` argument:\n\n"+
+		"<system_prompt>\n%s\n</system_prompt>\n\n"+
+		"<problem_statement>\n%s\n</problem_statement>", systemPrompt, problemStatement)
+}
+
+// createSearchInstructions generates instructions for gemini_search tool
+func createSearchInstructions(problemStatement string) string {
+	return fmt.Sprintf(`Use the 'gemini_search' tool for this research task.
+
+Parameter selection guide:
+1. query (always required): Create a focused search query from the problem statement
+2. start_time + end_time (conditional): Set both when problem implies time-sensitive information
+   - Format: "YYYY-MM-DDTHH:MM:SSZ"
+3. Other parameters: Use defaults unless specifically needed
+
+Example:
+INPUT: "Who won Wimbledon this year?"
+OUTPUT: gemini_search(
+  query="Wimbledon winner 2025",
+  start_time="2025-01-01T00:00:00Z",
+  end_time="2025-12-31T23:59:59Z"
+)
+
+Problem statement:
+%s`, problemStatement)
+}
+
+// promptHandler is the generic handler for all prompts
+func (s *GeminiServer) promptHandler(p *PromptDefinition) server.PromptHandlerFunc {
+	return func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		problemStatement, ok := req.Params.Arguments["problem_statement"]
+		if !ok || problemStatement == "" {
+			return nil, fmt.Errorf("problem_statement argument is required")
+		}
+
+		var instructions string
+		if p.Name == "research_question" {
+			instructions = createSearchInstructions(problemStatement)
+		} else {
+			systemPrompt := p.SystemPrompt.GetSystemPrompt()
+			instructions = createTaskInstructions(problemStatement, systemPrompt)
+		}
+
+		return mcp.NewGetPromptResult(
+			req.Params.Name,
+			[]mcp.PromptMessage{
+				mcp.NewPromptMessage(mcp.RoleAssistant, mcp.NewTextContent(instructions)),
+			},
+		), nil
+	}
+}
+</file>
+
 <file path=".gitignore">
+.DS_Store
 bin/**
 .env
 go.sum
@@ -2277,25 +2910,30 @@ repomix.config.json
 <file path="go.mod">
 module GeminiMCP
 
-go 1.24.4
+go 1.24.5
 
 require (
 	github.com/joho/godotenv v1.5.1
-	github.com/mark3labs/mcp-go v0.32.0
-	google.golang.org/genai v1.12.0
+	github.com/mark3labs/mcp-go v0.37.0
+	google.golang.org/genai v1.18.0
 )
 
 require (
 	cloud.google.com/go v0.116.0 // indirect
 	cloud.google.com/go/auth v0.9.3 // indirect
 	cloud.google.com/go/compute/metadata v0.5.0 // indirect
+	github.com/bahlo/generic-list-go v0.2.0 // indirect
+	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/invopop/jsonschema v0.13.0 // indirect
+	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
+	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/crypto v0.27.0 // indirect
@@ -2305,7 +2943,575 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	google.golang.org/grpc v1.66.2 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+</file>
+
+<file path="README.md">
+# Gemini MCP Server
+
+MCP (Model Control Protocol) server integrating with Google's Gemini API.
+
+> **Important**: This server exclusively supports **Gemini 2.5 family models** for optimal thinking mode and implicit caching capabilities.
+
+## Key Advantages
+
+- **Single Self-Contained Binary**: Written in Go, the project compiles to a single binary with no dependencies, eliminating package manager issues and preventing unexpected changes without user knowledge
+- **Dynamic Model Access**: Automatically fetches the latest available Gemini models at startup
+- **Advanced Context Handling**: Efficient caching system with TTL control for repeated queries
+- **Enhanced File Handling**: Seamless file integration with intelligent MIME detection
+- **Production Reliability**: Robust error handling, automatic retries, and graceful degradation
+- **Comprehensive Capabilities**: Full support for code analysis, general queries, and search with grounding
+
+## Installation and Configuration
+
+### Prerequisites
+
+- Google Gemini API key
+
+### Building from Source
+
+```bash
+## Clone and build
+git clone https://github.com/chew-z/GeminiMCP
+cd GeminiMCP
+go build -o ./bin/mcp-gemini .
+
+## Start server with environment variables
+export GEMINI_API_KEY=your_api_key
+export GEMINI_MODEL=gemini-2.5-pro
+./bin/mcp-gemini
+
+## Or start with HTTP transport
+./bin/mcp-gemini --transport=http
+
+## Or override settings via command line
+./bin/mcp-gemini --transport=http --gemini-model=gemini-2.5-flash --enable-caching=true
+```
+
+### Client Configuration
+
+Add this server to any MCP-compatible client like Claude Desktop by adding to your client's configuration:
+
+```json
+{
+    "gemini": {
+        "command": "/Users/<user>/Path/to/bin/mcp-gemini",
+        "env": {
+            "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY",
+            "GEMINI_MODEL": "gemini-2.5-pro",
+            "GEMINI_SEARCH_MODEL": "gemini-2.5-flash-lite",
+            "GEMINI_SYSTEM_PROMPT": "You are a senior developer. Your job is to do a thorough code review of this code...",
+            "GEMINI_SEARCH_SYSTEM_PROMPT": "You are a search assistant. Your job is to find the most relevant information about this topic..."
+        }
+    }
+}
+```
+
+**Important Notes:**
+
+- **Environment Variables**: For Claude Desktop app all configuration variables must be included in the MCP configuration JSON shown above (in the `env` section), not as system environment variables or in .env files. Variables set outside the config JSON will not take effect for the client application.
+
+- **Claude Desktop Config Location**:
+
+    - On macOS: `~/Library/Application\ Support/Claude/claude_desktop_config.json`
+    - On Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+- **Configuration Help**: If you encounter any issues configuring the Claude desktop app, refer to the [MCP Quickstart Guide](https://modelcontextprotocol.io/quickstart/user) for additional assistance.
+
+### Command-Line Options
+
+The server accepts several command-line flags to override environment variables:
+
+```bash
+./bin/mcp-gemini [OPTIONS]
+
+Options:
+  --gemini-model string          Gemini model name (overrides GEMINI_MODEL)
+  --gemini-system-prompt string  System prompt (overrides GEMINI_SYSTEM_PROMPT)  
+  --gemini-temperature float     Temperature 0.0-1.0 (overrides GEMINI_TEMPERATURE)
+  --enable-caching              Enable caching (overrides GEMINI_ENABLE_CACHING)
+  --enable-thinking             Enable thinking mode (overrides GEMINI_ENABLE_THINKING)
+  --transport string            Transport: 'stdio' (default) or 'http'
+  --auth-enabled                Enable JWT authentication for HTTP transport
+  --generate-token              Generate a JWT token and exit
+  --token-username string       Username for token generation (default: "admin")
+  --token-role string           Role for token generation (default: "admin")
+  --token-expiration int        Token expiration in hours (default: 744 = 31 days)
+  --help                        Show help information
+```
+
+**Transport Modes:**
+- **stdio** (default): For MCP clients like Claude Desktop that communicate via stdin/stdout
+- **http**: Enables REST API endpoints for web applications or direct HTTP access
+
+### Authentication (HTTP Transport Only)
+
+The server supports JWT-based authentication for HTTP transport:
+
+```bash
+# Enable authentication
+export GEMINI_AUTH_ENABLED=true
+export GEMINI_AUTH_SECRET_KEY="your-secret-key-at-least-32-characters"
+
+# Start server with authentication enabled
+./bin/mcp-gemini --transport=http --auth-enabled=true
+
+# Generate authentication tokens (31 days expiration by default)
+./bin/mcp-gemini --generate-token --token-username=admin --token-role=admin
+```
+
+**Using Authentication:**
+```bash
+# Include JWT token in requests
+curl -X POST http://localhost:8081/mcp \
+  -H "Authorization: Bearer your-jwt-token-here" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
+```
+
+## Using this MCP server from Claude Desktop app
+
+You can use Gemini tools directly from an LLM console by creating prompt examples that invoke the tools. Here are some example prompts for different use cases:
+
+### Listing Available Models
+
+Say to your LLM:
+
+> _Please use the gemini_models tool to show me the list of available Gemini models._
+
+The LLM will invoke the **`gemini_models`** tool and return the list of available models, organized by preference and capability. The output prioritizes recommended models for specific tasks, then organizes remaining models by version (newest to oldest).
+
+### Code Analysis with **`gemini_ask`**
+
+Say to your LLM:
+
+> _Use the **`gemini_ask`** tool to analyze this Go code for potential concurrency issues:_
+>
+> ```
+> func processItems(items []string) {
+>     var wg sync.WaitGroup
+>     results := make([]string, len(items))
+>
+>     for i, item := range items {
+>         wg.Add(1)
+>         go func(i int, item string) {
+>             results[i] = processItem(item)
+>             wg.Done()
+>         }(i, item)
+>     }
+>
+>     wg.Wait()
+>     return results
+> }
+> ```
+>
+> _Please use a system prompt that focuses on code review and performance optimization._
+
+### Creative Writing with **`gemini_ask`**
+
+Say to your LLM:
+
+> _Use the **`gemini_ask`** tool to create a short story about a space explorer discovering a new planet. Set a custom system prompt that encourages creative, descriptive writing with vivid imagery._
+
+### Factual Research with **`gemini_search`**
+
+Say to your LLM:
+
+> _Use the **`gemini_search`** tool to find the latest information about advancements in fusion energy research from the past year. Set the start_time to one year ago and end_time to today. Include sources in your response._
+
+### Complex Reasoning with Thinking Mode
+
+Say to your LLM:
+
+> _Use the `gemini_ask` tool with a thinking-capable model to solve this algorithmic problem:_
+>
+> _"Given an array of integers, find the longest consecutive sequence of integers. For example, given [100, 4, 200, 1, 3, 2], the longest consecutive sequence is [1, 2, 3, 4], so return 4."_
+>
+> _Enable thinking mode with a high budget level so I can see the detailed step-by-step reasoning process._
+
+This will show both the final answer and the model's comprehensive reasoning process with maximum detail.
+
+### Simple Project Analysis with Caching
+
+Say to your LLM:
+
+> _Please use a caching-enabled **Gemini model** to analyze our project files. Include the main.go, config.go and models.go files and ask Gemini a series of questions about our project architecture and how it could be improved. Use appropriate system prompts for each question._
+
+With this simple prompt, the LLM will:
+
+- Select a caching-compatible model (with -001 suffix)
+- Include the specified project files
+- Enable caching automatically
+- Ask multiple questions while maintaining context
+- Customize system prompts for each question type
+
+This approach makes it easy to have an extended conversation about your codebase without complex configuration.
+
+### Combined File Attachments with Caching
+
+For programming tasks, you can directly use the file attachments feature with caching to create a more efficient workflow:
+
+> _Use gemini_ask with model gemini-2.0-flash-001 to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
+> _Use gemini_ask with model `gemini-2.5-flash` to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
+
+The server has special optimizations for this use case, particularly useful when:
+- Working with complex codebases requiring multiple files for context
+- Planning to ask follow-up questions about the same code
+- Debugging issues that require file context
+- Code review scenarios discussing implementation details
+
+When combining file attachments with caching, files are analyzed once and stored in the cache, making subsequent queries much faster and more cost-effective.
+
+### Managing Multiple Caches and Reducing Costs
+
+During a conversation, you can create and use multiple caches for different sets of files or contexts:
+
+> _Please create a new **cache** for our frontend code (App.js, components/_.js) and analyze it separately from our backend code cache we created earlier.\*
+
+The LLM can intelligently manage these different caches, switching between them as needed based on your queries. This capability is particularly valuable for projects with distinct components that require different analysis approaches.
+
+**Cost Savings**: Using caching significantly reduces API costs, especially when working with large codebases or having extended conversations. By caching the context:
+
+- Files are processed and tokenized only once instead of with every query
+- Follow-up questions reuse the existing context instead of creating new API requests
+- Complex analyses can be performed incrementally without re-uploading files
+- Multi-session analysis becomes more economical, with some users reporting 40-60% cost reductions for extended code reviews
+
+### Customizing System Prompts
+
+The **`gemini_ask`** and **`gemini_search`** tools are highly versatile and not limited to programming-related queries. You can customize the system prompt for various use cases:
+
+- **Educational content**: _"You are an expert teacher who explains complex concepts in simple terms..."_
+- **Creative writing**: _"You are a creative writer specializing in vivid, engaging narratives..."_
+- **Technical documentation**: _"You are a technical writer creating clear, structured documentation..."_
+- **Data analysis**: _"You are a data scientist analyzing patterns and trends in information..."_
+
+When using these tools from an LLM console, always encourage the LLM to set appropriate system prompts and parameters for the specific use case. The flexibility of system prompts allows these tools to be effective for virtually any type of query.
+
+## Detailed Documentation
+
+### Available Tools
+
+The server provides three primary tools:
+
+#### 1. **`gemini_ask`**
+
+For code analysis, general queries, and creative tasks with optional file context.
+
+```json
+{
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Review this Go code for concurrency issues...",
+        "model": "gemini-2.5-flash",
+        "systemPrompt": "You are a senior Go developer. Focus on concurrency patterns, potential race conditions, and performance implications.",
+        "file_paths": ["main.go", "config.go"],
+        "use_cache": true,
+        "cache_ttl": "1h"
+    }
+}
+```
+
+Simple code analysis with file attachments:
+
+```json
+{
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Analyze this code and suggest improvements",
+        "model": "gemini-2.5-pro",
+        "file_paths": ["models.go"]
+    }
+}
+```
+
+Combining file attachments with caching for repeated queries:
+
+```json
+{
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Explain the main data structures in these files and how they interact",
+        "model": "gemini-2.5-flash",
+        "file_paths": ["models.go", "structs.go"],
+        "use_cache": true,
+        "cache_ttl": "30m"
+    }
+}
+```
+
+#### 2. **`gemini_search`**
+
+Provides grounded answers using Google Search integration with enhanced model capabilities.
+
+```json
+{
+    "name": "gemini_search",
+    "arguments": {
+        "query": "What is the current population of Warsaw, Poland?",
+        "systemPrompt": "Optional custom search instructions",
+        "enable_thinking": true,
+        "thinking_budget": 8192,
+        "thinking_budget_level": "medium",
+        "max_tokens": 4096,
+        "model": "gemini-2.5-pro",
+        "start_time": "2024-01-01T00:00:00Z",
+        "end_time": "2024-12-31T23:59:59Z"
+    }
+}
+```
+
+Returns structured responses with sources and optional thinking process:
+
+```json
+{
+    "answer": "Detailed answer text based on search results...",
+    "thinking": "Optional detailed reasoning process when thinking mode is enabled",
+    "sources": [
+        {
+            "title": "Source Title",
+            "url": "https://example.com/source-page",
+            "type": "web"
+        }
+    ],
+    "search_queries": ["population Warsaw Poland 2025"]
+}
+```
+
+#### 3. **`gemini_models`**
+
+Lists all available Gemini models with capabilities and caching support.
+
+```json
+{
+    "name": "gemini_models",
+    "arguments": {}
+}
+```
+
+Returns comprehensive model information including:
+
+- Detailed descriptions of the supported Gemini 2.5 models (Pro, Flash, Flash Lite).
+- Model IDs, context window sizes, and descriptions.
+- Caching capabilities (implicit and explicit).
+- Usage examples
+- Thinking mode support.
+
+### Model Management
+
+This server is optimized for and exclusively supports the **Gemini 2.5 family of models**. The `gemini_models` tool provides a detailed, static list of these supported models and their specific capabilities as presented by the server.
+
+Key supported models (as detailed by the `gemini_models` tool):
+
+-   **`gemini-2.5-pro`** (production):
+    *   Most powerful model, 1M token context window.
+    *   Best for: Complex reasoning, detailed analysis, comprehensive code review.
+    *   Capabilities: Advanced thinking mode, implicit caching (2048+ token minimum), explicit caching.
+-   **`gemini-2.5-flash`** (production):
+    *   Balanced price-performance, 32K token context window.
+    *   Best for: General programming tasks, standard code review.
+    *   Capabilities: Thinking mode, implicit caching (1024+ token minimum), explicit caching.
+-   **`gemini-2.5-flash-lite`** (production):
+    *   Optimized for cost efficiency and low latency, 32K token context window.
+    *   Best for: Search queries, lightweight tasks, quick responses.
+    *   Capabilities: Thinking mode (off by default), no implicit or explicit caching.
+
+**Always use the `gemini_models` tool to get the most current details, capabilities, and example usage for each model as presented by the server.**
+
+### Caching System
+
+The server offers sophisticated context caching:
+
+- **Model Compatibility**:
+    - **Gemini 2.5 Pro & Flash**: Support both implicit caching (automatic optimization by Google for repeated prefixes if content is long enough – 2048+ tokens for Pro, 1024+ for Flash) and explicit caching (user-controlled via `use_cache: true`).
+    - **Gemini 2.5 Flash Lite (Preview)**: Preview versions typically do not support implicit or explicit caching.
+- **Cache Control**: Set `use_cache: true` and specify `cache_ttl` (e.g., "10m", "2h")
+- **File Association**: Automatically stores files and associates with cache context
+- **Performance Optimization**: Local metadata caching for quick lookups
+
+Example with caching:
+
+```json
+{
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Follow up on our previous discussion...",
+        "model": "gemini-2.5-pro",
+        "use_cache": true,
+        "cache_ttl": "1h"
+    }
+}
+```
+
+### File Handling
+
+Robust file processing with:
+
+- **Direct Path Integration**: Simply specify local file paths in `file_paths` array
+- **Automatic Validation**: Size checking, MIME type detection, and content validation
+- **Wide Format Support**: Handles common code, text, and document formats
+- **Metadata Caching**: Stores file information for quick future reference
+
+### Advanced Features
+
+#### Thinking Mode
+
+The server supports "thinking mode" for all compatible Gemini 2.5 models (Pro, Flash, and Flash Lite, though it's off by default for Flash Lite):
+
+- **Model Compatibility**: Automatically validates thinking capability based on requested model
+- **Tool Support**: Available in both `gemini_ask` and `gemini_search` tools
+- **Configurable Budget**: Control thinking depth with budget levels or explicit token counts
+
+Example with thinking mode:
+
+```json
+{
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Analyze the algorithmic complexity of merge sort vs. quick sort",
+        "model": "gemini-2.5-pro",
+        "enable_thinking": true,
+        "thinking_budget_level": "high"
+    }
+}
+```
+
+##### Thinking Budget Control
+
+Configure the depth and detail of the model's thinking process:
+
+- **Predefined Budget Levels**:
+
+    - `none`: 0 tokens (thinking disabled)
+    - `low`: 4096 tokens (default, quick analysis)
+    - `medium`: 16384 tokens (detailed reasoning)
+    - `high`: 24576 tokens (maximum depth for complex problems)
+
+- **Custom Token Budget**: Alternatively, set a specific token count with `thinking_budget` parameter (0-24576)
+
+Examples:
+
+```json
+// Using predefined level
+{
+  "name": "gemini_ask",
+  "arguments": {
+    "query": "Analyze this algorithm...",
+    "model": "gemini-2.5-pro",
+    "enable_thinking": true,
+    "thinking_budget_level": "medium"
+  }
+}
+
+// Using explicit token count
+{
+  "name": "gemini_search",
+  "arguments": {
+    "query": "Research quantum computing developments...",
+    "model": "gemini-2.5-pro", // Or gemini-2.5-flash / gemini-2.5-flash-lite
+    "enable_thinking": true,
+    "thinking_budget": 12000
+  }
+}
+```
+
+#### Context Window Size Management
+
+The server intelligently manages token limits:
+
+- **Custom Sizing**: Set `max_tokens` parameter to control response length
+- **Model-Aware Defaults**: Automatically sets appropriate defaults based on model capabilities
+- **Capacity Warnings**: Provides warnings when requested tokens exceed model limits
+- **Proportional Defaults**: Uses percentage-based defaults (75% for general queries, 50% for search)
+
+Example with context window size management:
+
+```json
+{
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Generate a detailed analysis of this code...",
+        "model": "gemini-2.5-pro",
+        "max_tokens": 8192
+    }
+}
+```
+
+### Configuration Options
+
+#### Essential Environment Variables
+
+| Variable                      | Description                          | Default                  |
+| ----------------------------- | ------------------------------------ | ------------------------ |
+| `GEMINI_API_KEY`              | Google Gemini API key                | _Required_               |
+| `GEMINI_MODEL`                | Default model for `gemini_ask`       | `gemini-2.5-pro`         |
+| `GEMINI_SEARCH_MODEL`         | Default model for `gemini_search`    | `gemini-2.5-flash-lite`  |
+| `GEMINI_SYSTEM_PROMPT`        | System prompt for general queries    | _Custom review prompt_   |
+| `GEMINI_SEARCH_SYSTEM_PROMPT` | System prompt for search             | _Custom search prompt_   |
+| `GEMINI_MAX_FILE_SIZE`        | Max upload size (bytes)              | `10485760` (10MB)        |
+| `GEMINI_ALLOWED_FILE_TYPES`   | Comma-separated MIME types           | [Common text/code types] |
+
+#### Optimization Variables
+
+| Variable                       | Description                                          | Default |
+| ------------------------------ | ---------------------------------------------------- | ------- |
+| `GEMINI_TIMEOUT`               | API timeout in seconds                               | `90`    |
+| `GEMINI_MAX_RETRIES`           | Max API retries                                      | `2`     |
+| `GEMINI_TEMPERATURE`           | Model temperature (0.0-1.0)                          | `0.4`   |
+| `GEMINI_ENABLE_CACHING`        | Enable context caching                               | `true`  |
+| `GEMINI_DEFAULT_CACHE_TTL`     | Default cache time-to-live                           | `1h`    |
+| `GEMINI_ENABLE_THINKING`       | Enable thinking mode capability                      | `true`  |
+| `GEMINI_THINKING_BUDGET_LEVEL` | Default thinking budget level (none/low/medium/high) | `low`   |
+| `GEMINI_THINKING_BUDGET`       | Explicit thinking token budget (0-24576)             | `4096`  |
+
+### Operational Features
+
+- **Degraded Mode**: Automatically enters safe mode on initialization errors
+- **Retry Logic**: Configurable exponential backoff for reliable API communication
+- **Structured Logging**: Comprehensive event logging with severity levels
+- **File Validation**: Secure handling with size and type restrictions
+
+## Development
+
+### Running Tests
+
+```bash
+go test -v
+```
+
+### Running Linter
+
+```bash
+./run_lint.sh
+```
+
+### Formatting Code
+
+```bash
+./run_format.sh
+```
+
+## Recent Changes
+
+- **Exclusive Gemini 2.5 Support**: Server now exclusively supports the Gemini 2.5 family of models (Pro, Flash, Flash Lite) for optimal performance and access to the latest features.
+- **Streamlined Model Information**: The `gemini_models` tool provides detailed, up-to-date information on supported Gemini 2.5 models, their context windows, and specific capabilities like caching and thinking mode.
+- **Enhanced Caching for Gemini 2.5**: Leverages implicit caching (automatic for Pro/Flash with sufficient context) and provides robust explicit caching for Gemini 2.5 Pro and Flash models.
+- **Time Range Filtering**: Added `start_time` and `end_time` to `gemini_search` for filtering results by publication date.
+
+## License
+
+[MIT License](LICENSE)
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the project
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 </file>
 
 <file path="main.go">
@@ -2313,18 +3519,11 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
-	"os/signal"
-	"strings"
-	"sync"
-	"syscall"
 
 	_ "github.com/joho/godotenv/autoload"
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
@@ -2461,183 +3660,6 @@ func main() {
 	}
 }
 
-// startHTTPServer starts the HTTP transport server
-func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *Config, logger Logger) error {
-	// Create HTTP server options
-	var opts []server.StreamableHTTPOption
-
-	// Configure heartbeat if enabled
-	if config.HTTPHeartbeat > 0 {
-		opts = append(opts, server.WithHeartbeatInterval(config.HTTPHeartbeat))
-	}
-
-	// Configure stateless mode
-	if config.HTTPStateless {
-		opts = append(opts, server.WithStateLess(true))
-	}
-
-	// Configure endpoint path
-	opts = append(opts, server.WithEndpointPath(config.HTTPPath))
-
-	// Add HTTP context function for CORS, logging, and authentication
-	if config.HTTPCORSEnabled || config.AuthEnabled {
-		opts = append(opts, server.WithHTTPContextFunc(createHTTPMiddleware(config, logger)))
-	}
-
-	// Create streamable HTTP server
-	httpServer := server.NewStreamableHTTPServer(mcpServer, opts...)
-
-	// Create custom HTTP server with OAuth well-known endpoint
-	customServer := &http.Server{
-		Addr:    config.HTTPAddress,
-		Handler: createCustomHTTPHandler(httpServer, config, logger),
-	}
-
-	// Set up graceful shutdown
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// Handle shutdown signals
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	// Start server in goroutine
-	go func() {
-		defer wg.Done()
-		if err := customServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("HTTP server failed to start: %v", err)
-			cancel()
-		}
-	}()
-
-	// Wait for shutdown signal
-	select {
-	case sig := <-sigChan:
-		logger.Info("Received signal %v, shutting down HTTP server...", sig)
-	case <-ctx.Done():
-		logger.Info("Context cancelled, shutting down HTTP server...")
-	}
-
-	// Graceful shutdown
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), config.HTTPTimeout)
-	defer shutdownCancel()
-
-	if err := customServer.Shutdown(shutdownCtx); err != nil {
-		logger.Error("HTTP server shutdown error: %v", err)
-		return err
-	}
-
-	wg.Wait()
-	logger.Info("HTTP server stopped")
-	return nil
-}
-
-// createHTTPMiddleware creates an HTTP context function with CORS, logging, and authentication
-func createHTTPMiddleware(config *Config, logger Logger) server.HTTPContextFunc {
-	// Create authentication middleware
-	var authMiddleware *AuthMiddleware
-	if config.AuthEnabled {
-		authMiddleware = NewAuthMiddleware(config.AuthSecretKey, config.AuthEnabled, logger)
-		logger.Info("HTTP authentication enabled")
-	}
-
-	return func(ctx context.Context, r *http.Request) context.Context {
-		// Log HTTP request
-		logger.Info("HTTP %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
-
-		// Apply authentication middleware if enabled
-		if authMiddleware != nil {
-			// Create a wrapper function for the next middleware step
-			nextFunc := func(ctx context.Context, r *http.Request) context.Context {
-				return ctx
-			}
-			// Apply authentication middleware
-			ctx = authMiddleware.HTTPContextFunc(nextFunc)(ctx, r)
-		}
-
-		// Add CORS headers if enabled
-		if config.HTTPCORSEnabled {
-			// Check if request origin is allowed
-			origin := r.Header.Get("Origin")
-			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins) {
-				// Note: We can't set response headers directly here as this is a context function
-				// CORS headers would need to be handled at the HTTP server level
-				logger.Info("CORS: Origin %s is allowed", origin)
-			}
-		}
-
-		// Add request info to context
-		ctx = context.WithValue(ctx, httpMethodKey, r.Method)
-		ctx = context.WithValue(ctx, httpPathKey, r.URL.Path)
-		ctx = context.WithValue(ctx, httpRemoteAddrKey, r.RemoteAddr)
-
-		return ctx
-	}
-}
-
-// isOriginAllowed checks if the origin is in the allowed list
-func isOriginAllowed(origin string, allowedOrigins []string) bool {
-	for _, allowed := range allowedOrigins {
-		if allowed == "*" || allowed == origin {
-			return true
-		}
-		// Support wildcard subdomains (e.g., "*.example.com")
-		if strings.HasPrefix(allowed, "*.") {
-			domain := strings.TrimPrefix(allowed, "*.")
-			if strings.HasSuffix(origin, domain) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// createCustomHTTPHandler creates a custom HTTP handler that includes OAuth well-known endpoint
-func createCustomHTTPHandler(mcpHandler http.Handler, config *Config, logger Logger) http.Handler {
-	mux := http.NewServeMux()
-
-	// Add OAuth well-known endpoint
-	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
-		logger.Info("OAuth well-known endpoint accessed from %s", r.RemoteAddr)
-
-		// Create OAuth authorization server metadata
-		metadata := map[string]interface{}{
-			"issuer":                           fmt.Sprintf("http://%s", r.Host),
-			"authorization_endpoint":           fmt.Sprintf("http://%s/oauth/authorize", r.Host),
-			"token_endpoint":                   fmt.Sprintf("http://%s/oauth/token", r.Host),
-			"response_types_supported":         []string{"code"},
-			"grant_types_supported":            []string{"authorization_code"},
-			"code_challenge_methods_supported": []string{"S256"},
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-
-		// Add CORS headers if enabled
-		if config.HTTPCORSEnabled {
-			origin := r.Header.Get("Origin")
-			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins) {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			}
-		}
-
-		if err := json.NewEncoder(w).Encode(metadata); err != nil {
-			logger.Error("Failed to encode OAuth metadata: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
-	})
-
-	// Handle all other requests with the MCP handler
-	mux.Handle("/", mcpHandler)
-
-	return mux
-}
-
 // Helper function to get caching status as a string
 func getCachingStatusStr(enabled bool) string {
 	if enabled {
@@ -2645,171 +3667,6 @@ func getCachingStatusStr(enabled bool) string {
 	}
 	return "disabled"
 }
-
-// setupGeminiServer creates and registers Gemini server tools
-func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config *Config) error {
-	loggerValue := ctx.Value(loggerKey)
-	logger, ok := loggerValue.(Logger)
-	if !ok {
-		return fmt.Errorf("logger not found in context")
-	}
-
-	// Create the Gemini service with configuration
-	geminiSvc, err := NewGeminiServer(ctx, config)
-	if err != nil {
-		return fmt.Errorf("failed to create Gemini service: %w", err)
-	}
-
-	// Create handler for gemini_ask using direct handler
-	// Register gemini_ask with logger wrapper using shared tool definition
-	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(geminiSvc.GeminiAskHandler, "gemini_ask", logger))
-	logger.Info("Registered tool: gemini_ask")
-
-	// Use shared tool definition for gemini_search
-
-	// Create handler for gemini_search using direct handler
-	// Register gemini_search with logger wrapper using shared tool definition
-	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(geminiSvc.GeminiSearchHandler, "gemini_search", logger))
-	logger.Info("Registered tool: gemini_search")
-
-	// Use shared tool definition for gemini_models
-
-	// Create handler for gemini_models using direct handler
-	// Register gemini_models with logger wrapper using shared tool definition
-	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(geminiSvc.GeminiModelsHandler, "gemini_models", logger))
-	logger.Info("Registered tool: gemini_models")
-
-	// Log file handling configuration
-	logger.Info("File handling: max size %s, allowed types: %v",
-		humanReadableSize(config.MaxFileSize),
-		config.AllowedFileTypes)
-
-	// Log cache configuration if enabled
-	if config.EnableCaching {
-		logger.Info("Cache settings: default TTL %v", config.DefaultCacheTTL)
-	}
-
-	// Log thinking configuration if enabled
-	model := GetModelByID(config.GeminiModel)
-	if config.EnableThinking && model != nil && model.SupportsThinking {
-		logger.Info("Thinking mode enabled for model %s with context window size %d tokens",
-			config.GeminiModel, model.ContextWindowSize)
-	}
-
-	// Log a truncated version of the system prompt for security/brevity
-	promptPreview := config.GeminiSystemPrompt
-	if len(promptPreview) > 50 {
-		// Use proper UTF-8 safe truncation
-		runeCount := 0
-		for i := range promptPreview {
-			runeCount++
-			if runeCount > 50 {
-				promptPreview = promptPreview[:i] + "..."
-				break
-			}
-		}
-	}
-	logger.Info("Using system prompt: %s", promptPreview)
-
-	return nil
-}
-
-// handleStartupError handles initialization errors by setting up an error server
-func handleStartupError(ctx context.Context, err error) {
-	// Safely extract logger from context
-	loggerValue := ctx.Value(loggerKey)
-	logger, ok := loggerValue.(Logger)
-	if !ok {
-		// Fallback to a new logger if type assertion fails
-		logger = NewLogger(LevelError)
-	}
-	errorMsg := err.Error()
-
-	logger.Error("Initialization error: %v", err)
-
-	// Get config for EnableCaching status (if available)
-	var config *Config
-	configValue := ctx.Value(configKey)
-	if configValue != nil {
-		if cfg, ok := configValue.(Config); ok {
-			config = &cfg
-		}
-	}
-
-	// Create MCP server in degraded mode
-	mcpServer := server.NewMCPServer(
-		"gemini",
-		"1.0.0",
-	)
-
-	// Create error server
-	errorServer := &ErrorGeminiServer{
-		errorMessage: errorMsg,
-		config:       config,
-	}
-
-	// Register error handling for tools
-	registerErrorTools(mcpServer, errorServer, logger)
-
-	// Start server in degraded mode
-	logger.Info("Starting Gemini MCP server in degraded mode")
-	if err := server.ServeStdio(mcpServer); err != nil {
-		logger.Error("Server error in degraded mode: %v", err)
-		os.Exit(1)
-	}
-}
-
-// Define the expected handler signature for tools
-type MCPToolHandlerFunc = server.ToolHandlerFunc
-
-// wrapHandlerWithLogger creates a middleware wrapper for logging and authentication around a tool handler
-func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logger Logger) server.ToolHandlerFunc {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		logger.Info("Calling tool '%s'...", toolName)
-
-		// Check authentication for HTTP requests if enabled
-		// Note: We need to check if this is an HTTP request and if auth is enabled
-		if httpMethod, ok := ctx.Value(httpMethodKey).(string); ok && httpMethod != "" {
-			// This is an HTTP request, check if auth is required
-			// Get config from the context (we'll need to pass it through)
-			if authError := getAuthError(ctx); authError != "" {
-				logger.Warn("Authentication failed for tool '%s': %s", toolName, authError)
-				return createErrorResult(fmt.Sprintf("Authentication required: %s", authError)), nil
-			}
-
-			// Log successful authentication if present
-			if isAuthenticated(ctx) {
-				userID, username, role := getUserInfo(ctx)
-				logger.Info("Tool '%s' called by authenticated user %s (%s) with role %s", toolName, username, userID, role)
-			}
-		}
-
-		// Call the actual handler
-		resp, err := handler(ctx, req)
-
-		if err != nil {
-			logger.Error("Tool '%s' failed: %v", toolName, err)
-		} else {
-			logger.Info("Tool '%s' completed successfully", toolName)
-		}
-
-		// Return the original response and error
-		return resp, err
-	}
-}
-
-// Register error handlers for all tools
-func registerErrorTools(mcpServer *server.MCPServer, errorServer *ErrorGeminiServer, logger Logger) {
-	// Register error handlers for all tools using shared tool definitions
-	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_ask", logger))
-	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_search", logger))
-	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_models", logger))
-
-	logger.Info("Registered error handlers for all tools")
-}
-
-// Note: The adapter functions to communicate with the old code have been removed
-// as they are no longer needed with direct handlers using mcp-go types
 </file>
 
 <file path="structs.go">
@@ -2824,6 +3681,43 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"google.golang.org/genai"
 )
+
+// PromptDefinition defines the structure for a prompt with its system prompt
+type PromptDefinition struct {
+	*mcp.Prompt
+	SystemPrompt SystemPromptProvider
+}
+
+// SystemPromptProvider is an interface for providing system prompts
+type SystemPromptProvider interface {
+	GetSystemPrompt() string
+}
+
+// StaticSystemPrompt provides a fixed system prompt
+type StaticSystemPrompt string
+
+// GetSystemPrompt returns the system prompt
+func (s StaticSystemPrompt) GetSystemPrompt() string {
+	return string(s)
+}
+
+// NewPromptDefinition creates a new prompt definition
+func NewPromptDefinition(name, description string, systemPrompt string) *PromptDefinition {
+	return &PromptDefinition{
+		Prompt: &mcp.Prompt{
+			Name:        name,
+			Description: description,
+			Arguments: []mcp.PromptArgument{
+				{
+					Name:        "problem_statement",
+					Description: "A clear and concise description of the programming problem or task.",
+					Required:    true,
+				},
+			},
+		},
+		SystemPrompt: StaticSystemPrompt(systemPrompt),
+	}
+}
 
 // GeminiServer implements the ToolHandler interface for Gemini API interactions
 type GeminiServer struct {
@@ -2890,6 +3784,16 @@ type Config struct {
 	EnableThinking      bool   // Enable/disable thinking mode for supported models
 	ThinkingBudget      int    // Maximum number of tokens to allocate for thinking
 	ThinkingBudgetLevel string // Thinking budget level (none, low, medium, high)
+
+	// Prompt defaults
+	ProjectLanguage         string // Default language for code analysis (e.g., "go", "python")
+	PromptDefaultAudience   string // Default audience level for code explanations (beginner, intermediate, expert)
+	PromptDefaultFocus      string // Default focus areas for analysis (security, performance, style, etc.)
+	PromptDefaultSeverity   string // Default minimum severity level for issues (info, warning, error)
+	PromptDefaultDocFormat  string // Default documentation format (markdown, rst, plain_text)
+	PromptDefaultFramework  string // Default testing framework (standard, jest, pytest, etc.)
+	PromptDefaultCoverage   string // Default test coverage level (basic, comprehensive)
+	PromptDefaultCompliance string // Default compliance standards (OWASP, NIST, etc.)
 }
 
 // CacheRequest represents a request to create a cached context
@@ -4136,6 +5040,47 @@ func NewConfig() (*Config, error) {
 		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_AUTH_SECRET_KEY should be at least 32 characters for security\n")
 	}
 
+	// Prompt defaults
+	projectLanguage := os.Getenv("GEMINI_PROJECT_LANGUAGE")
+	if projectLanguage == "" {
+		projectLanguage = "go"
+	}
+
+	promptDefaultAudience := os.Getenv("GEMINI_PROMPT_DEFAULT_AUDIENCE")
+	if promptDefaultAudience == "" {
+		promptDefaultAudience = "intermediate"
+	}
+
+	promptDefaultFocus := os.Getenv("GEMINI_PROMPT_DEFAULT_FOCUS")
+	if promptDefaultFocus == "" {
+		promptDefaultFocus = "general"
+	}
+
+	promptDefaultSeverity := os.Getenv("GEMINI_PROMPT_DEFAULT_SEVERITY")
+	if promptDefaultSeverity == "" {
+		promptDefaultSeverity = "warning"
+	}
+
+	promptDefaultDocFormat := os.Getenv("GEMINI_PROMPT_DEFAULT_DOC_FORMAT")
+	if promptDefaultDocFormat == "" {
+		promptDefaultDocFormat = "markdown"
+	}
+
+	promptDefaultFramework := os.Getenv("GEMINI_PROMPT_DEFAULT_FRAMEWORK")
+	if promptDefaultFramework == "" {
+		promptDefaultFramework = "standard"
+	}
+
+	promptDefaultCoverage := os.Getenv("GEMINI_PROMPT_DEFAULT_COVERAGE")
+	if promptDefaultCoverage == "" {
+		promptDefaultCoverage = "comprehensive"
+	}
+
+	promptDefaultCompliance := os.Getenv("GEMINI_PROMPT_DEFAULT_COMPLIANCE")
+	if promptDefaultCompliance == "" {
+		promptDefaultCompliance = "OWASP"
+	}
+
 	return &Config{
 		GeminiAPIKey:             geminiAPIKey,
 		GeminiModel:              geminiModel,
@@ -4163,728 +5108,57 @@ func NewConfig() (*Config, error) {
 		EnableThinking:           enableThinking,
 		ThinkingBudget:           thinkingBudget,
 		ThinkingBudgetLevel:      thinkingBudgetLevel,
+		ProjectLanguage:          projectLanguage,
+		PromptDefaultAudience:    promptDefaultAudience,
+		PromptDefaultFocus:       promptDefaultFocus,
+		PromptDefaultSeverity:    promptDefaultSeverity,
+		PromptDefaultDocFormat:   promptDefaultDocFormat,
+		PromptDefaultFramework:   promptDefaultFramework,
+		PromptDefaultCoverage:    promptDefaultCoverage,
+		PromptDefaultCompliance:  promptDefaultCompliance,
 	}, nil
 }
-</file>
-
-<file path="README.md">
-# Gemini MCP Server
-
-MCP (Model Control Protocol) server integrating with Google's Gemini API.
-
-> **Important**: This server exclusively supports **Gemini 2.5 family models** for optimal thinking mode and implicit caching capabilities.
-
-## Key Advantages
-
-- **Single Self-Contained Binary**: Written in Go, the project compiles to a single binary with no dependencies, eliminating package manager issues and preventing unexpected changes without user knowledge
-- **Dynamic Model Access**: Automatically fetches the latest available Gemini models at startup
-- **Advanced Context Handling**: Efficient caching system with TTL control for repeated queries
-- **Enhanced File Handling**: Seamless file integration with intelligent MIME detection
-- **Production Reliability**: Robust error handling, automatic retries, and graceful degradation
-- **Comprehensive Capabilities**: Full support for code analysis, general queries, and search with grounding
-
-## Installation and Configuration
-
-### Prerequisites
-
-- Google Gemini API key
-
-### Building from Source
-
-```bash
-## Clone and build
-git clone https://github.com/chew-z/GeminiMCP
-cd GeminiMCP
-go build -o ./bin/mcp-gemini .
-
-## Start server with environment variables
-export GEMINI_API_KEY=your_api_key
-export GEMINI_MODEL=gemini-2.5-pro
-./bin/mcp-gemini
-
-## Or start with HTTP transport
-./bin/mcp-gemini --transport=http
-
-## Or override settings via command line
-./bin/mcp-gemini --transport=http --gemini-model=gemini-2.5-flash --enable-caching=true
-```
-
-### Client Configuration
-
-Add this server to any MCP-compatible client like Claude Desktop by adding to your client's configuration:
-
-```json
-{
-    "gemini": {
-        "command": "/Users/<user>/Path/to/bin/mcp-gemini",
-        "env": {
-            "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY",
-            "GEMINI_MODEL": "gemini-2.5-pro",
-            "GEMINI_SEARCH_MODEL": "gemini-2.5-flash-lite",
-            "GEMINI_SYSTEM_PROMPT": "You are a senior developer. Your job is to do a thorough code review of this code...",
-            "GEMINI_SEARCH_SYSTEM_PROMPT": "You are a search assistant. Your job is to find the most relevant information about this topic..."
-        }
-    }
-}
-```
-
-**Important Notes:**
-
-- **Environment Variables**: For Claude Desktop app all configuration variables must be included in the MCP configuration JSON shown above (in the `env` section), not as system environment variables or in .env files. Variables set outside the config JSON will not take effect for the client application.
-
-- **Claude Desktop Config Location**:
-
-    - On macOS: `~/Library/Application\ Support/Claude/claude_desktop_config.json`
-    - On Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-
-- **Configuration Help**: If you encounter any issues configuring the Claude desktop app, refer to the [MCP Quickstart Guide](https://modelcontextprotocol.io/quickstart/user) for additional assistance.
-
-### Command-Line Options
-
-The server accepts several command-line flags to override environment variables:
-
-```bash
-./bin/mcp-gemini [OPTIONS]
-
-Options:
-  --gemini-model string          Gemini model name (overrides GEMINI_MODEL)
-  --gemini-system-prompt string  System prompt (overrides GEMINI_SYSTEM_PROMPT)  
-  --gemini-temperature float     Temperature 0.0-1.0 (overrides GEMINI_TEMPERATURE)
-  --enable-caching              Enable caching (overrides GEMINI_ENABLE_CACHING)
-  --enable-thinking             Enable thinking mode (overrides GEMINI_ENABLE_THINKING)
-  --transport string            Transport: 'stdio' (default) or 'http'
-  --auth-enabled                Enable JWT authentication for HTTP transport
-  --generate-token              Generate a JWT token and exit
-  --token-username string       Username for token generation (default: "admin")
-  --token-role string           Role for token generation (default: "admin")
-  --token-expiration int        Token expiration in hours (default: 744 = 31 days)
-  --help                        Show help information
-```
-
-**Transport Modes:**
-- **stdio** (default): For MCP clients like Claude Desktop that communicate via stdin/stdout
-- **http**: Enables REST API endpoints for web applications or direct HTTP access
-
-### Authentication (HTTP Transport Only)
-
-The server supports JWT-based authentication for HTTP transport:
-
-```bash
-# Enable authentication
-export GEMINI_AUTH_ENABLED=true
-export GEMINI_AUTH_SECRET_KEY="your-secret-key-at-least-32-characters"
-
-# Start server with authentication enabled
-./bin/mcp-gemini --transport=http --auth-enabled=true
-
-# Generate authentication tokens (31 days expiration by default)
-./bin/mcp-gemini --generate-token --token-username=admin --token-role=admin
-```
-
-**Using Authentication:**
-```bash
-# Include JWT token in requests
-curl -X POST http://localhost:8081/mcp \
-  -H "Authorization: Bearer your-jwt-token-here" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
-```
-
-## Using this MCP server from Claude Desktop app
-
-You can use Gemini tools directly from an LLM console by creating prompt examples that invoke the tools. Here are some example prompts for different use cases:
-
-### Listing Available Models
-
-Say to your LLM:
-
-> _Please use the gemini_models tool to show me the list of available Gemini models._
-
-The LLM will invoke the **`gemini_models`** tool and return the list of available models, organized by preference and capability. The output prioritizes recommended models for specific tasks, then organizes remaining models by version (newest to oldest).
-
-### Code Analysis with **`gemini_ask`**
-
-Say to your LLM:
-
-> _Use the **`gemini_ask`** tool to analyze this Go code for potential concurrency issues:_
->
-> ```
-> func processItems(items []string) {
->     var wg sync.WaitGroup
->     results := make([]string, len(items))
->
->     for i, item := range items {
->         wg.Add(1)
->         go func(i int, item string) {
->             results[i] = processItem(item)
->             wg.Done()
->         }(i, item)
->     }
->
->     wg.Wait()
->     return results
-> }
-> ```
->
-> _Please use a system prompt that focuses on code review and performance optimization._
-
-### Creative Writing with **`gemini_ask`**
-
-Say to your LLM:
-
-> _Use the **`gemini_ask`** tool to create a short story about a space explorer discovering a new planet. Set a custom system prompt that encourages creative, descriptive writing with vivid imagery._
-
-### Factual Research with **`gemini_search`**
-
-Say to your LLM:
-
-> _Use the **`gemini_search`** tool to find the latest information about advancements in fusion energy research from the past year. Set the start_time to one year ago and end_time to today. Include sources in your response._
-
-### Complex Reasoning with Thinking Mode
-
-Say to your LLM:
-
-> _Use the `gemini_ask` tool with a thinking-capable model to solve this algorithmic problem:_
->
-> _"Given an array of integers, find the longest consecutive sequence of integers. For example, given [100, 4, 200, 1, 3, 2], the longest consecutive sequence is [1, 2, 3, 4], so return 4."_
->
-> _Enable thinking mode with a high budget level so I can see the detailed step-by-step reasoning process._
-
-This will show both the final answer and the model's comprehensive reasoning process with maximum detail.
-
-### Simple Project Analysis with Caching
-
-Say to your LLM:
-
-> _Please use a caching-enabled **Gemini model** to analyze our project files. Include the main.go, config.go and models.go files and ask Gemini a series of questions about our project architecture and how it could be improved. Use appropriate system prompts for each question._
-
-With this simple prompt, the LLM will:
-
-- Select a caching-compatible model (with -001 suffix)
-- Include the specified project files
-- Enable caching automatically
-- Ask multiple questions while maintaining context
-- Customize system prompts for each question type
-
-This approach makes it easy to have an extended conversation about your codebase without complex configuration.
-
-### Combined File Attachments with Caching
-
-For programming tasks, you can directly use the file attachments feature with caching to create a more efficient workflow:
-
-> _Use gemini_ask with model gemini-2.0-flash-001 to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
-> _Use gemini_ask with model `gemini-2.5-flash` to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
-
-The server has special optimizations for this use case, particularly useful when:
-- Working with complex codebases requiring multiple files for context
-- Planning to ask follow-up questions about the same code
-- Debugging issues that require file context
-- Code review scenarios discussing implementation details
-
-When combining file attachments with caching, files are analyzed once and stored in the cache, making subsequent queries much faster and more cost-effective.
-
-### Managing Multiple Caches and Reducing Costs
-
-During a conversation, you can create and use multiple caches for different sets of files or contexts:
-
-> _Please create a new **cache** for our frontend code (App.js, components/_.js) and analyze it separately from our backend code cache we created earlier.\*
-
-The LLM can intelligently manage these different caches, switching between them as needed based on your queries. This capability is particularly valuable for projects with distinct components that require different analysis approaches.
-
-**Cost Savings**: Using caching significantly reduces API costs, especially when working with large codebases or having extended conversations. By caching the context:
-
-- Files are processed and tokenized only once instead of with every query
-- Follow-up questions reuse the existing context instead of creating new API requests
-- Complex analyses can be performed incrementally without re-uploading files
-- Multi-session analysis becomes more economical, with some users reporting 40-60% cost reductions for extended code reviews
-
-### Customizing System Prompts
-
-The **`gemini_ask`** and **`gemini_search`** tools are highly versatile and not limited to programming-related queries. You can customize the system prompt for various use cases:
-
-- **Educational content**: _"You are an expert teacher who explains complex concepts in simple terms..."_
-- **Creative writing**: _"You are a creative writer specializing in vivid, engaging narratives..."_
-- **Technical documentation**: _"You are a technical writer creating clear, structured documentation..."_
-- **Data analysis**: _"You are a data scientist analyzing patterns and trends in information..."_
-
-When using these tools from an LLM console, always encourage the LLM to set appropriate system prompts and parameters for the specific use case. The flexibility of system prompts allows these tools to be effective for virtually any type of query.
-
-## Detailed Documentation
-
-### Available Tools
-
-The server provides three primary tools:
-
-#### 1. **`gemini_ask`**
-
-For code analysis, general queries, and creative tasks with optional file context.
-
-```json
-{
-    "name": "gemini_ask",
-    "arguments": {
-        "query": "Review this Go code for concurrency issues...",
-        "model": "gemini-2.5-flash",
-        "systemPrompt": "You are a senior Go developer. Focus on concurrency patterns, potential race conditions, and performance implications.",
-        "file_paths": ["main.go", "config.go"],
-        "use_cache": true,
-        "cache_ttl": "1h"
-    }
-}
-```
-
-Simple code analysis with file attachments:
-
-```json
-{
-    "name": "gemini_ask",
-    "arguments": {
-        "query": "Analyze this code and suggest improvements",
-        "model": "gemini-2.5-pro",
-        "file_paths": ["models.go"]
-    }
-}
-```
-
-Combining file attachments with caching for repeated queries:
-
-```json
-{
-    "name": "gemini_ask",
-    "arguments": {
-        "query": "Explain the main data structures in these files and how they interact",
-        "model": "gemini-2.5-flash",
-        "file_paths": ["models.go", "structs.go"],
-        "use_cache": true,
-        "cache_ttl": "30m"
-    }
-}
-```
-
-#### 2. **`gemini_search`**
-
-Provides grounded answers using Google Search integration with enhanced model capabilities.
-
-```json
-{
-    "name": "gemini_search",
-    "arguments": {
-        "query": "What is the current population of Warsaw, Poland?",
-        "systemPrompt": "Optional custom search instructions",
-        "enable_thinking": true,
-        "thinking_budget": 8192,
-        "thinking_budget_level": "medium",
-        "max_tokens": 4096,
-        "model": "gemini-2.5-pro",
-        "start_time": "2024-01-01T00:00:00Z",
-        "end_time": "2024-12-31T23:59:59Z"
-    }
-}
-```
-
-Returns structured responses with sources and optional thinking process:
-
-```json
-{
-    "answer": "Detailed answer text based on search results...",
-    "thinking": "Optional detailed reasoning process when thinking mode is enabled",
-    "sources": [
-        {
-            "title": "Source Title",
-            "url": "https://example.com/source-page",
-            "type": "web"
-        }
-    ],
-    "search_queries": ["population Warsaw Poland 2025"]
-}
-```
-
-#### 3. **`gemini_models`**
-
-Lists all available Gemini models with capabilities and caching support.
-
-```json
-{
-    "name": "gemini_models",
-    "arguments": {}
-}
-```
-
-Returns comprehensive model information including:
-
-- Detailed descriptions of the supported Gemini 2.5 models (Pro, Flash, Flash Lite).
-- Model IDs, context window sizes, and descriptions.
-- Caching capabilities (implicit and explicit).
-- Usage examples
-- Thinking mode support.
-
-### Model Management
-
-This server is optimized for and exclusively supports the **Gemini 2.5 family of models**. The `gemini_models` tool provides a detailed, static list of these supported models and their specific capabilities as presented by the server.
-
-Key supported models (as detailed by the `gemini_models` tool):
-
--   **`gemini-2.5-pro`** (production):
-    *   Most powerful model, 1M token context window.
-    *   Best for: Complex reasoning, detailed analysis, comprehensive code review.
-    *   Capabilities: Advanced thinking mode, implicit caching (2048+ token minimum), explicit caching.
--   **`gemini-2.5-flash`** (production):
-    *   Balanced price-performance, 32K token context window.
-    *   Best for: General programming tasks, standard code review.
-    *   Capabilities: Thinking mode, implicit caching (1024+ token minimum), explicit caching.
--   **`gemini-2.5-flash-lite`** (production):
-    *   Optimized for cost efficiency and low latency, 32K token context window.
-    *   Best for: Search queries, lightweight tasks, quick responses.
-    *   Capabilities: Thinking mode (off by default), no implicit or explicit caching.
-
-**Always use the `gemini_models` tool to get the most current details, capabilities, and example usage for each model as presented by the server.**
-
-### Caching System
-
-The server offers sophisticated context caching:
-
-- **Model Compatibility**:
-    - **Gemini 2.5 Pro & Flash**: Support both implicit caching (automatic optimization by Google for repeated prefixes if content is long enough – 2048+ tokens for Pro, 1024+ for Flash) and explicit caching (user-controlled via `use_cache: true`).
-    - **Gemini 2.5 Flash Lite (Preview)**: Preview versions typically do not support implicit or explicit caching.
-- **Cache Control**: Set `use_cache: true` and specify `cache_ttl` (e.g., "10m", "2h")
-- **File Association**: Automatically stores files and associates with cache context
-- **Performance Optimization**: Local metadata caching for quick lookups
-
-Example with caching:
-
-```json
-{
-    "name": "gemini_ask",
-    "arguments": {
-        "query": "Follow up on our previous discussion...",
-        "model": "gemini-2.5-pro",
-        "use_cache": true,
-        "cache_ttl": "1h"
-    }
-}
-```
-
-### File Handling
-
-Robust file processing with:
-
-- **Direct Path Integration**: Simply specify local file paths in `file_paths` array
-- **Automatic Validation**: Size checking, MIME type detection, and content validation
-- **Wide Format Support**: Handles common code, text, and document formats
-- **Metadata Caching**: Stores file information for quick future reference
-
-### Advanced Features
-
-#### Thinking Mode
-
-The server supports "thinking mode" for all compatible Gemini 2.5 models (Pro, Flash, and Flash Lite, though it's off by default for Flash Lite):
-
-- **Model Compatibility**: Automatically validates thinking capability based on requested model
-- **Tool Support**: Available in both `gemini_ask` and `gemini_search` tools
-- **Configurable Budget**: Control thinking depth with budget levels or explicit token counts
-
-Example with thinking mode:
-
-```json
-{
-    "name": "gemini_ask",
-    "arguments": {
-        "query": "Analyze the algorithmic complexity of merge sort vs. quick sort",
-        "model": "gemini-2.5-pro",
-        "enable_thinking": true,
-        "thinking_budget_level": "high"
-    }
-}
-```
-
-##### Thinking Budget Control
-
-Configure the depth and detail of the model's thinking process:
-
-- **Predefined Budget Levels**:
-
-    - `none`: 0 tokens (thinking disabled)
-    - `low`: 4096 tokens (default, quick analysis)
-    - `medium`: 16384 tokens (detailed reasoning)
-    - `high`: 24576 tokens (maximum depth for complex problems)
-
-- **Custom Token Budget**: Alternatively, set a specific token count with `thinking_budget` parameter (0-24576)
-
-Examples:
-
-```json
-// Using predefined level
-{
-  "name": "gemini_ask",
-  "arguments": {
-    "query": "Analyze this algorithm...",
-    "model": "gemini-2.5-pro",
-    "enable_thinking": true,
-    "thinking_budget_level": "medium"
-  }
-}
-
-// Using explicit token count
-{
-  "name": "gemini_search",
-  "arguments": {
-    "query": "Research quantum computing developments...",
-    "model": "gemini-2.5-pro", // Or gemini-2.5-flash / gemini-2.5-flash-lite
-    "enable_thinking": true,
-    "thinking_budget": 12000
-  }
-}
-```
-
-#### Context Window Size Management
-
-The server intelligently manages token limits:
-
-- **Custom Sizing**: Set `max_tokens` parameter to control response length
-- **Model-Aware Defaults**: Automatically sets appropriate defaults based on model capabilities
-- **Capacity Warnings**: Provides warnings when requested tokens exceed model limits
-- **Proportional Defaults**: Uses percentage-based defaults (75% for general queries, 50% for search)
-
-Example with context window size management:
-
-```json
-{
-    "name": "gemini_ask",
-    "arguments": {
-        "query": "Generate a detailed analysis of this code...",
-        "model": "gemini-2.5-pro",
-        "max_tokens": 8192
-    }
-}
-```
-
-### Configuration Options
-
-#### Essential Environment Variables
-
-| Variable                      | Description                          | Default                  |
-| ----------------------------- | ------------------------------------ | ------------------------ |
-| `GEMINI_API_KEY`              | Google Gemini API key                | _Required_               |
-| `GEMINI_MODEL`                | Default model for `gemini_ask`       | `gemini-2.5-pro`         |
-| `GEMINI_SEARCH_MODEL`         | Default model for `gemini_search`    | `gemini-2.5-flash-lite`  |
-| `GEMINI_SYSTEM_PROMPT`        | System prompt for general queries    | _Custom review prompt_   |
-| `GEMINI_SEARCH_SYSTEM_PROMPT` | System prompt for search             | _Custom search prompt_   |
-| `GEMINI_MAX_FILE_SIZE`        | Max upload size (bytes)              | `10485760` (10MB)        |
-| `GEMINI_ALLOWED_FILE_TYPES`   | Comma-separated MIME types           | [Common text/code types] |
-
-#### Optimization Variables
-
-| Variable                       | Description                                          | Default |
-| ------------------------------ | ---------------------------------------------------- | ------- |
-| `GEMINI_TIMEOUT`               | API timeout in seconds                               | `90`    |
-| `GEMINI_MAX_RETRIES`           | Max API retries                                      | `2`     |
-| `GEMINI_TEMPERATURE`           | Model temperature (0.0-1.0)                          | `0.4`   |
-| `GEMINI_ENABLE_CACHING`        | Enable context caching                               | `true`  |
-| `GEMINI_DEFAULT_CACHE_TTL`     | Default cache time-to-live                           | `1h`    |
-| `GEMINI_ENABLE_THINKING`       | Enable thinking mode capability                      | `true`  |
-| `GEMINI_THINKING_BUDGET_LEVEL` | Default thinking budget level (none/low/medium/high) | `low`   |
-| `GEMINI_THINKING_BUDGET`       | Explicit thinking token budget (0-24576)             | `4096`  |
-
-### Operational Features
-
-- **Degraded Mode**: Automatically enters safe mode on initialization errors
-- **Retry Logic**: Configurable exponential backoff for reliable API communication
-- **Structured Logging**: Comprehensive event logging with severity levels
-- **File Validation**: Secure handling with size and type restrictions
-
-## Development
-
-### Running Tests
-
-```bash
-go test -v
-```
-
-### Running Linter
-
-```bash
-./run_lint.sh
-```
-
-### Formatting Code
-
-```bash
-./run_format.sh
-```
-
-## Recent Changes
-
-- **Exclusive Gemini 2.5 Support**: Server now exclusively supports the Gemini 2.5 family of models (Pro, Flash, Flash Lite) for optimal performance and access to the latest features.
-- **Streamlined Model Information**: The `gemini_models` tool provides detailed, up-to-date information on supported Gemini 2.5 models, their context windows, and specific capabilities like caching and thinking mode.
-- **Enhanced Caching for Gemini 2.5**: Leverages implicit caching (automatic for Pro/Flash with sufficient context) and provides robust explicit caching for Gemini 2.5 Pro and Flash models.
-- **Time Range Filtering**: Added `start_time` and `end_time` to `gemini_search` for filtering results by publication date.
-
-## License
-
-[MIT License](LICENSE)
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the project
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 </file>
 
 </files>
 
 
 <instruction>
-# CLAUDE.md
+# Project Context: GeminiMCP Server
 
-GeminiMCP is an Model Control Protocol (MCP) server bridging MCP clients with Google's Gemini 2.5 family models (Pro, Flash, Flash-Lite).
-
-## Build Commands
-
-```bash
-# Build
-go build -o ./bin/mcp-gemini .
-
-# Test & Format (run before commits)
-./run_test.sh
-./run_format.sh
-./run_lint.sh
-```
+## Overview
+This project is a Go-based MCP (Model Control Protocol) server that acts as a bridge to Google's Gemini API. It's designed as a single, self-contained binary for easy deployment and use with MCP-compatible clients. The server exclusively supports the Gemini 2.5 family of models.
 
 ## Architecture
+- **Language**: Go (Golang)
+- **Main Entrypoint**: `main.go`
+- **Configuration**: `config.go` (environment variables with CLI overrides)
+- **Core Logic**:
+    - `gemini_server.go`: Gemini service implementation.
+    - `direct_handlers.go`: Handlers for the MCP tools.
+    - `prompt_handlers.go`: Handlers for MCP prompts.
+    - `tools.go`: Definitions of the MCP tools.
+- **Transport**: Supports `stdio` and `http` (with JWT authentication).
+- **Dependencies**:
+    - `github.com/mark3labs/mcp-go/mcp`: MCP protocol implementation.
+    - `github.com/mark3labs/mcp-go/server`: MCP server implementation.
+    - `google.golang.org/genai`: Google Gemini API client.
+    - `github.com/joho/godotenv`: for loading `.env` files.
 
-**Core Files:**
-- `main.go` - Server initialization, transport handling
-- `config.go` - Environment variables, CLI flags, defaults
-- `tools.go` - MCP tool definitions (gemini_ask, gemini_search, gemini_models)
-- `direct_handlers.go` - Tool request handlers, Gemini API interaction
-- `fetch_models.go`, `fallback_models.go` - Dynamic model management
-- `cache.go` - Context caching for repeated queries
-- `auth.go` - JWT authentication for HTTP transport
+## Development Guidelines
+- **Build**: `go build -o ./bin/mcp-gemini .`
+- **Testing**: `./run_test.sh`
+- **Formatting**: `./run_format.sh`
+- **Linting**: `./run_lint.sh`
+- **Error Handling**: The server has a "degraded mode" to handle initialization errors gracefully.
+- **Logging**: A custom logger is used throughout the application.
 
-**Key Functions:**
-- `ResolveModelID()` - Convert family IDs to specific version IDs (ALWAYS use before API calls)
-- `ValidateModelID()` - Check model ID validity
-- `NewConfig()` - Parse environment variables and flags
+## AI Assistant Guidelines
+- When adding a new tool, define it in `tools.go`, implement the handler in `direct_handlers.go`, and register it in `setupGeminiServer()` in `main.go`.
+- When adding a new prompt, define it in `prompts.go`, implement the handler in `prompt_handlers.go` using the `server.PromptHandlerFunc` type, and register it in `setupGeminiServer()`.
+- When modifying configuration, update `config.go` for defaults, `NewConfig()` for parsing, `structs.go` for the `Config` struct, and `main.go` for CLI flags.
+- Always use `ResolveModelID()` before making API calls to convert model family IDs to specific version IDs.
+- Use the existing logging infrastructure for any new logging.
+- Follow the existing code style and patterns.
 
-## Supported Models (As of GA Release)
-
-- `gemini-2.5-pro` (production) - Advanced thinking, caching, 1M context
-- `gemini-2.5-flash` (production) - Balanced performance, caching, 32K context  
-- `gemini-2.5-flash-lite` (production) - Cost-optimized, no caching, 32K context
-
-## Configuration
-
-**Required:**
-- `GEMINI_API_KEY` - Google AI Studio API key
-
-**Key Environment Variables:**
-```bash
-GEMINI_MODEL="gemini-2.5-pro"                  # Default ask model
-GEMINI_SEARCH_MODEL="gemini-2.5-flash-lite"   # Default search model
-GEMINI_ENABLE_CACHING="true"                   # Context caching
-GEMINI_ENABLE_THINKING="true"                  # Thinking mode
-GEMINI_LOG_LEVEL="info"                        # debug|info|warn|error
-```
-
-**HTTP Transport:**
-```bash
-GEMINI_ENABLE_HTTP="true"
-GEMINI_HTTP_ADDRESS=":8081"
-GEMINI_HTTP_PATH="/mcp"
-```
-
-**Authentication (HTTP only):**
-```bash
-GEMINI_AUTH_ENABLED="true"
-GEMINI_AUTH_SECRET_KEY="32char-minimum-secret"
-```
-
-## CLI Flags (Override Environment)
-
-```bash
-./bin/mcp-gemini --transport=http --gemini-model=gemini-2.5-flash --enable-caching=false
-./bin/mcp-gemini --generate-token --token-username=admin --token-role=admin
-```
-
-## Transport Modes
-
-**Stdio (default):** `./bin/mcp-gemini`
-**HTTP:** `./bin/mcp-gemini --transport=http`
-
-## HTTP Endpoints
-
-- `POST /mcp` - MCP protocol messages  
-- `GET /mcp` - Server-Sent Events
-- `GET /.well-known/oauth-authorization-server` - OAuth metadata
-
-## Development Workflows
-
-**Add Tool:**
-1. Define in `tools.go` using `mcp.NewTool()`
-2. Implement handler in `direct_handlers.go`
-3. Register in `setupGeminiServer()` in `main.go`
-4. Add error handler in `registerErrorTools()`
-
-**Modify Config:**
-1. Update defaults in `config.go`
-2. Add parsing in `NewConfig()`
-3. Update `Config` struct in `structs.go`
-4. Add CLI flag in `main.go` if needed
-
-**Update Models:**
-1. Modify `fetch_models.go` or `fallback_models.go`
-2. Use `ResolveModelID()` for API calls
-3. Test model resolution
-
-## Recent Changes
-
-- **Commit 9158646:** Updated Gemini 2.5 Flash Lite to GA model (`gemini-2.5-flash-lite`)
-- **Commit 01b642f:** Added OAuth well-known endpoint (`/.well-known/oauth-authorization-server`)
-- **Commit 48098fa, f3d47d8:** Improved authentication error handling and stderr logging
-- **Commit 9f6ab9a:** Implemented JWT authentication for HTTP transport
-- **Commit f78ae6c:** Added HTTP transport option
-
-## Key Dependencies
-
-- `github.com/mark3labs/mcp-go/mcp` - MCP protocol
-- `google.golang.org/genai` - Gemini API SDK
-- `github.com/joho/godotenv` - Environment loading
-
-## Testing
-
-```bash
-# Configuration tests
-go test -v -run TestConfigDefaults
-
-# API integration tests (requires GEMINI_API_KEY)
-go test -v -run TestGeminiServer
-```
-
-## Debug Commands
-
-```bash
-# Debug logging
-GEMINI_LOG_LEVEL=debug ./bin/mcp-gemini
-
-# HTTP with auth
-./bin/mcp-gemini --transport=http --auth-enabled=true
-
-# Generate auth token
-export GEMINI_AUTH_SECRET_KEY="your-32char-secret"
-./bin/mcp-gemini --generate-token --token-username=admin
-
-# Test HTTP endpoint
-curl -X POST http://localhost:8081/mcp -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
-```
-
-**Security Notes:**
-- Auth only applies to HTTP transport
-- Secret key must be 32+ characters
-- Tokens use HMAC-SHA256 signing
-- Failed auth attempts logged with IP
 </instruction>

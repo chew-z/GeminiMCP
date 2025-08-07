@@ -446,7 +446,6 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 
 						source = SourceInfo{
 							Title: web.Title,
-							URL:   web.URI,
 							Type:  "web",
 						}
 						seenURLs[web.URI] = true
@@ -458,13 +457,12 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 
 						source = SourceInfo{
 							Title: ctx.Title,
-							URL:   ctx.URI,
 							Type:  "retrieved_context",
 						}
 						seenURLs[ctx.URI] = true
 					}
 
-					if source.URL != "" {
+					if source.Title != "" {
 						sources = append(sources, source)
 					}
 				}
