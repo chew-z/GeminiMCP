@@ -10,6 +10,43 @@ import (
 	"google.golang.org/genai"
 )
 
+// PromptDefinition defines the structure for a prompt with its system prompt
+type PromptDefinition struct {
+	*mcp.Prompt
+	SystemPrompt SystemPromptProvider
+}
+
+// SystemPromptProvider is an interface for providing system prompts
+type SystemPromptProvider interface {
+	GetSystemPrompt() string
+}
+
+// StaticSystemPrompt provides a fixed system prompt
+type StaticSystemPrompt string
+
+// GetSystemPrompt returns the system prompt
+func (s StaticSystemPrompt) GetSystemPrompt() string {
+	return string(s)
+}
+
+// NewPromptDefinition creates a new prompt definition
+func NewPromptDefinition(name, description string, systemPrompt string) *PromptDefinition {
+	return &PromptDefinition{
+		Prompt: &mcp.Prompt{
+			Name:        name,
+			Description: description,
+			Arguments: []mcp.PromptArgument{
+				{
+					Name:        "problem_statement",
+					Description: "A clear and concise description of the programming problem or task.",
+					Required:    true,
+				},
+			},
+		},
+		SystemPrompt: StaticSystemPrompt(systemPrompt),
+	}
+}
+
 // GeminiServer implements the ToolHandler interface for Gemini API interactions
 type GeminiServer struct {
 	config     *Config

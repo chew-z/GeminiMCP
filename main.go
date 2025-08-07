@@ -368,30 +368,12 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(geminiSvc.GeminiModelsHandler, "gemini_models", logger))
 	logger.Info("Registered tool: gemini_models")
 
-	// Register prompts
-	mcpServer.AddPrompt(CodeReviewPrompt, wrapPromptHandlerWithLogger(geminiSvc.CodeReviewHandler, "code_review", logger))
-	logger.Info("Registered prompt: code_review")
-
-	mcpServer.AddPrompt(ExplainCodePrompt, wrapPromptHandlerWithLogger(geminiSvc.ExplainCodeHandler, "explain_code", logger))
-	logger.Info("Registered prompt: explain_code")
-
-	mcpServer.AddPrompt(DebugHelpPrompt, wrapPromptHandlerWithLogger(geminiSvc.DebugHelpHandler, "debug_help", logger))
-	logger.Info("Registered prompt: debug_help")
-
-	mcpServer.AddPrompt(RefactorSuggestionsPrompt, wrapPromptHandlerWithLogger(geminiSvc.RefactorSuggestionsHandler, "refactor_suggestions", logger))
-	logger.Info("Registered prompt: refactor_suggestions")
-
-	mcpServer.AddPrompt(ArchitectureAnalysisPrompt, wrapPromptHandlerWithLogger(geminiSvc.ArchitectureAnalysisHandler, "architecture_analysis", logger))
-	logger.Info("Registered prompt: architecture_analysis")
-
-	mcpServer.AddPrompt(DocGeneratePrompt, wrapPromptHandlerWithLogger(geminiSvc.DocGenerateHandler, "doc_generate", logger))
-	logger.Info("Registered prompt: doc_generate")
-
-	mcpServer.AddPrompt(TestGeneratePrompt, wrapPromptHandlerWithLogger(geminiSvc.TestGenerateHandler, "test_generate", logger))
-	logger.Info("Registered prompt: test_generate")
-
-	mcpServer.AddPrompt(SecurityAnalysisPrompt, wrapPromptHandlerWithLogger(geminiSvc.SecurityAnalysisHandler, "security_analysis", logger))
-	logger.Info("Registered prompt: security_analysis")
+	// Register all prompts from the definitions
+	for _, p := range Prompts {
+		handler := geminiSvc.promptHandler(p)
+		mcpServer.AddPrompt(*p.Prompt, wrapPromptHandlerWithLogger(handler, p.Name, logger))
+		logger.Info("Registered prompt: %s", p.Name)
+	}
 
 	// Log file handling configuration
 	logger.Info("File handling: max size %s, allowed types: %v",
