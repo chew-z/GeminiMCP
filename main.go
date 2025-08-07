@@ -368,6 +368,31 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(geminiSvc.GeminiModelsHandler, "gemini_models", logger))
 	logger.Info("Registered tool: gemini_models")
 
+	// Register prompts
+	mcpServer.AddPrompt(CodeReviewPrompt, wrapPromptHandlerWithLogger(geminiSvc.CodeReviewHandler, "code_review", logger))
+	logger.Info("Registered prompt: code_review")
+
+	mcpServer.AddPrompt(ExplainCodePrompt, wrapPromptHandlerWithLogger(geminiSvc.ExplainCodeHandler, "explain_code", logger))
+	logger.Info("Registered prompt: explain_code")
+
+	mcpServer.AddPrompt(DebugHelpPrompt, wrapPromptHandlerWithLogger(geminiSvc.DebugHelpHandler, "debug_help", logger))
+	logger.Info("Registered prompt: debug_help")
+
+	mcpServer.AddPrompt(RefactorSuggestionsPrompt, wrapPromptHandlerWithLogger(geminiSvc.RefactorSuggestionsHandler, "refactor_suggestions", logger))
+	logger.Info("Registered prompt: refactor_suggestions")
+
+	mcpServer.AddPrompt(ArchitectureAnalysisPrompt, wrapPromptHandlerWithLogger(geminiSvc.ArchitectureAnalysisHandler, "architecture_analysis", logger))
+	logger.Info("Registered prompt: architecture_analysis")
+
+	mcpServer.AddPrompt(DocGeneratePrompt, wrapPromptHandlerWithLogger(geminiSvc.DocGenerateHandler, "doc_generate", logger))
+	logger.Info("Registered prompt: doc_generate")
+
+	mcpServer.AddPrompt(TestGeneratePrompt, wrapPromptHandlerWithLogger(geminiSvc.TestGenerateHandler, "test_generate", logger))
+	logger.Info("Registered prompt: test_generate")
+
+	mcpServer.AddPrompt(SecurityAnalysisPrompt, wrapPromptHandlerWithLogger(geminiSvc.SecurityAnalysisHandler, "security_analysis", logger))
+	logger.Info("Registered prompt: security_analysis")
+
 	// Log file handling configuration
 	logger.Info("File handling: max size %s, allowed types: %v",
 		humanReadableSize(config.MaxFileSize),
@@ -480,6 +505,43 @@ func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logg
 			logger.Error("Tool '%s' failed: %v", toolName, err)
 		} else {
 			logger.Info("Tool '%s' completed successfully", toolName)
+		}
+
+		// Return the original response and error
+		return resp, err
+	}
+}
+
+// wrapPromptHandlerWithLogger creates a middleware wrapper for logging and authentication around a prompt handler
+func wrapPromptHandlerWithLogger(handler server.PromptHandlerFunc, promptName string, logger Logger) server.PromptHandlerFunc {
+	return func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		logger.Info("Calling prompt '%s'...", promptName)
+
+		// Check authentication for HTTP requests if enabled
+		if httpMethod, ok := ctx.Value(httpMethodKey).(string); ok && httpMethod != "" {
+			// This is an HTTP request, check if auth is required
+			if authError := getAuthError(ctx); authError != "" {
+				logger.Warn("Authentication failed for prompt '%s': %s", promptName, authError)
+				return &mcp.GetPromptResult{
+					Description: fmt.Sprintf("Authentication required: %s", authError),
+					Messages:    []mcp.PromptMessage{},
+				}, nil
+			}
+
+			// Log successful authentication if present
+			if isAuthenticated(ctx) {
+				userID, username, role := getUserInfo(ctx)
+				logger.Info("Prompt '%s' called by authenticated user %s (%s) with role %s", promptName, username, userID, role)
+			}
+		}
+
+		// Call the actual handler
+		resp, err := handler(ctx, req)
+
+		if err != nil {
+			logger.Error("Prompt '%s' failed: %v", promptName, err)
+		} else {
+			logger.Info("Prompt '%s' completed successfully", promptName)
 		}
 
 		// Return the original response and error
