@@ -14,7 +14,7 @@ type PromptHandlerFunc func(ctx context.Context, req mcp.GetPromptRequest) (*mcp
 
 // PromptTemplate represents the structured output of a prompt handler
 type PromptTemplate struct {
-	SystemPrompt      string   `json:"system_prompt"`
+	SystemPrompt       string   `json:"system_prompt"`
 	UserPromptTemplate string   `json:"user_prompt_template"`
 	FilePaths          []string `json:"file_paths"`
 }
@@ -49,7 +49,7 @@ func (s *GeminiServer) handlePrompt(
 	systemPrompt, userPromptTemplate := builder(req, language)
 
 	template := PromptTemplate{
-		SystemPrompt:      systemPrompt,
+		SystemPrompt:       systemPrompt,
 		UserPromptTemplate: userPromptTemplate,
 		FilePaths:          expandedPaths,
 	}
