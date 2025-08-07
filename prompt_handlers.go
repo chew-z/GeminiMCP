@@ -23,24 +23,29 @@ func createTaskInstructions(problemStatement, systemPrompt string) string {
 
 // createSearchInstructions generates instructions for gemini_search tool
 func createSearchInstructions(problemStatement string) string {
-	return fmt.Sprintf(`Use the 'gemini_search' tool for this research task.
+	return fmt.Sprintf(`You are an AI assistant. Your task is to answer the user's question by generating a call to the 'gemini_search' tool.
 
-Parameter selection guide:
-1. query (always required): Create a focused search query from the problem statement
-2. start_time + end_time (conditional): Set both when problem implies time-sensitive information
-   - Format: "YYYY-MM-DDTHH:MM:SSZ"
-3. Other parameters: Use defaults unless specifically needed
+Read the user's question below and then create a 'gemini_search' tool call.
 
-Example:
-INPUT: "Who won Wimbledon this year?"
-OUTPUT: gemini_search(
-  query="Wimbledon winner 2025",
-  start_time="2025-01-01T00:00:00Z",
-  end_time="2025-12-31T23:59:59Z"
-)
+**User's Question:**
+"%s"
 
-Problem statement:
-%s`, problemStatement)
+**Instructions for the 'gemini_search' tool:**
+
+*   **'query' parameter (required):** Create a search query from the user's question.
+*   **'start_time' and 'end_time' parameters (optional):**
+    *   Use these only if the question is about a specific time period (e.g., "this year", "last month", "in 2023").
+    *   If you use them, you must provide both 'start_time' and 'end_time'.
+    *   The format is "YYYY-MM-DDTHH:MM:SSZ".
+
+**Example:**
+
+If the user's question is: "What were the most popular movies of 2023?"
+
+Your response should be the following tool call:
+'gemini_search(query="most popular movies of 2023", start_time="2023-01-01T00:00:00Z", end_time="2023-12-31T23:59:59Z")'
+
+Now, generate the 'gemini_search' tool call for the user's question.`, problemStatement)
 }
 
 // promptHandler is the generic handler for all prompts
