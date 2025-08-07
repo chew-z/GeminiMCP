@@ -59,10 +59,12 @@ func (s *GeminiServer) handlePrompt(
 		return nil, fmt.Errorf("failed to marshal prompt template: %w", err)
 	}
 
-	return &mcp.GetPromptResult{
-		Description: string(jsonResult),
-		Messages:    []mcp.PromptMessage{},
-	}, nil
+	return mcp.NewGetPromptResult(
+		description,
+		[]mcp.PromptMessage{
+			mcp.NewPromptMessage(mcp.RoleAssistant, mcp.NewTextContent(string(jsonResult))),
+		},
+	), nil
 }
 
 // CodeReviewHandler handles the code_review prompt

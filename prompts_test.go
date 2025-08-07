@@ -93,7 +93,11 @@ func TestCodeReviewPrompt(t *testing.T) {
 
 	// Verify the result is a valid JSON template
 	var template PromptTemplate
-	err = json.Unmarshal([]byte(result.Description), &template)
+	textContent, ok := result.Messages[0].Content.(mcp.TextContent)
+	if !ok {
+		t.Fatalf("Expected text content in the first message")
+	}
+	err = json.Unmarshal([]byte(textContent.Text), &template)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal prompt template: %v", err)
 	}
@@ -150,7 +154,11 @@ func TestExplainCodePrompt(t *testing.T) {
 
 	// Verify the result is a valid JSON template
 	var template PromptTemplate
-	err = json.Unmarshal([]byte(result.Description), &template)
+	textContent, ok := result.Messages[0].Content.(mcp.TextContent)
+	if !ok {
+		t.Fatalf("Expected text content in the first message")
+	}
+	err = json.Unmarshal([]byte(textContent.Text), &template)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal prompt template: %v", err)
 	}

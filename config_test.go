@@ -72,7 +72,7 @@ func TestNewConfig(t *testing.T) {
 
 	t.Run("custom timeout", func(t *testing.T) {
 		os.Setenv("GEMINI_API_KEY", "test-api-key")
-		os.Setenv("GEMINI_TIMEOUT", "180")
+		os.Setenv("GEMINI_TIMEOUT", "180s")
 
 		config, err := NewConfig()
 
@@ -90,8 +90,8 @@ func TestNewConfig(t *testing.T) {
 	t.Run("custom retry settings", func(t *testing.T) {
 		os.Setenv("GEMINI_API_KEY", "test-api-key")
 		os.Setenv("GEMINI_MAX_RETRIES", "3")
-		os.Setenv("GEMINI_INITIAL_BACKOFF", "2")
-		os.Setenv("GEMINI_MAX_BACKOFF", "15")
+		os.Setenv("GEMINI_INITIAL_BACKOFF", "2s")
+		os.Setenv("GEMINI_MAX_BACKOFF", "15s")
 
 		config, err := NewConfig()
 
