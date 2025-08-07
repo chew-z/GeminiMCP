@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -108,12 +109,12 @@ func TestExplainCodePrompt(t *testing.T) {
 		t.Error("Expected messages in result")
 	}
 
-	// Check that system message exists and contains audience info
+	// Check that message exists and contains content (now combined as user message)
 	found := false
 	for _, msg := range result.Messages {
-		if msg.Role == "system" {
+		if msg.Role == mcp.RoleUser {
 			if content, ok := msg.Content.(mcp.TextContent); ok {
-				if len(content.Text) > 0 {
+				if len(content.Text) > 0 && strings.Contains(content.Text, "beginner") {
 					found = true
 					break
 				}
@@ -121,7 +122,7 @@ func TestExplainCodePrompt(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("Expected system message with content")
+		t.Error("Expected user message with content including audience info")
 	}
 }
 

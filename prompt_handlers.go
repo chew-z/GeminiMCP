@@ -47,21 +47,17 @@ Provide specific, actionable feedback with line references where applicable.`, f
 	// Build user prompt
 	userPrompt := fmt.Sprintf("Please review this code:\n\n```%s\n%s\n```", language, code)
 
+	// Combine system instructions with user prompt since MCP only supports user/assistant roles
+	combinedPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
+
 	return &mcp.GetPromptResult{
 		Description: "Code review analysis prompt",
 		Messages: []mcp.PromptMessage{
 			{
-				Role: "system",
-				Content: mcp.TextContent{
-					Type: "text",
-					Text: systemPrompt,
-				},
-			},
-			{
 				Role: mcp.RoleUser,
 				Content: mcp.TextContent{
 					Type: "text",
-					Text: userPrompt,
+					Text: combinedPrompt,
 				},
 			},
 		},
@@ -106,21 +102,17 @@ Make the explanation appropriate for the target audience level.`, audience, focu
 	// Build user prompt
 	userPrompt := fmt.Sprintf("Please explain how this code works:\n\n```\n%s\n```", code)
 
+	// Combine system instructions with user prompt since MCP only supports user/assistant roles
+	combinedPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
+
 	return &mcp.GetPromptResult{
 		Description: "Code explanation prompt",
 		Messages: []mcp.PromptMessage{
 			{
-				Role: "system",
-				Content: mcp.TextContent{
-					Type: "text",
-					Text: systemPrompt,
-				},
-			},
-			{
 				Role: mcp.RoleUser,
 				Content: mcp.TextContent{
 					Type: "text",
-					Text: userPrompt,
+					Text: combinedPrompt,
 				},
 			},
 		},
@@ -178,21 +170,17 @@ Be thorough and provide step-by-step guidance for resolving the problem.`
 
 	userPrompt := strings.Join(userPromptParts, "\n")
 
+	// Combine system instructions with user prompt since MCP only supports user/assistant roles
+	combinedPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
+
 	return &mcp.GetPromptResult{
 		Description: "Debug assistance prompt",
 		Messages: []mcp.PromptMessage{
 			{
-				Role: "system",
-				Content: mcp.TextContent{
-					Type: "text",
-					Text: systemPrompt,
-				},
-			},
-			{
 				Role: mcp.RoleUser,
 				Content: mcp.TextContent{
 					Type: "text",
-					Text: userPrompt,
+					Text: combinedPrompt,
 				},
 			},
 		},
@@ -238,21 +226,17 @@ Provide prioritized suggestions with clear explanations of benefits and trade-of
 	// Build user prompt
 	userPrompt := fmt.Sprintf("Please analyze this code and suggest refactoring improvements:\n\n```\n%s\n```", code)
 
+	// Combine system instructions with user prompt since MCP only supports user/assistant roles
+	combinedPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
+
 	return &mcp.GetPromptResult{
 		Description: "Refactoring suggestions prompt",
 		Messages: []mcp.PromptMessage{
 			{
-				Role: "system",
-				Content: mcp.TextContent{
-					Type: "text",
-					Text: systemPrompt,
-				},
-			},
-			{
 				Role: mcp.RoleUser,
 				Content: mcp.TextContent{
 					Type: "text",
-					Text: userPrompt,
+					Text: combinedPrompt,
 				},
 			},
 		},
@@ -299,21 +283,17 @@ Provide a comprehensive architectural assessment with insights and actionable re
 	// Build user prompt
 	userPrompt := fmt.Sprintf("Please analyze the architecture of this code:\n\n%s", codeFiles)
 
+	// Combine system instructions with user prompt since MCP only supports user/assistant roles
+	combinedPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
+
 	return &mcp.GetPromptResult{
 		Description: "Architecture analysis prompt",
 		Messages: []mcp.PromptMessage{
 			{
-				Role: "system",
-				Content: mcp.TextContent{
-					Type: "text",
-					Text: systemPrompt,
-				},
-			},
-			{
 				Role: mcp.RoleUser,
 				Content: mcp.TextContent{
 					Type: "text",
-					Text: userPrompt,
+					Text: combinedPrompt,
 				},
 			},
 		},
@@ -360,21 +340,17 @@ Make the documentation clear, accurate, and user-friendly.`, docType, format, in
 	// Build user prompt
 	userPrompt := fmt.Sprintf("Please generate documentation for this code:\n\n```\n%s\n```", code)
 
+	// Combine system instructions with user prompt since MCP only supports user/assistant roles
+	combinedPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
+
 	return &mcp.GetPromptResult{
 		Description: "Documentation generation prompt",
 		Messages: []mcp.PromptMessage{
 			{
-				Role: "system",
-				Content: mcp.TextContent{
-					Type: "text",
-					Text: systemPrompt,
-				},
-			},
-			{
 				Role: mcp.RoleUser,
 				Content: mcp.TextContent{
 					Type: "text",
-					Text: userPrompt,
+					Text: combinedPrompt,
 				},
 			},
 		},
@@ -425,21 +401,17 @@ Make tests maintainable and easy to understand.`, testType, framework, coverage)
 	// Build user prompt
 	userPrompt := fmt.Sprintf("Please generate test cases for this code:\n\n```\n%s\n```", code)
 
+	// Combine system instructions with user prompt since MCP only supports user/assistant roles
+	combinedPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
+
 	return &mcp.GetPromptResult{
 		Description: "Test generation prompt",
 		Messages: []mcp.PromptMessage{
 			{
-				Role: "system",
-				Content: mcp.TextContent{
-					Type: "text",
-					Text: systemPrompt,
-				},
-			},
-			{
 				Role: mcp.RoleUser,
 				Content: mcp.TextContent{
 					Type: "text",
-					Text: userPrompt,
+					Text: combinedPrompt,
 				},
 			},
 		},
@@ -493,21 +465,17 @@ Prioritize findings by risk level and exploitability.`, scope, compliance, inclu
 	// Build user prompt
 	userPrompt := fmt.Sprintf("Please perform a security analysis of this code:\n\n```\n%s\n```", code)
 
+	// Combine system instructions with user prompt since MCP only supports user/assistant roles
+	combinedPrompt := fmt.Sprintf("%s\n\n%s", systemPrompt, userPrompt)
+
 	return &mcp.GetPromptResult{
 		Description: "Security analysis prompt",
 		Messages: []mcp.PromptMessage{
 			{
-				Role: "system",
-				Content: mcp.TextContent{
-					Type: "text",
-					Text: systemPrompt,
-				},
-			},
-			{
 				Role: mcp.RoleUser,
 				Content: mcp.TextContent{
 					Type: "text",
-					Text: userPrompt,
+					Text: combinedPrompt,
 				},
 			},
 		},
