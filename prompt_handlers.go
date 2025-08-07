@@ -10,7 +10,7 @@ import (
 
 // createTaskInstructions generates the instructional text for the MCP client
 func createTaskInstructions(problemStatement, systemPrompt string) string {
-	return fmt.Sprintf("You MUST use the `gemini_ask` tool to solve this problem.\n\n"+
+	return fmt.Sprintf("You MUST NOW use the `gemini_ask` tool to solve this problem.\n\n"+
 		"Follow these instructions carefully:\n"+
 		"1. Set the `query` argument to a clear and concise request based on the user's problem statement.\n"+
 		"2. Provide the code to be analyzed using ONE of the following methods:\n"+
@@ -23,29 +23,20 @@ func createTaskInstructions(problemStatement, systemPrompt string) string {
 
 // createSearchInstructions generates instructions for gemini_search tool
 func createSearchInstructions(problemStatement string) string {
-	return fmt.Sprintf(`You are an AI assistant. Your task is to answer the user's question by generating a call to the 'gemini_search' tool.
-
-Read the user's question below and then create a 'gemini_search' tool call.
-
-**User's Question:**
-"%s"
-
-**Instructions for the 'gemini_search' tool:**
-
-*   **'query' parameter (required):** Create a search query from the user's question.
-*   **'start_time' and 'end_time' parameters (optional):**
-    *   Use these only if the question is about a specific time period (e.g., "this year", "last month", "in 2023").
-    *   If you use them, you must provide both 'start_time' and 'end_time'.
-    *   The format is "YYYY-MM-DDTHH:MM:SSZ".
-
-**Example:**
-
-If the user's question is: "What were the most popular movies of 2023?"
-
-Your response should be the following tool call:
-'gemini_search(query="most popular movies of 2023", start_time="2023-01-01T00:00:00Z", end_time="2023-12-31T23:59:59Z")'
-
-Now, generate the 'gemini_search' tool call for the user's question.`, problemStatement)
+	return fmt.Sprintf("You MUST NOW use `gemini_search` tool to answer user's question.\n\n"+
+		"Read carefully the user's question below and then THINK about how to create a 'gemini_seaarch` tool call.\n"+
+		"<user_question>\n%s\n</user_question>\n"+
+		"**Instructions for the 'gemini_search' tool:**\n\n"+
+		"*   **'query' parameter (required):** Create a search query from the user's question.\n"+
+		"*   **'start_time' and 'end_time' parameters (optional):**\n"+
+		"*   Use these only if the user question is defining timeframe (e.g., 'this year', 'last month', 'in 2023')\n"+
+		"*   If you use them, you must provide at least 'start_time'\n"+
+		"*   The format is 'YYYY-MM-DDTHH:MM:SSZ'\n"+
+		"*   **Example:**\n\n"+
+		"If the user`s question is: 'What were the most popular movies of 2023?'\n"+
+		"Your response should be the following tool call:\n"+
+		"'gemini_search(query='most popular movies of 2023', start_time='2023-01-01T00:00:00Z', end_time='2023-12-31T23:59:59Z')\n"+
+		"Now, generate the best 'gemini_search' tool call to answer the user's question.", problemStatement)
 }
 
 // promptHandler is the generic handler for all prompts
