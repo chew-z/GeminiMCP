@@ -2,395 +2,154 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// PromptHandlerFunc defines the signature for prompt handlers
-type PromptHandlerFunc func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error)
-
-// PromptTemplate represents the structured output of a prompt handler
-type PromptTemplate struct {
-	SystemPrompt       string   `json:"system_prompt"`
-	UserPromptTemplate string   `json:"user_prompt_template"`
-	FilePaths          []string `json:"file_paths"`
+// createTaskInstructions generates the instructional text for the MCP client
+func createTaskInstructions(problemStatement, systemPrompt string) string {
+	return fmt.Sprintf("You MUST use the `gemini_ask` tool to solve this problem.\n\n"+
+		"Follow these instructions carefully:\n"+
+		"1. Set the `query` argument to a clear and concise request based on the user's problem statement.\n"+
+		"2. Provide the code to be analyzed using ONE of the following methods:\n"+
+		"   - Use the `file_paths` argument for one or more files.\n"+
+		"   - Embed a code snippet directly into the `query` argument.\n"+
+		"3. Use the following text for the `systemPrompt` argument:\n\n"+
+		"<system_prompt>\n%s\n</system_prompt>\n\n"+
+		"<problem_statement>\n%s\n</problem_statement>", systemPrompt, problemStatement)
 }
 
-type PromptBuilder func(req mcp.GetPromptRequest, language string) (string, string)
-
-func (s *GeminiServer) handlePrompt(
-	ctx context.Context,
-	req mcp.GetPromptRequest,
-	description string,
-	builder PromptBuilder,
-) (*mcp.GetPromptResult, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info(fmt.Sprintf("Handling prompt: %s", description))
-
-	filesArg, ok := req.Params.Arguments["files"]
-	if !ok || filesArg == "" {
-		return nil, fmt.Errorf("files argument is required")
+// genericPromptHandler is a generic handler for all prompts
+func genericPromptHandler(ctx context.Context, req mcp.GetPromptRequest, systemPrompt string) (*mcp.GetPromptResult, error) {
+	problemStatement, ok := req.Params.Arguments["problem_statement"]
+	if !ok || problemStatement == "" {
+		return nil, fmt.Errorf("problem_statement argument is required")
 	}
 
-	filePaths := parseFilePaths(filesArg)
-	expandedPaths, err := expandFilePaths(filePaths)
-	if err != nil {
-		return nil, fmt.Errorf("failed to expand file paths: %w", err)
-	}
-
-	language := s.config.ProjectLanguage
-	if lang, ok := req.Params.Arguments["language"]; ok && lang != "" {
-		language = lang
-	}
-
-	systemPrompt, userPromptTemplate := builder(req, language)
-
-	template := PromptTemplate{
-		SystemPrompt:       systemPrompt,
-		UserPromptTemplate: userPromptTemplate,
-		FilePaths:          expandedPaths,
-	}
-
-	jsonResult, err := json.Marshal(template)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal prompt template: %w", err)
-	}
+	instructions := createTaskInstructions(problemStatement, systemPrompt)
 
 	return mcp.NewGetPromptResult(
-		description,
+		req.Params.Name,
 		[]mcp.PromptMessage{
-			mcp.NewPromptMessage(mcp.RoleAssistant, mcp.NewTextContent(string(jsonResult))),
+			mcp.NewPromptMessage(mcp.RoleAssistant, mcp.NewTextContent(instructions)),
 		},
 	), nil
 }
 
 // CodeReviewHandler handles the code_review prompt
 func (s *GeminiServer) CodeReviewHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	result, err := s.handlePrompt(ctx, req, "Code review analysis prompt",
-		func(req mcp.GetPromptRequest, language string) (string, string) {
-			focus := extractPromptArgWithConfig(req, "focus", s.config.PromptDefaultFocus, "general best practices")
-			severity := extractPromptArgWithConfig(req, "severity", s.config.PromptDefaultSeverity, "warning")
+	systemPrompt := `You are an expert code reviewer with years of experience in software engineering. Your task is to conduct a thorough analysis of the provided code.
 
-			systemPrompt := fmt.Sprintf(`You are an expert code reviewer. Analyze the provided code for:
-- Code quality and best practices
-- Potential bugs and issues
-- Security vulnerabilities
-- Performance concerns
-- Maintainability and readability
+Focus on the following areas:
+- **Code Quality & Best Practices:** Adherence to language-specific idioms, code formatting, and established best practices.
+- **Potential Bugs:** Logical errors, race conditions, null pointer issues, and other potential bugs.
+- **Security Vulnerabilities:** Identify any potential security risks, such as injection vulnerabilities, insecure data handling, or authentication/authorization flaws. Follow OWASP Top 10 guidelines.
+- **Performance Concerns:** Look for inefficient algorithms, memory leaks, or other performance bottlenecks.
+- **Maintainability & Readability:** Assess the code's clarity, modularity, and ease of maintenance.
 
-Focus areas: %s
-Minimum severity level: %s
-Language: %s
-
-Provide specific, actionable feedback with line references where applicable.`, focus, severity, language)
-
-			userPromptTemplate := "Please review this code:\n\n```%s\n{{file_content}}\n```"
-			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
-		})
-
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error in code_review prompt: %v", err)), nil
-	}
-	return result, nil
+Provide specific, actionable feedback. For each issue, include the file path (if available), the relevant line number(s), and a clear explanation of the problem and your suggested improvement.`
+	return genericPromptHandler(ctx, req, systemPrompt)
 }
 
 // ExplainCodeHandler handles the explain_code prompt
 func (s *GeminiServer) ExplainCodeHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	result, err := s.handlePrompt(ctx, req, "Code explanation prompt",
-		func(req mcp.GetPromptRequest, language string) (string, string) {
-			audience := extractPromptArgWithConfig(req, "audience", s.config.PromptDefaultAudience, "intermediate")
-			includeExamples := extractPromptArgString(req, "include_examples", "true")
-			focusAreas := extractPromptArgString(req, "focus_areas", "overall functionality")
+	systemPrompt := `You are an expert software engineer and a skilled educator. Your goal is to explain the provided code in a clear, comprehensive, and easy-to-understand manner.
 
-			systemPrompt := fmt.Sprintf(`You are an expert software engineer and educator. Explain the provided code in a clear, comprehensive manner.
+Structure your explanation as follows:
+1.  **High-Level Overview:** Start with a summary of what the code does and its primary purpose.
+2.  **Detailed Breakdown:** Go through the code section by section, explaining the logic, algorithms, and data structures used.
+3.  **Key Concepts:** Highlight any important design patterns, architectural decisions, or programming concepts demonstrated in the code.
+4.  **Usage:** If applicable, provide a simple example of how to use the code.
 
-Target audience: %s developers
-Focus on: %s
-Include examples: %s
-
-Structure your explanation with:
-1. Overview of what the code does
-2. Step-by-step breakdown of logic
-3. Key algorithms or patterns used
-4. Important design decisions
-5. Usage examples (if requested)
-
-Make the explanation appropriate for the target audience level.`, audience, focusAreas, includeExamples)
-
-			userPromptTemplate := "Please explain how this code works:\n\n```%s\n{{file_content}}\n```"
-			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
-		})
-
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error in explain_code prompt: %v", err)), nil
-	}
-	return result, nil
+Tailor the complexity of your explanation to be suitable for an intermediate-level developer.`
+	return genericPromptHandler(ctx, req, systemPrompt)
 }
 
 // DebugHelpHandler handles the debug_help prompt
 func (s *GeminiServer) DebugHelpHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	result, err := s.handlePrompt(ctx, req, "Debug assistance prompt",
-		func(req mcp.GetPromptRequest, language string) (string, string) {
-			errorMessage := extractPromptArgString(req, "error_message", "")
-			expectedBehavior := extractPromptArgString(req, "expected_behavior", "")
-			context := extractPromptArgString(req, "context", "")
+	systemPrompt := `You are an expert debugger. Your mission is to analyze the provided code and the user's problem description to identify the root cause of a bug and suggest a solution.
 
-			systemPrompt := `You are an expert debugging assistant. Help identify and solve the issue in the provided code.
-
-Follow this debugging approach:
-1. Analyze the code for potential issues
-2. Consider the error message and symptoms
-3. Compare expected vs actual behavior
-4. Identify root causes
-5. Provide specific fix suggestions
-6. Explain why the issue occurred
-
-Be thorough and provide step-by-step guidance for resolving the problem.`
-
-			var userPromptParts []string
-			userPromptParts = append(userPromptParts, "Please help debug this issue:")
-			userPromptParts = append(userPromptParts, fmt.Sprintf("\n**Code:**\n```%s\n{{file_content}}\n```", language))
-
-			if errorMessage != "" {
-				userPromptParts = append(userPromptParts, fmt.Sprintf("\n**Error Message:**\n%s", errorMessage))
-			}
-
-			if expectedBehavior != "" {
-				userPromptParts = append(userPromptParts, fmt.Sprintf("\n**Expected Behavior:**\n%s", expectedBehavior))
-			}
-
-			if context != "" {
-				userPromptParts = append(userPromptParts, fmt.Sprintf("\n**Additional Context:**\n%s", context))
-			}
-
-			userPromptTemplate := strings.Join(userPromptParts, "\n")
-			return systemPrompt, userPromptTemplate
-		})
-
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error in debug_help prompt: %v", err)), nil
-	}
-	return result, nil
+Follow this systematic debugging process:
+1.  **Analyze the Code:** Carefully review the provided code for potential logical errors, incorrect assumptions, or other issues related to the problem description.
+2.  **Identify the Root Cause:** Based on your analysis, pinpoint the most likely cause of the bug.
+3.  **Propose a Fix:** Provide a specific, corrected code snippet to fix the bug.
+4.  **Explain the Solution:** Clearly explain why the bug occurred and why your proposed solution resolves it.`
+	return genericPromptHandler(ctx, req, systemPrompt)
 }
 
 // RefactorSuggestionsHandler handles the refactor_suggestions prompt
 func (s *GeminiServer) RefactorSuggestionsHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	result, err := s.handlePrompt(ctx, req, "Refactoring suggestions prompt",
-		func(req mcp.GetPromptRequest, language string) (string, string) {
-			goals := extractPromptArgString(req, "goals", "improve code quality and maintainability")
-			constraints := extractPromptArgString(req, "constraints", "maintain existing functionality")
-			includeExamples := extractPromptArgString(req, "include_examples", "true")
+	systemPrompt := `You are an expert software architect specializing in code modernization and refactoring. Your task is to analyze the provided code and suggest concrete improvements.
 
-			systemPrompt := fmt.Sprintf(`You are an expert software architect and refactoring specialist. Analyze the provided code and suggest improvements.
+Your suggestions should focus on:
+- **Improving Code Structure:** Enhancing modularity, separation of concerns, and overall organization.
+- **Applying Design Patterns:** Identifying opportunities to use appropriate design patterns to solve common problems.
+- **Increasing Readability & Maintainability:** Making the code easier to understand and modify in the future.
+- **Optimizing Performance:** Where applicable, suggest changes to improve efficiency without sacrificing clarity.
 
-Refactoring goals: %s
-Constraints: %s
-Include examples: %s
-
-Focus on:
-- Code structure and organization
-- Design patterns and principles
-- Performance optimizations
-- Readability and maintainability
-- Error handling improvements
-- Naming and clarity
-
-Provide prioritized suggestions with clear explanations of benefits and trade-offs.`, goals, constraints, includeExamples)
-
-			userPromptTemplate := "Please analyze this code and suggest refactoring improvements:\n\n```%s\n{{file_content}}\n```"
-			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
-		})
-
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error in refactor_suggestions prompt: %v", err)), nil
-	}
-	return result, nil
+For each suggestion, provide a code example demonstrating the change and explain the benefits of the proposed refactoring.`
+	return genericPromptHandler(ctx, req, systemPrompt)
 }
 
 // ArchitectureAnalysisHandler handles the architecture_analysis prompt
 func (s *GeminiServer) ArchitectureAnalysisHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	result, err := s.handlePrompt(ctx, req, "Architecture analysis prompt",
-		func(req mcp.GetPromptRequest, language string) (string, string) {
-			scope := extractPromptArgString(req, "scope", "system")
-			focus := extractPromptArgString(req, "focus", "overall architecture")
-			includeRecommendations := extractPromptArgString(req, "include_recommendations", "true")
+	systemPrompt := `You are a seasoned software architect. Your task is to conduct a high-level analysis of the provided codebase to understand its architecture.
 
-			systemPrompt := fmt.Sprintf(`You are an expert software architect. Analyze the provided code structure and architecture.
+Your analysis should cover:
+- **Overall Design:** Describe the main architectural pattern (e.g., Monolith, Microservices, MVC, etc.).
+- **Component Breakdown:** Identify the key components, their responsibilities, and how they interact.
+- **Data Flow:** Explain how data flows through the system.
+- **Dependencies:** List the major external dependencies and their roles.
+- **Potential Issues:** Highlight any potential architectural weaknesses, bottlenecks, or areas for improvement regarding scalability, maintainability, or security.
 
-Analysis scope: %s level
-Focus areas: %s
-Include recommendations: %s
-
-Examine:
-- Overall system design and structure
-- Component relationships and dependencies
-- Design patterns and architectural principles
-- Scalability and performance considerations
-- Security architecture
-- Maintainability and extensibility
-- Potential architectural issues or improvements
-
-Provide a comprehensive architectural assessment with insights and actionable recommendations.`, scope, focus, includeRecommendations)
-
-			userPromptTemplate := "Please analyze the architecture of this code:\n\n```%s\n{{file_content}}\n```"
-			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
-		})
-
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error in architecture_analysis prompt: %v", err)), nil
-	}
-	return result, nil
+Provide a clear and concise summary of the architecture.`
+	return genericPromptHandler(ctx, req, systemPrompt)
 }
 
 // DocGenerateHandler handles the doc_generate prompt
 func (s *GeminiServer) DocGenerateHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	result, err := s.handlePrompt(ctx, req, "Documentation generation prompt",
-		func(req mcp.GetPromptRequest, language string) (string, string) {
-			docType := extractPromptArgString(req, "doc_type", "technical")
-			format := extractPromptArgWithConfig(req, "format", s.config.PromptDefaultDocFormat, "markdown")
-			includeExamples := extractPromptArgString(req, "include_examples", "true")
+	systemPrompt := `You are a professional technical writer. Your task is to generate clear, concise, and comprehensive documentation for the provided code.
 
-			systemPrompt := fmt.Sprintf(`You are a technical documentation specialist. Generate comprehensive documentation for the provided code.
+The documentation should be in Markdown format and include the following sections for each major component or function:
+- **Purpose:** A brief description of what the code does.
+- **Parameters:** A list of all input parameters, their types, and a description of each.
+- **Return Value:** A description of what the function or component returns.
+- **Usage Example:** A simple code snippet demonstrating how to use the code.
 
-Documentation type: %s
-Format: %s
-Include examples: %s
-
-Create documentation that includes:
-- Overview and purpose
-- Installation/setup instructions (if applicable)
-- API reference or usage guide
-- Parameters and return values
-- Examples and use cases
-- Error handling information
-- Best practices and tips
-
-Make the documentation clear, accurate, and user-friendly.`, docType, format, includeExamples)
-
-			userPromptTemplate := "Please generate documentation for this code:\n\n`%s\n{{file_content}}`"
-			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
-		})
-
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error in doc_generate prompt: %v", err)), nil
-	}
-	return result, nil
+Ensure the documentation is accurate and easy for other developers to understand.`
+	return genericPromptHandler(ctx, req, systemPrompt)
 }
 
 // TestGenerateHandler handles the test_generate prompt
 func (s *GeminiServer) TestGenerateHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	result, err := s.handlePrompt(ctx, req, "Test generation prompt",
-		func(req mcp.GetPromptRequest, language string) (string, string) {
-			testType := extractPromptArgString(req, "test_type", "unit")
-			framework := extractPromptArgWithConfig(req, "framework", s.config.PromptDefaultFramework, "standard library")
-			coverage := extractPromptArgWithConfig(req, "coverage", s.config.PromptDefaultCoverage, "comprehensive")
+	systemPrompt := `You are a test engineering expert. Your task is to generate comprehensive unit tests for the provided code.
 
-			systemPrompt := fmt.Sprintf(`You are a test engineering expert. Generate comprehensive test cases for the provided code.
+The generated tests should:
+- Be written using the standard testing library for the given language.
+- Cover happy-path scenarios, edge cases, and error conditions.
+- Follow best practices for testing, including clear test descriptions, and proper assertions.
+- Be easy to read and maintain.
 
-Test type: %s tests
-Framework: %s
-Coverage level: %s
-
-Generate tests that cover:
-- Happy path scenarios
-- Edge cases and boundary conditions
-- Error handling and invalid inputs
-- Performance considerations (if applicable)
-- Integration points (if applicable)
-
-Follow testing best practices:
-- Clear test names and descriptions
-- Proper setup and teardown
-- Assertions that verify expected behavior
-- Good test data and mocking strategies
-
-Make tests maintainable and easy to understand.`, testType, framework, coverage)
-
-			userPromptTemplate := "Please generate test cases for this code:\n\n```%s\n{{file_content}}\n```"
-			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
-		})
-
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error in test_generate prompt: %v", err)), nil
-	}
-	return result, nil
+For each function or method, provide a set of corresponding test cases.`
+	return genericPromptHandler(ctx, req, systemPrompt)
 }
 
 // SecurityAnalysisHandler handles the security_analysis prompt
 func (s *GeminiServer) SecurityAnalysisHandler(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	result, err := s.handlePrompt(ctx, req, "Security analysis prompt",
-		func(req mcp.GetPromptRequest, language string) (string, string) {
-			scope := extractPromptArgString(req, "scope", "general security analysis")
-			compliance := extractPromptArgWithConfig(req, "compliance", s.config.PromptDefaultCompliance, "OWASP guidelines")
-			includeFixes := extractPromptArgString(req, "include_fixes", "true")
+	systemPrompt := `You are a cybersecurity expert specializing in secure code review. Your task is to analyze the provided code for security vulnerabilities and risks.
 
-			systemPrompt := fmt.Sprintf(`You are a cybersecurity expert specializing in secure code review. Analyze the provided code for security vulnerabilities and risks.
+Focus on identifying common vulnerabilities, including but not limited to:
+- Injection attacks (SQL, Command, etc.)
+- Cross-Site Scripting (XSS)
+- Insecure Deserialization
+- Broken Authentication and Access Control
+- Security Misconfiguration
+- Sensitive Data Exposure
 
-Analysis scope: %s
-Compliance standards: %s
-Include fixes: %s
-
-Focus on identifying:
-- Input validation vulnerabilities
-- Authentication and authorization issues
-- Data handling and privacy concerns
-- Injection attacks (SQL, XSS, etc.)
-- Insecure cryptographic practices
-- Error handling that leaks information
-- Access control problems
-- Configuration security issues
-
-Provide detailed analysis with:
-- Vulnerability descriptions and impact
-- Risk severity levels
-- Specific remediation steps
-- Best practice recommendations
-
-Prioritize findings by risk level and exploitability.`, scope, compliance, includeFixes)
-
-			userPromptTemplate := "Please perform a security analysis of this code:\n\n```%s\n{{file_content}}\n```"
-			return systemPrompt, fmt.Sprintf(userPromptTemplate, language)
-		})
-
-	if err != nil {
-		return createPromptErrorResult(fmt.Sprintf("Error in security_analysis prompt: %v", err)), nil
-	}
-	return result, nil
-}
-
-// Helper function to extract string arguments from prompt requests
-func extractPromptArgString(req mcp.GetPromptRequest, key, defaultValue string) string {
-	if val, ok := req.Params.Arguments[key]; ok && val != "" {
-		return val
-	}
-	return defaultValue
-}
-
-// extractPromptArgWithConfig extracts argument with config-based defaults
-func extractPromptArgWithConfig(req mcp.GetPromptRequest, key string, configDefault string, fallback string) string {
-	// First check if argument is explicitly provided
-	if val, ok := req.Params.Arguments[key]; ok && val != "" {
-		return val
-	}
-
-	// Use config default if available
-	if configDefault != "" {
-		return configDefault
-	}
-
-	// Fall back to hardcoded default
-	return fallback
-}
-
-// createPromptErrorResult creates a prompt result with an error message
-func createPromptErrorResult(errorMsg string) *mcp.GetPromptResult {
-	return mcp.NewGetPromptResult(
-		"Error processing prompt",
-		[]mcp.PromptMessage{
-			mcp.NewPromptMessage(mcp.RoleAssistant, mcp.NewTextContent(errorMsg)),
-		},
-	)
+For each vulnerability you identify, provide:
+- A description of the vulnerability and its potential impact.
+- The file path and line number where the vulnerability exists.
+- A clear recommendation on how to remediate the vulnerability, including a corrected code snippet where possible.`
+	return genericPromptHandler(ctx, req, systemPrompt)
 }

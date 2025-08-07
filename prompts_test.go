@@ -2,204 +2,137 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// createTempCodeFile creates a temporary file with the given content for testing
-func createTempCodeFile(content string, extension string) (string, func(), error) {
-	tmpFile, err := os.CreateTemp("", "test_code_*"+extension)
-	if err != nil {
-		return "", nil, err
+// TestPromptHandlers is a table-driven test that covers all prompt handlers.
+func TestPromptHandlers(t *testing.T) {
+	// Create a test config and server instance.
+	config := &Config{
+		GeminiAPIKey: "test-key",
+		GeminiModel:  "gemini-2.5-pro",
 	}
-
-	_, err = tmpFile.Write([]byte(content))
-	if err != nil {
-		tmpFile.Close()
-		os.Remove(tmpFile.Name())
-		return "", nil, err
-	}
-
-	tmpFile.Close()
-
-	// Return cleanup function
-	cleanup := func() {
-		os.Remove(tmpFile.Name())
-	}
-
-	return tmpFile.Name(), cleanup, nil
-}
-
-// createTestConfig creates a complete test configuration with prompt defaults
-func createTestConfig() *Config {
-	return &Config{
-		GeminiAPIKey:            "test-key",
-		GeminiModel:             "gemini-2.5-pro",
-		GeminiSystemPrompt:      "You are a helpful assistant.",
-		MaxFileSize:             1024 * 1024, // 1MB for testing
-		ProjectLanguage:         "go",
-		PromptDefaultAudience:   "intermediate",
-		PromptDefaultFocus:      "general",
-		PromptDefaultSeverity:   "warning",
-		PromptDefaultDocFormat:  "markdown",
-		PromptDefaultFramework:  "standard",
-		PromptDefaultCoverage:   "comprehensive",
-		PromptDefaultCompliance: "OWASP",
-	}
-}
-
-// TestCodeReviewPrompt tests the code review prompt
-func TestCodeReviewPrompt(t *testing.T) {
-	// Create test file
-	tempFile, cleanup, err := createTempCodeFile("function test() { return 'hello'; }", ".js")
-	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
-	}
-	defer cleanup()
-
-	// Create GeminiServer with test config
-	config := createTestConfig()
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, loggerKey, NewLogger(LevelInfo))
-
 	geminiSvc, err := NewGeminiServer(ctx, config)
 	if err != nil {
-		t.Skipf("Skipping test - could not create GeminiServer: %v", err)
+		t.Fatalf("Skipping tests: could not create GeminiServer instance: %v", err)
 	}
 
-	// Test with required argument (using file path)
-	req := mcp.GetPromptRequest{
-		Params: mcp.GetPromptParams{
-			Name: "code_review",
-			Arguments: map[string]string{
-				"files": tempFile,
+	// Define the test cases for each prompt handler.
+	testCases := []struct {
+		name                 string
+		handler              func(context.Context, mcp.GetPromptRequest) (*mcp.GetPromptResult, error)
+		expectedSubstrings []string // We now check for substrings instead of a full match.
+	}{
+		{
+			name:    "code_review",
+			handler: geminiSvc.CodeReviewHandler,
+			expectedSubstrings: []string{
+				"You are an expert code reviewer",
+				"Follow OWASP Top 10 guidelines",
+			},
+		},
+		{
+			name:    "explain_code",
+			handler: geminiSvc.ExplainCodeHandler,
+			expectedSubstrings: []string{
+				"You are an expert software engineer and a skilled educator",
+				"Tailor the complexity of your explanation",
+			},
+		},
+		{
+			name:    "debug_help",
+			handler: geminiSvc.DebugHelpHandler,
+			expectedSubstrings: []string{
+				"You are an expert debugger",
+				"Provide a specific, corrected code snippet to fix the bug",
+			},
+		},
+		{
+			name:    "refactor_suggestions",
+			handler: geminiSvc.RefactorSuggestionsHandler,
+			expectedSubstrings: []string{
+				"You are an expert software architect specializing in code modernization",
+				"explain the benefits of the proposed refactoring",
+			},
+		},
+		{
+			name:    "architecture_analysis",
+			handler: geminiSvc.ArchitectureAnalysisHandler,
+			expectedSubstrings: []string{
+				"You are a seasoned software architect",
+				"Provide a clear and concise summary of the architecture",
+			},
+		},
+		{
+			name:    "doc_generate",
+			handler: geminiSvc.DocGenerateHandler,
+			expectedSubstrings: []string{
+				"You are a professional technical writer",
+				"documentation should be in Markdown format",
+			},
+		},
+		{
+			name:    "test_generate",
+			handler: geminiSvc.TestGenerateHandler,
+			expectedSubstrings: []string{
+				"You are a test engineering expert",
+				"Cover happy-path scenarios, edge cases, and error conditions",
+				"For each function or method, provide a set of corresponding test cases",
+			},
+		},
+		{
+			name:    "security_analysis",
+			handler: geminiSvc.SecurityAnalysisHandler,
+			expectedSubstrings: []string{
+				"You are a cybersecurity expert",
+				"Cross-Site Scripting (XSS)",
 			},
 		},
 	}
 
-	result, err := geminiSvc.CodeReviewHandler(ctx, req)
-	if err != nil {
-		t.Errorf("Expected no error, got: %v", err)
-	}
+	problemStatement := "Please check my code for potential issues."
 
-	if result == nil {
-		t.Fatal("Expected result, got nil")
-	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := mcp.GetPromptRequest{
+				Params: mcp.GetPromptParams{
+					Name: tc.name,
+					Arguments: map[string]string{
+						"problem_statement": problemStatement,
+					},
+				},
+			}
 
-	// Verify the result is a valid JSON template
-	var template PromptTemplate
-	textContent, ok := result.Messages[0].Content.(mcp.TextContent)
-	if !ok {
-		t.Fatalf("Expected text content in the first message")
-	}
-	err = json.Unmarshal([]byte(textContent.Text), &template)
-	if err != nil {
-		t.Fatalf("Failed to unmarshal prompt template: %v", err)
-	}
+			result, err := tc.handler(ctx, req)
+			if err != nil {
+				t.Fatalf("Handler returned an unexpected error: %v", err)
+			}
 
-	if template.SystemPrompt == "" {
-		t.Error("Expected system prompt in template")
-	}
+			if result == nil {
+				t.Fatal("Handler returned a nil result")
+			}
 
-	if !strings.Contains(template.UserPromptTemplate, "{{file_content}}") {
-		t.Error("Expected user prompt template to contain placeholder")
-	}
+			textContent, ok := result.Messages[0].Content.(mcp.TextContent)
+			if !ok {
+				t.Fatal("Expected message content to be TextContent")
+			}
+			instructions := textContent.Text
 
-	if len(template.FilePaths) != 1 || template.FilePaths[0] != tempFile {
-		t.Errorf("Expected file path %s in template, got %v", tempFile, template.FilePaths)
-	}
-}
+			if !strings.Contains(instructions, problemStatement) {
+				t.Errorf("Expected instructions to contain the problem statement, but it was missing")
+			}
 
-// TestExplainCodePrompt tests the explain code prompt
-func TestExplainCodePrompt(t *testing.T) {
-	// Create test file with fibonacci code
-	tempFile, cleanup, err := createTempCodeFile("function fibonacci(n) { return n <= 1 ? n : fibonacci(n-1) + fibonacci(n-2); }", ".js")
-	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
-	}
-	defer cleanup()
-
-	config := createTestConfig()
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, loggerKey, NewLogger(LevelInfo))
-
-	geminiSvc, err := NewGeminiServer(ctx, config)
-	if err != nil {
-		t.Skipf("Skipping test - could not create GeminiServer: %v", err)
-	}
-
-	req := mcp.GetPromptRequest{
-		Params: mcp.GetPromptParams{
-			Name: "explain_code",
-			Arguments: map[string]string{
-				"files":    tempFile,
-				"audience": "beginner",
-			},
-		},
-	}
-
-	result, err := geminiSvc.ExplainCodeHandler(ctx, req)
-	if err != nil {
-		t.Errorf("Expected no error, got: %v", err)
-	}
-
-	if result == nil {
-		t.Fatal("Expected result, got nil")
-	}
-
-	// Verify the result is a valid JSON template
-	var template PromptTemplate
-	textContent, ok := result.Messages[0].Content.(mcp.TextContent)
-	if !ok {
-		t.Fatalf("Expected text content in the first message")
-	}
-	err = json.Unmarshal([]byte(textContent.Text), &template)
-	if err != nil {
-		t.Fatalf("Failed to unmarshal prompt template: %v", err)
-	}
-
-	if !strings.Contains(template.SystemPrompt, "beginner") {
-		t.Error("Expected system prompt to contain audience info")
-	}
-}
-
-// TestFileUtilities tests the file reading and expansion utilities
-func TestFileUtilities(t *testing.T) {
-	// Create a temporary directory with multiple files
-	tempDir, err := os.MkdirTemp("", "test_dir_*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	// Create test files
-	files := map[string]string{
-		"main.go":     "package main\nfunc main() { println(\"Hello\") }",
-		"utils.js":    "function helper() { return true; }",
-		"README.md":   "# Test Project",
-		"config.json": `{ \"debug\": true }`,
-	}
-
-	for filename, content := range files {
-		filepath := filepath.Join(tempDir, filename)
-		err := os.WriteFile(filepath, []byte(content), 0644)
-		if err != nil {
-			t.Fatalf("Failed to create test file %s: %v", filename, err)
-		}
-	}
-
-	// Test expandFilePaths with directory
-	expandedPaths, err := expandFilePaths([]string{tempDir})
-	if err != nil {
-		t.Fatalf("expandFilePaths failed: %v", err)
-	}
-
-	if len(expandedPaths) != len(files) {
-		t.Errorf("Expected %d expanded paths, got %d", len(files), len(expandedPaths))
+			// Verify that the instructions contain all expected substrings.
+			for _, sub := range tc.expectedSubstrings {
+				if !strings.Contains(instructions, sub) {
+					t.Errorf("Expected instructions to contain the substring '%s', but it was missing", sub)
+				}
+			}
+		})
 	}
 }
