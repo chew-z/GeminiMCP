@@ -234,7 +234,7 @@ func RequireAuth(ctx context.Context) error {
 // CreateTokenCommand creates a command-line utility to generate tokens
 func CreateTokenCommand(secretKey, userID, username, role string, expirationHours int) {
 	if secretKey == "" {
-		fmt.Fprintln(os.Stderr, "Error: SECRET_KEY environment variable is required")
+		fmt.Fprintln(os.Stderr, "Error: GEMINI_AUTH_SECRET_KEY environment variable is required")
 		return
 	}
 

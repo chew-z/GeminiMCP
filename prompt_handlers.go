@@ -30,7 +30,7 @@ func createSearchInstructions(problemStatement string) string {
 		"*   **'query' parameter (required):** Create a search query from the user's question.\n"+
 		"*   **'start_time' and 'end_time' parameters (optional):**\n"+
 		"*   Use these only if the user question is defining timeframe (e.g., 'this year', 'last month', 'in 2023')\n"+
-		"*   If you use them, you must provide at least 'start_time'\n"+
+		"*   If you use a timeframe, you must provide both 'start_time' and 'end_time'\n"+
 		"*   The format is 'YYYY-MM-DDTHH:MM:SSZ'\n"+
 		"*   **Example:**\n\n"+
 		"If the user`s question is: 'What were the most popular movies of 2023?'\n"+

@@ -84,4 +84,4 @@ func getMimeTypeFromPath(path string) string {
 	}
 }
 
-// This function has been removed as it was unused after refactoring to use convertGenaiResponseToMCPResult
+

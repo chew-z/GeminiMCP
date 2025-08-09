@@ -99,6 +99,8 @@ Options:
 
 The server supports JWT-based authentication for HTTP transport:
 
+**Security Note on CORS:** By default, the HTTP server allows Cross-Origin Resource Sharing (CORS) from all origins (`*`). This is convenient for development but can be a security risk in production. It is strongly recommended to configure the allowed origins for your production environment by setting the `GEMINI_HTTP_CORS_ORIGINS` environment variable to a comma-separated list of allowed domains (e.g., `https://your-app.com,https://your-other-app.com`).
+
 ```bash
 # Enable authentication
 export GEMINI_AUTH_ENABLED=true

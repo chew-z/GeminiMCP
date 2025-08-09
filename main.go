@@ -127,8 +127,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Start the appropriate transport based on command-line flag
-	if *transportFlag == "http" {
+	// Start the appropriate transport based on command-line flag or config
+	if *transportFlag == "http" || (config.EnableHTTP && *transportFlag == "stdio") {
 		logger.Info("Starting Gemini MCP server with HTTP transport on %s%s", config.HTTPAddress, config.HTTPPath)
 		if err := startHTTPServer(ctx, mcpServer, config, logger); err != nil {
 			logger.Error("HTTP server error: %v", err)
