@@ -174,12 +174,14 @@ func (s *GeminiServer) handleQueryWithCacheDirect(ctx context.Context, cacheID, 
 		CachedContent: cacheInfo.Name,
 	}
 
-	// Make the request to the API
-	response, err := s.client.Models.GenerateContent(ctx, cacheInfo.Model, contents, config)
-	if err != nil {
-		logger.Error("Failed to generate content with cached content: %v", err)
-		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
-	}
+    // Make the request to the API
+    response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
+        return s.client.Models.GenerateContent(ctx, cacheInfo.Model, contents, config)
+    })
+    if err != nil {
+        logger.Error("Failed to generate content with cached content: %v", err)
+        return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
+    }
 
 	// Convert to MCP result
 	return convertGenaiResponseToMCPResult(response), nil
@@ -216,28 +218,32 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, fileP
 			DisplayName: fileName,
 		}
 
-		file, err := s.client.Files.Upload(ctx, bytes.NewReader(content), uploadConfig)
-		if err != nil {
-			logger.Error("Failed to upload file %s: %v - falling back to direct content", filePath, err)
-			// Fallback to direct content if upload fails
-			contents = append(contents, genai.NewContentFromText(string(content), genai.RoleUser))
-			continue
-		}
+    file, err := withRetry(ctx, s.config, logger, "gemini.files.upload", func(ctx context.Context) (*genai.File, error) {
+        return s.client.Files.Upload(ctx, bytes.NewReader(content), uploadConfig)
+    })
+    if err != nil {
+        logger.Error("Failed to upload file %s: %v - falling back to direct content", filePath, err)
+        // Fallback to direct content if upload fails
+        contents = append(contents, genai.NewContentFromText(string(content), genai.RoleUser))
+        continue
+    }
 
 		// Add file to contents using the URI
 		contents = append(contents, genai.NewContentFromURI(file.URI, mimeType, genai.RoleUser))
 	}
 
 	// Generate content with files
-	response, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
-	if err != nil {
-		logger.Error("Gemini API error: %v", err)
-		if cacheErr != nil {
-			// If there was also a cache error, include it in the response
-			return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
-		}
-		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
-	}
+    response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
+        return s.client.Models.GenerateContent(ctx, modelName, contents, config)
+    })
+    if err != nil {
+        logger.Error("Gemini API error: %v", err)
+        if cacheErr != nil {
+            // If there was also a cache error, include it in the response
+            return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
+        }
+        return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
+    }
 
 	// Convert to MCP result
 	return convertGenaiResponseToMCPResult(response), nil
@@ -255,15 +261,17 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
 	}
 
 	// Generate content
-	response, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
-	if err != nil {
-		logger.Error("Gemini API error: %v", err)
-		if cacheErr != nil {
-			// If there was also a cache error, include it in the response
-			return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
-		}
-		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
-	}
+    response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
+        return s.client.Models.GenerateContent(ctx, modelName, contents, config)
+    })
+    if err != nil {
+        logger.Error("Gemini API error: %v", err)
+        if cacheErr != nil {
+            // If there was also a cache error, include it in the response
+            return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
+        }
+        return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
+    }
 
 	// Convert to MCP result
 	return convertGenaiResponseToMCPResult(response), nil
@@ -416,59 +424,86 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	// Track seen URLs to avoid duplicates
 	seenURLs := make(map[string]bool)
 
-	// Stream the response
-	for result, err := range s.client.Models.GenerateContentStream(ctx, modelName, contents, config) {
-		if err != nil {
-			logger.Error("Gemini Search API error: %v", err)
-			return createErrorResult(fmt.Sprintf("Error from Gemini Search API: %v", err)), nil
+		// Stream the response with retry on initial transient failures
+		attempts := s.config.MaxRetries + 1
+		if attempts < 1 {
+			attempts = 1
 		}
 
-		// Extract text and metadata from the response
-		if len(result.Candidates) > 0 && result.Candidates[0].Content != nil {
-			responseText += result.Text()
-
-			// Extract metadata if available
-			if metadata := result.Candidates[0].GroundingMetadata; metadata != nil {
-				// Collect search queries
-				if len(metadata.WebSearchQueries) > 0 && len(searchQueries) == 0 {
-					searchQueries = metadata.WebSearchQueries
+	attemptLoop:
+		for attempt := 0; attempt < attempts; attempt++ {
+			gotAny := false
+			for result, err := range s.client.Models.GenerateContentStream(ctx, modelName, contents, config) {
+				if err != nil {
+					logger.Error("Gemini Search API error: %v", err)
+					// Retry only if we haven't received any content yet and error is retryable
+					if !gotAny && isRetryableError(err) && attempt < attempts-1 {
+						delay := computeBackoff(s.config, attempt)
+						logger.Warn("Retrying search stream (attempt %d/%d) in %s due to: %v", attempt+1, attempts, delay, err)
+						select {
+						case <-time.After(delay):
+							// clear any partially built state before retry
+							responseText = ""
+							sources = nil
+							searchQueries = nil
+							seenURLs = make(map[string]bool)
+							continue attemptLoop
+						case <-ctx.Done():
+							return createErrorResult(fmt.Sprintf("Error from Gemini Search API: %v", ctx.Err())), nil
+						}
+					}
+					return createErrorResult(fmt.Sprintf("Error from Gemini Search API: %v", err)), nil
 				}
 
-				// Collect sources from grounding chunks
-				for _, chunk := range metadata.GroundingChunks {
-					var source SourceInfo
+				// Extract text and metadata from the response
+				if len(result.Candidates) > 0 && result.Candidates[0].Content != nil {
+					responseText += result.Text()
+					gotAny = true
 
-					if web := chunk.Web; web != nil {
-						// Skip if we've seen this URL already
-						if seenURLs[web.URI] {
-							continue
+					// Extract metadata if available
+					if metadata := result.Candidates[0].GroundingMetadata; metadata != nil {
+						// Collect search queries
+						if len(metadata.WebSearchQueries) > 0 && len(searchQueries) == 0 {
+							searchQueries = metadata.WebSearchQueries
 						}
 
-						source = SourceInfo{
-							Title: web.Title,
-							Type:  "web",
-						}
-						seenURLs[web.URI] = true
-					} else if ctx := chunk.RetrievedContext; ctx != nil {
-						// Skip if we've seen this URL already
-						if seenURLs[ctx.URI] {
-							continue
-						}
+						// Collect sources from grounding chunks
+						for _, chunk := range metadata.GroundingChunks {
+							var source SourceInfo
 
-						source = SourceInfo{
-							Title: ctx.Title,
-							Type:  "retrieved_context",
-						}
-						seenURLs[ctx.URI] = true
-					}
+							if web := chunk.Web; web != nil {
+								// Skip if we've seen this URL already
+								if seenURLs[web.URI] {
+									continue
+								}
 
-					if source.Title != "" {
-						sources = append(sources, source)
+								source = SourceInfo{
+									Title: web.Title,
+									Type:  "web",
+								}
+								seenURLs[web.URI] = true
+							} else if ctx := chunk.RetrievedContext; ctx != nil {
+								// Skip if we've seen this URL already
+								if seenURLs[ctx.URI] {
+									continue
+								}
+
+								source = SourceInfo{
+									Title: ctx.Title,
+									Type:  "retrieved_context",
+								}
+								seenURLs[ctx.URI] = true
+							}
+
+							if source.Title != "" {
+								sources = append(sources, source)
+							}
+						}
 					}
 				}
 			}
+			break // completed stream without retryable error
 		}
-	}
 
 	// Check for empty content and provide a fallback message
 	if responseText == "" {

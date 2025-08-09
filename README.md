@@ -490,6 +490,22 @@ Example with context window size management:
 }
 ```
 
+### Retries and Backoff
+
+The server automatically retries transient failures using exponential backoff with jitter.
+
+- Retryable errors: network timeouts/temporary errors, Google API 429, and 5xx responses.
+- Backoff strategy: delay grows ~2^attempt from `GEMINI_INITIAL_BACKOFF`, capped by `GEMINI_MAX_BACKOFF`, with full jitter (0.5–1.5x).
+- Control via env vars: set `GEMINI_MAX_RETRIES` (0 disables retries), `GEMINI_INITIAL_BACKOFF`, and `GEMINI_MAX_BACKOFF`.
+
+Example configuration:
+
+```bash
+export GEMINI_MAX_RETRIES=3
+export GEMINI_INITIAL_BACKOFF=2s
+export GEMINI_MAX_BACKOFF=15s
+```
+
 ### Configuration Options
 
 #### Essential Environment Variables
@@ -508,8 +524,10 @@ Example with context window size management:
 
 | Variable                       | Description                                          | Default |
 | ------------------------------ | ---------------------------------------------------- | ------- |
-| `GEMINI_TIMEOUT`               | API timeout in seconds                               | `90`    |
+| `GEMINI_TIMEOUT`               | API timeout (Go duration, e.g., `90s`)               | `90s`   |
 | `GEMINI_MAX_RETRIES`           | Max API retries                                      | `2`     |
+| `GEMINI_INITIAL_BACKOFF`       | Initial retry backoff (duration)                     | `1s`    |
+| `GEMINI_MAX_BACKOFF`           | Maximum retry backoff cap (duration)                 | `10s`   |
 | `GEMINI_TEMPERATURE`           | Model temperature (0.0-1.0)                          | `0.4`   |
 | `GEMINI_ENABLE_CACHING`        | Enable context caching                               | `true`  |
 | `GEMINI_DEFAULT_CACHE_TTL`     | Default cache time-to-live                           | `1h`    |

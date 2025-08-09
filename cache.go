@@ -103,12 +103,14 @@ func (cs *CacheStore) CreateCache(ctx context.Context, req *CacheRequest) (*Cach
 	}
 
 	// Create the cached content
-	logger.Info("Creating cached content with model %s", req.Model)
-	cc, err := cs.client.Caches.Create(ctx, req.Model, config)
-	if err != nil {
-		logger.Error("Failed to create cached content: %v", err)
-		return nil, fmt.Errorf("failed to create cached content: %w", err)
-	}
+    logger.Info("Creating cached content with model %s", req.Model)
+    cc, err := withRetry(ctx, cs.config, logger, "gemini.caches.create", func(ctx context.Context) (*genai.CachedContent, error) {
+        return cs.client.Caches.Create(ctx, req.Model, config)
+    })
+    if err != nil {
+        logger.Error("Failed to create cached content: %v", err)
+        return nil, fmt.Errorf("failed to create cached content: %w", err)
+    }
 
 	// Extract ID from name (format: "cachedContents/abc123")
 	id := cc.Name
@@ -159,12 +161,14 @@ func (cs *CacheStore) GetCache(ctx context.Context, id string) (*CacheInfo, erro
 		name = "cachedContents/" + id
 	}
 
-	logger.Info("Fetching cache info for %s from API", name)
-	cc, err := cs.client.Caches.Get(ctx, name, nil)
-	if err != nil {
-		logger.Error("Failed to get cached content: %v", err)
-		return nil, fmt.Errorf("failed to get cached content: %w", err)
-	}
+    logger.Info("Fetching cache info for %s from API", name)
+    cc, err := withRetry(ctx, cs.config, logger, "gemini.caches.get", func(ctx context.Context) (*genai.CachedContent, error) {
+        return cs.client.Caches.Get(ctx, name, nil)
+    })
+    if err != nil {
+        logger.Error("Failed to get cached content: %v", err)
+        return nil, fmt.Errorf("failed to get cached content: %w", err)
+    }
 
 	// Extract ID from name
 	cacheID := cc.Name
