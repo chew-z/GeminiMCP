@@ -80,52 +80,51 @@ func getThinkingBudgetFromLevel(level string) int {
 }
 
 // Helper function to parse an integer environment variable with a default
-func parseEnvVarInt(key string, defaultValue int) int {
+func parseEnvVarInt(key string, defaultValue int, logger Logger) int {
 	if str := os.Getenv(key); str != "" {
 		if val, err := strconv.Atoi(str); err == nil {
 			return val
 		}
-		// Log warning directly as logger might not be initialized yet
-		fmt.Fprintf(os.Stderr, "[WARN] Invalid integer value for %s: %q. Using default: %d\n", key, str, defaultValue)
+		logger.Warnf("Invalid integer value for %s: %q. Using default: %d", key, str, defaultValue)
 	}
 	return defaultValue
 }
 
 // Helper function to parse a float64 environment variable with a default
-func parseEnvVarFloat(key string, defaultValue float64) float64 {
+func parseEnvVarFloat(key string, defaultValue float64, logger Logger) float64 {
 	if str := os.Getenv(key); str != "" {
 		if val, err := strconv.ParseFloat(str, 64); err == nil {
 			return val
 		}
-		fmt.Fprintf(os.Stderr, "[WARN] Invalid float value for %s: %q. Using default: %f\n", key, str, defaultValue)
+		logger.Warnf("Invalid float value for %s: %q. Using default: %f", key, str, defaultValue)
 	}
 	return defaultValue
 }
 
 // Helper function to parse a duration environment variable with a default
-func parseEnvVarDuration(key string, defaultValue time.Duration) time.Duration {
+func parseEnvVarDuration(key string, defaultValue time.Duration, logger Logger) time.Duration {
 	if str := os.Getenv(key); str != "" {
 		if val, err := time.ParseDuration(str); err == nil {
 			return val
 		}
-		fmt.Fprintf(os.Stderr, "[WARN] Invalid duration value for %s: %q. Using default: %s\n", key, str, defaultValue.String())
+		logger.Warnf("Invalid duration value for %s: %q. Using default: %s", key, str, defaultValue.String())
 	}
 	return defaultValue
 }
 
 // Helper function to parse a boolean environment variable with a default
-func parseEnvVarBool(key string, defaultValue bool) bool {
+func parseEnvVarBool(key string, defaultValue bool, logger Logger) bool {
 	if str := os.Getenv(key); str != "" {
 		if val, err := strconv.ParseBool(str); err == nil {
 			return val
 		}
-		fmt.Fprintf(os.Stderr, "[WARN] Invalid boolean value for %s: %q. Using default: %t\n", key, str, defaultValue)
+		logger.Warnf("Invalid boolean value for %s: %q. Using default: %t", key, str, defaultValue)
 	}
 	return defaultValue
 }
 
 // NewConfig creates a new configuration from environment variables
-func NewConfig() (*Config, error) {
+func NewConfig(logger Logger) (*Config, error) {
 	// No longer validating default model at startup - will be checked when needed
 	// This allows for new models not in our hardcoded list
 	// Get Gemini API key - required
@@ -162,24 +161,26 @@ func NewConfig() (*Config, error) {
 	}
 
 	// Use helper functions to parse environment variables
-	timeout := parseEnvVarDuration("GEMINI_TIMEOUT", 90*time.Second)
-	maxRetries := parseEnvVarInt("GEMINI_MAX_RETRIES", 2)
-	initialBackoff := parseEnvVarDuration("GEMINI_INITIAL_BACKOFF", 1*time.Second)
-	maxBackoff := parseEnvVarDuration("GEMINI_MAX_BACKOFF", 10*time.Second)
+	timeout := parseEnvVarDuration("GEMINI_TIMEOUT", 90*time.Second, logger)
+	maxRetries := parseEnvVarInt("GEMINI_MAX_RETRIES", 2, logger)
+	initialBackoff := parseEnvVarDuration("GEMINI_INITIAL_BACKOFF", 1*time.Second, logger)
+	maxBackoff := parseEnvVarDuration("GEMINI_MAX_BACKOFF", 10*time.Second, logger)
 
 	// Set default temperature or override with environment variable
-	geminiTemperature := parseEnvVarFloat("GEMINI_TEMPERATURE", defaultGeminiTemperature)
+	geminiTemperature := parseEnvVarFloat("GEMINI_TEMPERATURE", defaultGeminiTemperature, logger)
 	// Specific validation for temperature range, as it's a critical parameter
 	if geminiTemperature < 0.0 || geminiTemperature > 1.0 {
 		return nil, fmt.Errorf("GEMINI_TEMPERATURE must be between 0.0 and 1.0, got %v", geminiTemperature)
 	}
 
 	// File handling settings
-	maxFileSize := int64(parseEnvVarInt("GEMINI_MAX_FILE_SIZE", int(defaultMaxFileSize)))
+	maxFileSize := int64(parseEnvVarInt("GEMINI_MAX_FILE_SIZE", int(defaultMaxFileSize), logger))
 	if maxFileSize <= 0 {
-		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_MAX_FILE_SIZE must be positive. Using default: %d\n", defaultMaxFileSize)
+		logger.Warnf("GEMINI_MAX_FILE_SIZE must be positive. Using default: %d", defaultMaxFileSize)
 		maxFileSize = defaultMaxFileSize
 	}
+
+	fileReadBaseDir := os.Getenv("GEMINI_FILE_READ_BASE_DIR")
 
 	var allowedFileTypes []string
 	if typesStr := os.Getenv("GEMINI_ALLOWED_FILE_TYPES"); typesStr != "" {
@@ -204,27 +205,27 @@ func NewConfig() (*Config, error) {
 	if githubAPIBaseURL == "" {
 		githubAPIBaseURL = defaultGitHubAPIBaseURL
 	}
-	maxGitHubFiles := parseEnvVarInt("GEMINI_MAX_GITHUB_FILES", defaultMaxGitHubFiles)
+	maxGitHubFiles := parseEnvVarInt("GEMINI_MAX_GITHUB_FILES", defaultMaxGitHubFiles, logger)
 	if maxGitHubFiles <= 0 {
-		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_MAX_GITHUB_FILES must be positive. Using default: %d\n", defaultMaxGitHubFiles)
+		logger.Warnf("GEMINI_MAX_GITHUB_FILES must be positive. Using default: %d", defaultMaxGitHubFiles)
 		maxGitHubFiles = defaultMaxGitHubFiles
 	}
-	maxGitHubFileSize := int64(parseEnvVarInt("GEMINI_MAX_GITHUB_FILE_SIZE", int(defaultMaxGitHubFileSize)))
+	maxGitHubFileSize := int64(parseEnvVarInt("GEMINI_MAX_GITHUB_FILE_SIZE", int(defaultMaxGitHubFileSize), logger))
 	if maxGitHubFileSize <= 0 {
-		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_MAX_GITHUB_FILE_SIZE must be positive. Using default: %d\n", defaultMaxGitHubFileSize)
+		logger.Warnf("GEMINI_MAX_GITHUB_FILE_SIZE must be positive. Using default: %d", defaultMaxGitHubFileSize)
 		maxGitHubFileSize = defaultMaxGitHubFileSize
 	}
 
 	// Cache settings
-	enableCaching := parseEnvVarBool("GEMINI_ENABLE_CACHING", defaultEnableCaching)
-	defaultCacheTTL := parseEnvVarDuration("GEMINI_DEFAULT_CACHE_TTL", defaultDefaultCacheTTL)
+	enableCaching := parseEnvVarBool("GEMINI_ENABLE_CACHING", defaultEnableCaching, logger)
+	defaultCacheTTL := parseEnvVarDuration("GEMINI_DEFAULT_CACHE_TTL", defaultDefaultCacheTTL, logger)
 	if defaultCacheTTL <= 0 {
-		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_DEFAULT_CACHE_TTL must be positive. Using default: %s\n", defaultDefaultCacheTTL.String())
+		logger.Warnf("GEMINI_DEFAULT_CACHE_TTL must be positive. Using default: %s", defaultDefaultCacheTTL.String())
 		defaultCacheTTL = defaultDefaultCacheTTL
 	}
 
 	// Thinking settings
-	enableThinking := parseEnvVarBool("GEMINI_ENABLE_THINKING", defaultEnableThinking)
+	enableThinking := parseEnvVarBool("GEMINI_ENABLE_THINKING", defaultEnableThinking, logger)
 
 	// Set thinking budget level from environment variable or use default
 	thinkingBudgetLevel := defaultThinkingBudgetLevel
@@ -233,7 +234,7 @@ func NewConfig() (*Config, error) {
 		if level == "none" || level == "low" || level == "medium" || level == "high" {
 			thinkingBudgetLevel = level
 		} else {
-			fmt.Fprintf(os.Stderr, "[WARN] Invalid GEMINI_THINKING_BUDGET_LEVEL value: %q. Using default: %q\n",
+			logger.Warnf("Invalid GEMINI_THINKING_BUDGET_LEVEL value: %q. Using default: %q",
 				levelStr, defaultThinkingBudgetLevel)
 		}
 	}
@@ -242,10 +243,10 @@ func NewConfig() (*Config, error) {
 	thinkingBudget := getThinkingBudgetFromLevel(thinkingBudgetLevel)
 	// If GEMINI_THINKING_BUDGET is set, it overrides the level-derived value.
 	// The helper will use the level-derived budget as a fallback if parsing fails.
-	thinkingBudget = parseEnvVarInt("GEMINI_THINKING_BUDGET", thinkingBudget)
+	thinkingBudget = parseEnvVarInt("GEMINI_THINKING_BUDGET", thinkingBudget, logger)
 
 	// HTTP transport settings
-	enableHTTP := parseEnvVarBool("GEMINI_ENABLE_HTTP", defaultEnableHTTP)
+	enableHTTP := parseEnvVarBool("GEMINI_ENABLE_HTTP", defaultEnableHTTP, logger)
 	httpAddress := os.Getenv("GEMINI_HTTP_ADDRESS")
 	if httpAddress == "" {
 		httpAddress = defaultHTTPAddress
@@ -254,13 +255,13 @@ func NewConfig() (*Config, error) {
 	if httpPath == "" {
 		httpPath = defaultHTTPPath
 	}
-	httpStateless := parseEnvVarBool("GEMINI_HTTP_STATELESS", defaultHTTPStateless)
-	httpHeartbeat := parseEnvVarDuration("GEMINI_HTTP_HEARTBEAT", defaultHTTPHeartbeat)
+	httpStateless := parseEnvVarBool("GEMINI_HTTP_STATELESS", defaultHTTPStateless, logger)
+	httpHeartbeat := parseEnvVarDuration("GEMINI_HTTP_HEARTBEAT", defaultHTTPHeartbeat, logger)
 	if httpHeartbeat < 0 {
-		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_HTTP_HEARTBEAT must be non-negative. Using default: %s\n", defaultHTTPHeartbeat.String())
+		logger.Warnf("GEMINI_HTTP_HEARTBEAT must be non-negative. Using default: %s", defaultHTTPHeartbeat.String())
 		httpHeartbeat = defaultHTTPHeartbeat
 	}
-	httpCORSEnabled := parseEnvVarBool("GEMINI_HTTP_CORS_ENABLED", defaultHTTPCORSEnabled)
+	httpCORSEnabled := parseEnvVarBool("GEMINI_HTTP_CORS_ENABLED", defaultHTTPCORSEnabled, logger)
 	var httpCORSOrigins []string
 	if originsStr := os.Getenv("GEMINI_HTTP_CORS_ORIGINS"); originsStr != "" {
 		parts := strings.Split(originsStr, ",")
@@ -275,7 +276,7 @@ func NewConfig() (*Config, error) {
 	}
 
 	// Authentication settings
-	authEnabled := parseEnvVarBool("GEMINI_AUTH_ENABLED", defaultAuthEnabled)
+	authEnabled := parseEnvVarBool("GEMINI_AUTH_ENABLED", defaultAuthEnabled, logger)
 	authSecretKey := os.Getenv("GEMINI_AUTH_SECRET_KEY")
 
 	// If authentication is enabled, require secret key
@@ -285,7 +286,7 @@ func NewConfig() (*Config, error) {
 
 	// Warn if secret key is too short (for security)
 	if authEnabled && len(authSecretKey) < 32 {
-		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_AUTH_SECRET_KEY should be at least 32 characters for security\n")
+		logger.Warnf("GEMINI_AUTH_SECRET_KEY should be at least 32 characters for security")
 	}
 
 	// Prompt defaults
@@ -330,48 +331,49 @@ func NewConfig() (*Config, error) {
 	}
 
 	return &Config{
-		GeminiAPIKey:             geminiAPIKey,
-		GeminiModel:              geminiModel,
-		GeminiSearchModel:        geminiSearchModel, // Assign the read value
-		GeminiSystemPrompt:       geminiSystemPrompt,
-		GeminiSearchSystemPrompt: geminiSearchSystemPrompt,
-		GeminiTemperature:        geminiTemperature,
-		HTTPTimeout:              timeout,
-		EnableHTTP:               enableHTTP,
-		HTTPAddress:              httpAddress,
-		HTTPPath:                 httpPath,
-		HTTPStateless:            httpStateless,
-		HTTPHeartbeat:            httpHeartbeat,
-		HTTPCORSEnabled:          httpCORSEnabled,
-		HTTPCORSOrigins:          httpCORSOrigins,
-		AuthEnabled:              authEnabled,
-		AuthSecretKey:            authSecretKey,
-		MaxRetries:               maxRetries,
-		InitialBackoff:           initialBackoff,
-		MaxBackoff:               maxBackoff,
-		MaxFileSize:              maxFileSize,
-		AllowedFileTypes:         allowedFileTypes,
+			GeminiAPIKey:             geminiAPIKey,
+			GeminiModel:              geminiModel,
+			GeminiSearchModel:        geminiSearchModel, // Assign the read value
+			GeminiSystemPrompt:       geminiSystemPrompt,
+			GeminiSearchSystemPrompt: geminiSearchSystemPrompt,
+			GeminiTemperature:        geminiTemperature,
+			HTTPTimeout:              timeout,
+			EnableHTTP:               enableHTTP,
+			HTTPAddress:              httpAddress,
+			HTTPPath:                 httpPath,
+			HTTPStateless:            httpStateless,
+			HTTPHeartbeat:            httpHeartbeat,
+			HTTPCORSEnabled:          httpCORSEnabled,
+			HTTPCORSOrigins:          httpCORSOrigins,
+			AuthEnabled:              authEnabled,
+			AuthSecretKey:            authSecretKey,
+			MaxRetries:               maxRetries,
+			InitialBackoff:           initialBackoff,
+			MaxBackoff:               maxBackoff,
+			MaxFileSize:              maxFileSize,
+			AllowedFileTypes:         allowedFileTypes,
+			FileReadBaseDir:          fileReadBaseDir,
 
-		// GitHub settings
-		GitHubToken:         githubToken,
-		GitHubAPIBaseURL:    githubAPIBaseURL,
-		MaxGitHubFiles:      maxGitHubFiles,
-		MaxGitHubFileSize:   maxGitHubFileSize,
+			// GitHub settings
+			GitHubToken:       githubToken,
+			GitHubAPIBaseURL:  githubAPIBaseURL,
+			MaxGitHubFiles:    maxGitHubFiles,
+			MaxGitHubFileSize: maxGitHubFileSize,
 
-		// Cache settings
-		EnableCaching:            enableCaching,
-		DefaultCacheTTL:          defaultCacheTTL,
-		EnableThinking:           enableThinking,
-		ThinkingBudget:           thinkingBudget,
-		ThinkingBudgetLevel:      thinkingBudgetLevel,
-		ProjectLanguage:          projectLanguage,
-		PromptDefaultAudience:    promptDefaultAudience,
-		PromptDefaultFocus:       promptDefaultFocus,
-		PromptDefaultSeverity:    promptDefaultSeverity,
-		PromptDefaultDocFormat:   promptDefaultDocFormat,
-		PromptDefaultFramework:   promptDefaultFramework,
-		PromptDefaultCoverage:    promptDefaultCoverage,
-		PromptDefaultCompliance:  promptDefaultCompliance,
-	},
+			// Cache settings
+			EnableCaching:           enableCaching,
+			DefaultCacheTTL:         defaultCacheTTL,
+			EnableThinking:          enableThinking,
+			ThinkingBudget:          thinkingBudget,
+			ThinkingBudgetLevel:     thinkingBudgetLevel,
+			ProjectLanguage:         projectLanguage,
+			PromptDefaultAudience:   promptDefaultAudience,
+			PromptDefaultFocus:      promptDefaultFocus,
+			PromptDefaultSeverity:   promptDefaultSeverity,
+			PromptDefaultDocFormat:  promptDefaultDocFormat,
+			PromptDefaultFramework:  promptDefaultFramework,
+			PromptDefaultCoverage:   promptDefaultCoverage,
+			PromptDefaultCompliance: promptDefaultCompliance,
+		},
 		nil
 }

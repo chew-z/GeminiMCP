@@ -17,10 +17,12 @@ func TestNewConfig(t *testing.T) {
 		os.Setenv("GEMINI_TIMEOUT", originalTimeout)
 	}()
 
+	logger := NewLogger(LevelInfo)
+
 	t.Run("missing API key returns error", func(t *testing.T) {
 		os.Unsetenv("GEMINI_API_KEY")
 
-		config, err := NewConfig()
+		config, err := NewConfig(logger)
 
 		if err == nil {
 			t.Error("Expected error when API key is missing, got nil")
@@ -34,7 +36,7 @@ func TestNewConfig(t *testing.T) {
 		os.Setenv("GEMINI_API_KEY", "test-api-key")
 		os.Setenv("GEMINI_MODEL", "gemini-2.5-pro") // Use a valid model from models.go
 
-		config, err := NewConfig()
+		config, err := NewConfig(logger)
 
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
@@ -57,7 +59,7 @@ func TestNewConfig(t *testing.T) {
 		os.Setenv("GEMINI_API_KEY", "test-api-key")
 		os.Unsetenv("GEMINI_MODEL")
 
-		config, err := NewConfig()
+		config, err := NewConfig(logger)
 
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
@@ -74,7 +76,7 @@ func TestNewConfig(t *testing.T) {
 		os.Setenv("GEMINI_API_KEY", "test-api-key")
 		os.Setenv("GEMINI_TIMEOUT", "180s")
 
-		config, err := NewConfig()
+		config, err := NewConfig(logger)
 
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
@@ -93,7 +95,7 @@ func TestNewConfig(t *testing.T) {
 		os.Setenv("GEMINI_INITIAL_BACKOFF", "2s")
 		os.Setenv("GEMINI_MAX_BACKOFF", "15s")
 
-		config, err := NewConfig()
+		config, err := NewConfig(logger)
 
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
@@ -115,7 +117,8 @@ func TestNewConfig(t *testing.T) {
 func TestConfigDefaults(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("GEMINI_API_KEY", "key")
-	cfg, err := NewConfig()
+	logger := NewLogger(LevelInfo)
+	cfg, err := NewConfig(logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -186,7 +189,8 @@ func TestInvalidTemperature(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("GEMINI_API_KEY", "key")
 	os.Setenv("GEMINI_TEMPERATURE", "1.5")
-	_, err := NewConfig()
+	logger := NewLogger(LevelInfo)
+	_, err := NewConfig(logger)
 	if err == nil {
 		t.Fatal("expected error for GEMINI_TEMPERATURE > 1.0, got nil")
 	}
@@ -196,7 +200,8 @@ func TestValidTemperature(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("GEMINI_API_KEY", "key")
 	os.Setenv("GEMINI_TEMPERATURE", "0.8")
-	cfg, err := NewConfig()
+	logger := NewLogger(LevelInfo)
+	cfg, err := NewConfig(logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -210,7 +215,8 @@ func TestFileSettings(t *testing.T) {
 	os.Setenv("GEMINI_API_KEY", "key")
 	os.Setenv("GEMINI_MAX_FILE_SIZE", "2097152") // 2 MB
 	os.Setenv("GEMINI_ALLOWED_FILE_TYPES", "text/foo,application/bar")
-	cfg, err := NewConfig()
+	logger := NewLogger(LevelInfo)
+	cfg, err := NewConfig(logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -230,7 +236,8 @@ func TestCacheSettings(t *testing.T) {
 	os.Setenv("GEMINI_API_KEY", "key")
 	os.Setenv("GEMINI_ENABLE_CACHING", "false")
 	os.Setenv("GEMINI_DEFAULT_CACHE_TTL", "30m")
-	cfg, err := NewConfig()
+	logger := NewLogger(LevelInfo)
+	cfg, err := NewConfig(logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -247,7 +254,8 @@ func TestThinkingSettings(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("GEMINI_API_KEY", "key")
 	os.Setenv("GEMINI_THINKING_BUDGET_LEVEL", "high")
-	cfg, err := NewConfig()
+	logger := NewLogger(LevelInfo)
+	cfg, err := NewConfig(logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -263,7 +271,7 @@ func TestThinkingSettings(t *testing.T) {
 	os.Setenv("GEMINI_API_KEY", "key")
 	os.Setenv("GEMINI_THINKING_BUDGET_LEVEL", "medium")
 	os.Setenv("GEMINI_THINKING_BUDGET", "1000")
-	cfg2, err := NewConfig()
+	cfg2, err := NewConfig(logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -282,7 +290,8 @@ func TestHTTPSettings(t *testing.T) {
 	os.Setenv("GEMINI_HTTP_HEARTBEAT", "5s")
 	os.Setenv("GEMINI_HTTP_CORS_ENABLED", "false")
 	os.Setenv("GEMINI_HTTP_CORS_ORIGINS", "https://a,https://b")
-	cfg, err := NewConfig()
+	logger := NewLogger(LevelInfo)
+	cfg, err := NewConfig(logger)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

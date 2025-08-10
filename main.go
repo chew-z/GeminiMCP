@@ -40,18 +40,16 @@ func main() {
 
 	// Create application context with logger
 	logger := NewLogger(LevelInfo)
-	ctx := context.WithValue(context.Background(), loggerKey, logger)
-
-	// Create configuration from environment variables
-	config, err := NewConfig()
+	config, err := NewConfig(logger)
 	if err != nil {
+		// Create a temporary context just for this error
+		ctx := context.WithValue(context.Background(), loggerKey, logger)
 		handleStartupError(ctx, err)
 		return
 	}
 
-	
-
-	// Store config in context for error handler to access
+	// Now create the main context with everything it needs
+	ctx := context.WithValue(context.Background(), loggerKey, logger)
 	ctx = context.WithValue(ctx, configKey, config)
 
 	// Fetch available Gemini models first if API key is available
@@ -152,5 +150,3 @@ func getCachingStatusStr(enabled bool) string {
 	}
 	return "disabled"
 }
-
-

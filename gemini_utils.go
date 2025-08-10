@@ -83,5 +83,3 @@ func getMimeTypeFromPath(path string) string {
 		return "application/octet-stream"
 	}
 }
-
-

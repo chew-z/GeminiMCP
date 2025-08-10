@@ -3,6 +3,7 @@ module GeminiMCP
 go 1.24.5
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/joho/godotenv v1.5.1
 	github.com/mark3labs/mcp-go v0.37.0
 	google.golang.org/api v0.246.0

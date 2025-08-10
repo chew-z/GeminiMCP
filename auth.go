@@ -2,15 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // AuthMiddleware handles JWT-based authentication for HTTP transport
@@ -22,11 +20,10 @@ type AuthMiddleware struct {
 
 // Claims represents JWT token claims
 type Claims struct {
-	UserID    string `json:"user_id"`
-	Username  string `json:"username"`
-	Role      string `json:"role"`
-	IssuedAt  int64  `json:"iat"`
-	ExpiresAt int64  `json:"exp"`
+	UserID   string `json:"user_id"`
+	Username string `json:"username"`
+	Role     string `json:"role"`
+	jwt.RegisteredClaims
 }
 
 // NewAuthMiddleware creates a new authentication middleware
@@ -55,20 +52,13 @@ func (a *AuthMiddleware) HTTPContextFunc(next func(ctx context.Context, r *http.
 			return next(ctx, r)
 		}
 
-		token := strings.TrimPrefix(authHeader, "Bearer ")
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
 		// Validate JWT token
-		claims, err := a.validateJWT(token)
+		claims, err := a.validateJWT(tokenString)
 		if err != nil {
 			a.logger.Warn("Invalid token from %s: %v", r.RemoteAddr, err)
 			ctx = context.WithValue(ctx, authErrorKey, "invalid_token")
-			return next(ctx, r)
-		}
-
-		// Check if token is expired
-		if time.Now().Unix() > claims.ExpiresAt {
-			a.logger.Warn("Expired token from %s", r.RemoteAddr)
-			ctx = context.WithValue(ctx, authErrorKey, "expired_token")
 			return next(ctx, r)
 		}
 
@@ -86,101 +76,40 @@ func (a *AuthMiddleware) HTTPContextFunc(next func(ctx context.Context, r *http.
 
 // validateJWT validates a JWT token and returns the claims
 func (a *AuthMiddleware) validateJWT(tokenString string) (*Claims, error) {
-	// Split the token into header, payload, and signature
-	parts := strings.Split(tokenString, ".")
-	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid token format")
-	}
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		// Ensure the signing method is HMAC, as expected
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return a.secretKey, nil
+	})
 
-	// Decode and parse header
-	headerData, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return nil, fmt.Errorf("invalid header encoding: %w", err)
+		return nil, err // The library handles various parsing/validation errors
 	}
 
-	var header struct {
-		Alg string `json:"alg"`
-		Typ string `json:"typ"`
-	}
-	if err := json.Unmarshal(headerData, &header); err != nil {
-		return nil, fmt.Errorf("invalid header format: %w", err)
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
 	}
 
-	// Verify algorithm
-	if header.Alg != "HS256" {
-		return nil, fmt.Errorf("unsupported algorithm: %s", header.Alg)
-	}
-
-	// Decode and parse payload
-	payloadData, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return nil, fmt.Errorf("invalid payload encoding: %w", err)
-	}
-
-	var claims Claims
-	if err := json.Unmarshal(payloadData, &claims); err != nil {
-		return nil, fmt.Errorf("invalid payload format: %w", err)
-	}
-
-	// Verify signature
-	expectedSignature := a.generateSignature(parts[0] + "." + parts[1])
-	actualSignature, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil {
-		return nil, fmt.Errorf("invalid signature encoding: %w", err)
-	}
-
-	if !hmac.Equal(expectedSignature, actualSignature) {
-		return nil, fmt.Errorf("invalid signature")
-	}
-
-	return &claims, nil
-}
-
-// generateSignature generates HMAC-SHA256 signature for the given data
-func (a *AuthMiddleware) generateSignature(data string) []byte {
-	h := hmac.New(sha256.New, a.secretKey)
-	h.Write([]byte(data))
-	return h.Sum(nil)
+	return nil, fmt.Errorf("invalid token")
 }
 
 // GenerateToken generates a JWT token for a user (utility function for testing/setup)
 func (a *AuthMiddleware) GenerateToken(userID, username, role string, expirationHours int) (string, error) {
 	now := time.Now()
 	claims := Claims{
-		UserID:    userID,
-		Username:  username,
-		Role:      role,
-		IssuedAt:  now.Unix(),
-		ExpiresAt: now.Add(time.Duration(expirationHours) * time.Hour).Unix(),
+		UserID:   userID,
+		Username: username,
+		Role:     role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(expirationHours) * time.Hour)),
+		},
 	}
 
-	// Create header
-	header := map[string]string{
-		"alg": "HS256",
-		"typ": "JWT",
-	}
-
-	headerBytes, err := json.Marshal(header)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal header: %w", err)
-	}
-
-	payloadBytes, err := json.Marshal(claims)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal payload: %w", err)
-	}
-
-	// Encode header and payload
-	headerEncoded := base64.RawURLEncoding.EncodeToString(headerBytes)
-	payloadEncoded := base64.RawURLEncoding.EncodeToString(payloadBytes)
-
-	// Generate signature
-	signatureData := headerEncoded + "." + payloadEncoded
-	signature := a.generateSignature(signatureData)
-	signatureEncoded := base64.RawURLEncoding.EncodeToString(signature)
-
-	token := headerEncoded + "." + payloadEncoded + "." + signatureEncoded
-	return token, nil
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(a.secretKey)
 }
 
 // isAuthenticated checks if the request context contains valid authentication

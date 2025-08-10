@@ -54,8 +54,6 @@ func withRetry[T any](ctx context.Context, cfg *Config, logger Logger, opName st
 	return zero, errors.New("withRetry: exhausted attempts")
 }
 
-
-
 // computeBackoff calculates exponential backoff with full jitter.
 func computeBackoff(cfg *Config, attempt int) time.Duration {
 	// exp backoff: initial * 2^attempt, capped at MaxBackoff

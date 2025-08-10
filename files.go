@@ -1,14 +1,14 @@
 package main
 
 import (
-    "bytes"
-    "context"
-    "errors"
-    "fmt"
-    "strings"
-    "time"
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
 
-    "google.golang.org/genai"
+	"google.golang.org/genai"
 )
 
 // FileUploadRequest struct definition moved to structs.go
@@ -76,14 +76,14 @@ func (fs *FileStore) UploadFile(ctx context.Context, req *FileUploadRequest) (*F
 	}
 
 	// Upload file to Gemini API
-    logger.Info("Uploading file %s with MIME type %s", req.FileName, req.MimeType)
-    file, err := withRetry(ctx, fs.config, logger, "gemini.files.upload", func(ctx context.Context) (*genai.File, error) {
-        return fs.client.Files.Upload(ctx, bytes.NewReader(req.Content), opts)
-    })
-    if err != nil {
-        logger.Error("Failed to upload file: %v", err)
-        return nil, fmt.Errorf("failed to upload file: %w", err)
-    }
+	logger.Info("Uploading file %s with MIME type %s", req.FileName, req.MimeType)
+	file, err := withRetry(ctx, fs.config, logger, "gemini.files.upload", func(ctx context.Context) (*genai.File, error) {
+		return fs.client.Files.Upload(ctx, bytes.NewReader(req.Content), opts)
+	})
+	if err != nil {
+		logger.Error("Failed to upload file: %v", err)
+		return nil, fmt.Errorf("failed to upload file: %w", err)
+	}
 
 	// Extract ID from name (format: "files/abc123")
 	id := file.Name
@@ -165,14 +165,14 @@ func (fs *FileStore) GetFile(ctx context.Context, id string) (*FileInfo, error) 
 		return nil, errors.New("internal error: Gemini client not properly initialized")
 	}
 
-    logger.Info("Fetching file info for %s from API", name)
-    file, err := withRetry(ctx, fs.config, logger, "gemini.files.get", func(ctx context.Context) (*genai.File, error) {
-        return fs.client.Files.Get(ctx, name, nil)
-    })
-    if err != nil {
-        logger.Error("Failed to get file from API: %v", err)
-        return nil, fmt.Errorf("failed to get file: %w", err)
-    }
+	logger.Info("Fetching file info for %s from API", name)
+	file, err := withRetry(ctx, fs.config, logger, "gemini.files.get", func(ctx context.Context) (*genai.File, error) {
+		return fs.client.Files.Get(ctx, name, nil)
+	})
+	if err != nil {
+		logger.Error("Failed to get file from API: %v", err)
+		return nil, fmt.Errorf("failed to get file: %w", err)
+	}
 
 	// Extract ID from name
 	fileID := file.Name

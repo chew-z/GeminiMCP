@@ -26,8 +26,6 @@ func extractArgumentBool(req mcp.CallToolRequest, name string, defaultValue bool
 	return defaultValue
 }
 
-
-
 // extractArgumentStringArray extracts a string array argument from the request parameters
 func extractArgumentStringArray(req mcp.CallToolRequest, name string) []string {
 	var result []string

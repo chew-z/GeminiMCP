@@ -38,7 +38,6 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 
 	// --- File Handling Logic ---
 	var uploads []*FileUploadRequest
-	var fileErr error
 
 	filePaths := extractArgumentStringArray(req, "file_paths")
 	githubFiles := extractArgumentStringArray(req, "github_files")
@@ -67,20 +66,27 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 			}
 		}
 
-		uploads, fileErr = fetchFromGitHub(ctx, s, githubRepo, githubRef, githubFiles)
+		uploads, fileErrs := fetchFromGitHub(ctx, s, githubRepo, githubRef, githubFiles)
+		if len(fileErrs) > 0 {
+			for _, err := range fileErrs {
+				logger.Error("Error processing github file: %v", err)
+			}
+			if len(uploads) == 0 {
+				return createErrorResult(fmt.Sprintf("Error processing github files: %v", fileErrs)), nil
+			}
+		}
 	} else if len(filePaths) > 0 {
 		// Handle local file paths
 		if isHTTPTransport(ctx) {
 			return createErrorResult("'file_paths' is not supported in HTTP transport mode. Use 'github_files' instead."), nil
 		}
-		uploads, fileErr = readLocalFiles(ctx, filePaths, s.config)
+		localUploads, err := readLocalFiles(ctx, filePaths, s.config)
+		if err != nil {
+			logger.Error("Error processing local files: %v", err)
+			return createErrorResult(fmt.Sprintf("Error processing local files: %v", err)), nil
+		}
+		uploads = localUploads
 	}
-
-	if fileErr != nil {
-		logger.Error("Error processing files: %v", fileErr)
-		return createErrorResult(fmt.Sprintf("Error processing files: %v", fileErr)), nil
-	}
-	// --- End File Handling Logic ---
 
 
 	// Check if caching is requested
@@ -138,10 +144,30 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]*FileUploadRequest, error) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Reading files from local filesystem (source: 'file_paths')")
+
+	if config.FileReadBaseDir == "" {
+		return nil, fmt.Errorf("local file reading is disabled: no base directory configured")
+	}
+
 	var uploads []*FileUploadRequest
 
 	for _, filePath := range filePaths {
-		content, err := os.ReadFile(filePath)
+		// Clean the path to resolve ".." etc. and prevent shenanigans.
+		cleanedPath := filepath.Clean(filePath)
+
+		// Prevent absolute paths and path traversal attempts.
+		if filepath.IsAbs(cleanedPath) || strings.HasPrefix(cleanedPath, "..") {
+			return nil, fmt.Errorf("invalid path: %s. Only relative paths within the allowed directory are permitted", filePath)
+		}
+
+		fullPath := filepath.Join(config.FileReadBaseDir, cleanedPath)
+
+		// Final, most important check: ensure the resolved path is still within the base directory.
+		if !strings.HasPrefix(fullPath, config.FileReadBaseDir) {
+			return nil, fmt.Errorf("path traversal attempt detected: %s", filePath)
+		}
+
+		content, err := os.ReadFile(fullPath)
 		if err != nil {
 			logger.Error("Failed to read file %s: %v", filePath, err)
 			continue // Or return error immediately
@@ -476,86 +502,42 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	// Track seen URLs to avoid duplicates
 	seenURLs := make(map[string]bool)
 
-		// Stream the response with retry on initial transient failures
-		attempts := s.config.MaxRetries + 1
-		if attempts < 1 {
-			attempts = 1
-		}
+	// Non-streaming search request with metadata extraction
+	resp, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
+		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
+	})
+	if err != nil {
+		logger.Error("Gemini Search API error: %v", err)
+		return createErrorResult(fmt.Sprintf("Error from Gemini Search API: %v", err)), nil
+	}
 
-	attemptLoop:
-		for attempt := 0; attempt < attempts; attempt++ {
-			gotAny := false
-			for result, err := range s.client.Models.GenerateContentStream(ctx, modelName, contents, config) {
-				if err != nil {
-					logger.Error("Gemini Search API error: %v", err)
-					// Retry only if we haven't received any content yet and error is retryable
-					if !gotAny && isRetryableError(err) && attempt < attempts-1 {
-						delay := computeBackoff(s.config, attempt)
-						logger.Warn("Retrying search stream (attempt %d/%d) in %s due to: %v", attempt+1, attempts, delay, err)
-						select {
-						case <-time.After(delay):
-							// clear any partially built state before retry
-							responseText = ""
-							sources = nil
-							searchQueries = nil
-							seenURLs = make(map[string]bool)
-							continue attemptLoop
-						case <-ctx.Done():
-							return createErrorResult(fmt.Sprintf("Error from Gemini Search API: %v", ctx.Err())), nil
-						}
+	if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
+		responseText = resp.Text()
+		if metadata := resp.Candidates[0].GroundingMetadata; metadata != nil {
+			if len(metadata.WebSearchQueries) > 0 && len(searchQueries) == 0 {
+				searchQueries = metadata.WebSearchQueries
+			}
+			for _, chunk := range metadata.GroundingChunks {
+				var source SourceInfo
+				if web := chunk.Web; web != nil {
+					if seenURLs[web.URI] {
+						continue
 					}
-					return createErrorResult(fmt.Sprintf("Error from Gemini Search API: %v", err)), nil
+					source = SourceInfo{Title: web.Title, Type: "web"}
+					seenURLs[web.URI] = true
+				} else if retrievedCtx := chunk.RetrievedContext; retrievedCtx != nil {
+					if seenURLs[retrievedCtx.URI] {
+						continue
+					}
+					source = SourceInfo{Title: retrievedCtx.Title, Type: "retrieved_context"}
+					seenURLs[retrievedCtx.URI] = true
 				}
-
-				// Extract text and metadata from the response
-				if len(result.Candidates) > 0 && result.Candidates[0].Content != nil {
-					responseText += result.Text()
-					gotAny = true
-
-					// Extract metadata if available
-					if metadata := result.Candidates[0].GroundingMetadata; metadata != nil {
-						// Collect search queries
-						if len(metadata.WebSearchQueries) > 0 && len(searchQueries) == 0 {
-							searchQueries = metadata.WebSearchQueries
-						}
-
-						// Collect sources from grounding chunks
-						for _, chunk := range metadata.GroundingChunks {
-							var source SourceInfo
-
-							if web := chunk.Web; web != nil {
-								// Skip if we've seen this URL already
-								if seenURLs[web.URI] {
-									continue
-								}
-
-								source = SourceInfo{
-									Title: web.Title,
-									Type:  "web",
-								}
-								seenURLs[web.URI] = true
-							} else if ctx := chunk.RetrievedContext; ctx != nil {
-								// Skip if we've seen this URL already
-								if seenURLs[ctx.URI] {
-									continue
-								}
-
-								source = SourceInfo{
-									Title: ctx.Title,
-									Type:  "retrieved_context",
-								}
-								seenURLs[ctx.URI] = true
-							}
-
-							if source.Title != "" {
-								sources = append(sources, source)
-							}
-						}
-					}
+				if source.Title != "" {
+					sources = append(sources, source)
 				}
 			}
-			break // completed stream without retryable error
 		}
+	}
 
 	// Check for empty content and provide a fallback message
 	if responseText == "" {
@@ -566,14 +548,14 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	}
 
 	// Create the response JSON
-	response := SearchResponse{
+	searchResp := SearchResponse{
 		Answer:        responseText,
 		Sources:       sources,
 		SearchQueries: searchQueries,
 	}
 
 	// Convert to JSON and return as text content
-	responseJSON, err := json.Marshal(response)
+	responseJSON, err := json.Marshal(searchResp)
 	if err != nil {
 		logger.Error("Failed to marshal search response: %v", err)
 		return createErrorResult(fmt.Sprintf("Failed to format search response: %v", err)), nil
@@ -614,23 +596,22 @@ func parseGitHubRepo(repoStr string) (owner string, repo string, err error) {
 }
 
 // fetchFromGitHub fetches files from a GitHub repository.
-func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, files []string) ([]*FileUploadRequest, error) {
+func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, files []string) ([]*FileUploadRequest, []error) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Fetching files from GitHub (source: 'github_files')")
 	owner, repo, err := parseGitHubRepo(repoURL)
 	if err != nil {
-		return nil, err
+		return nil, []error{err}
 	}
 	logger.Info("Accessing GitHub repository: %s/%s", owner, repo)
 
 	if len(files) > s.config.MaxGitHubFiles {
-		return nil, fmt.Errorf("too many files requested, limit is %d", s.config.MaxGitHubFiles)
+		return nil, []error{fmt.Errorf("too many files requested, limit is %d", s.config.MaxGitHubFiles)}
 	}
 
 	var uploads []*FileUploadRequest
 	var wg sync.WaitGroup
-	var mu sync.Mutex
-	errs := make(chan error, len(files))
+	errChannel := make(chan error, len(files))
 	uploadsChan := make(chan *FileUploadRequest, len(files))
 
 	for _, file := range files {
@@ -645,7 +626,7 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 
 			req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 			if err != nil {
-				errs <- fmt.Errorf("failed to create request for %s: %w", filePath, err)
+				errChannel <- fmt.Errorf("failed to create request for %s: %w", filePath, err)
 				return
 			}
 
@@ -656,14 +637,14 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
-				errs <- fmt.Errorf("failed to fetch %s: %w", filePath, err)
+				errChannel <- fmt.Errorf("failed to fetch %s: %w", filePath, err)
 				return
 			}
 			defer resp.Body.Close()
 
 			if resp.StatusCode != http.StatusOK {
 				body, _ := io.ReadAll(resp.Body)
-				errs <- fmt.Errorf("failed to fetch %s: status %d, body: %s", filePath, resp.StatusCode, string(body))
+				errChannel <- fmt.Errorf("failed to fetch %s: status %d, body: %s", filePath, resp.StatusCode, string(body))
 				return
 			}
 			logger.Info("Successfully connected to GitHub and fetched: %s", filePath)
@@ -674,23 +655,23 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 				Size     int64  `json:"size"`
 			}
 			if err := json.NewDecoder(resp.Body).Decode(&fileContent); err != nil {
-				errs <- fmt.Errorf("failed to decode response for %s: %w", filePath, err)
+				errChannel <- fmt.Errorf("failed to decode response for %s: %w", filePath, err)
 				return
 			}
 
 			if fileContent.Encoding != "base64" {
-				errs <- fmt.Errorf("unsupported encoding for %s: %s", filePath, fileContent.Encoding)
+				errChannel <- fmt.Errorf("unsupported encoding for %s: %s", filePath, fileContent.Encoding)
 				return
 			}
 
 			if fileContent.Size > s.config.MaxGitHubFileSize {
-				errs <- fmt.Errorf("file %s is too large: %d bytes, limit is %d", filePath, fileContent.Size, s.config.MaxGitHubFileSize)
+				errChannel <- fmt.Errorf("file %s is too large: %d bytes, limit is %d", filePath, fileContent.Size, s.config.MaxGitHubFileSize)
 				return
 			}
 
 			decodedContent, err := base64.StdEncoding.DecodeString(fileContent.Content)
 			if err != nil {
-				errs <- fmt.Errorf("failed to decode content for %s: %w", filePath, err)
+				errChannel <- fmt.Errorf("failed to decode content for %s: %w", filePath, err)
 				return
 			}
 			logger.Info("Adding file to context: %s", filePath)
@@ -704,29 +685,19 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 	}
 
 	wg.Wait()
-	close(errs)
+	close(errChannel)
 	close(uploadsChan)
 
-	var combinedErr error
-	for err := range errs {
-		if combinedErr == nil {
-			combinedErr = err
-		} else {
-			combinedErr = fmt.Errorf("%v; %w", combinedErr, err)
-		}
-	}
-
-	if combinedErr != nil {
-		return nil, combinedErr
+	var combinedErrs []error
+	for err := range errChannel {
+		combinedErrs = append(combinedErrs, err)
 	}
 
 	for upload := range uploadsChan {
-		mu.Lock()
 		uploads = append(uploads, upload)
-		mu.Unlock()
 	}
 
-	return uploads, nil
+	return uploads, combinedErrs
 }
 
 // GeminiModelsHandler is a handler for the gemini_models tool that uses mcp-go types directly
