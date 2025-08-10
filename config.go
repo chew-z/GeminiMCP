@@ -32,6 +32,11 @@ If the search results don't contain enough information to fully answer the query
 	// File handling defaults
 	defaultMaxFileSize = int64(10 * 1024 * 1024) // 10MB explicitly as int64
 
+	// GitHub settings defaults
+	defaultGitHubAPIBaseURL  = "https://api.github.com"
+	defaultMaxGitHubFiles    = 20
+	defaultMaxGitHubFileSize = int64(1 * 1024 * 1024) // 1MB
+
 	// HTTP transport defaults
 	defaultEnableHTTP      = false
 	defaultHTTPAddress     = ":8080"
@@ -193,6 +198,24 @@ func NewConfig() (*Config, error) {
 		}
 	}
 
+	// GitHub settings
+	githubToken := os.Getenv("GEMINI_GITHUB_TOKEN")
+	githubAPIBaseURL := os.Getenv("GEMINI_GITHUB_API_BASEURL")
+	if githubAPIBaseURL == ""
+{
+		githubAPIBaseURL = defaultGitHubAPIBaseURL
+	}
+	maxGitHubFiles := parseEnvVarInt("GEMINI_MAX_GITHUB_FILES", defaultMaxGitHubFiles)
+	if maxGitHubFiles <= 0 {
+		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_MAX_GITHUB_FILES must be positive. Using default: %d\n", defaultMaxGitHubFiles)
+		maxGitHubFiles = defaultMaxGitHubFiles
+	}
+	maxGitHubFileSize := int64(parseEnvVarInt("GEMINI_MAX_GITHUB_FILE_SIZE", int(defaultMaxGitHubFileSize)))
+	if maxGitHubFileSize <= 0 {
+		fmt.Fprintf(os.Stderr, "[WARN] GEMINI_MAX_GITHUB_FILE_SIZE must be positive. Using default: %d\n", defaultMaxGitHubFileSize)
+		maxGitHubFileSize = defaultMaxGitHubFileSize
+	}
+
 	// Cache settings
 	enableCaching := parseEnvVarBool("GEMINI_ENABLE_CACHING", defaultEnableCaching)
 	defaultCacheTTL := parseEnvVarDuration("GEMINI_DEFAULT_CACHE_TTL", defaultDefaultCacheTTL)
@@ -329,6 +352,14 @@ func NewConfig() (*Config, error) {
 		MaxBackoff:               maxBackoff,
 		MaxFileSize:              maxFileSize,
 		AllowedFileTypes:         allowedFileTypes,
+
+		// GitHub settings
+		GitHubToken:         githubToken,
+		GitHubAPIBaseURL:    githubAPIBaseURL,
+		MaxGitHubFiles:      maxGitHubFiles,
+		MaxGitHubFileSize:   maxGitHubFileSize,
+
+		// Cache settings
 		EnableCaching:            enableCaching,
 		DefaultCacheTTL:          defaultCacheTTL,
 		EnableThinking:           enableThinking,

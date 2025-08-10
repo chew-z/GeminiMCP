@@ -50,15 +50,23 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 
 	// Handle GitHub files
 	if len(githubFiles) > 0 {
-		githubRepo := extractArgumentString(req, "github_repo", s.config.DefaultGitHubRepo)
+		githubRepo := extractArgumentString(req, "github_repo", "")
 		if githubRepo == "" {
-			return createErrorResult("'github_repo' is required when using 'github_files' and no default is configured."), nil
+			return createErrorResult("'github_repo' is required when using 'github_files'."), nil
 		}
-		githubRef := extractArgumentString(req, "github_ref", s.config.DefaultGitHubRef)
+		githubRef := extractArgumentString(req, "github_ref", "")
 		if githubRef == "" {
 			// If no ref is provided and no default is set, it's not necessarily an error, the API might use the repo's default.
 			logger.Info("No 'github_ref' provided, will use repository's default branch.")
 		}
+
+		// Validate file paths
+		for _, file := range githubFiles {
+			if strings.Contains(file, "..") || strings.HasPrefix(file, "/") {
+				return createErrorResult(fmt.Sprintf("invalid file path: %s. Path must be relative and within the repository.", file)), nil
+			}
+		}
+
 		uploads, fileErr = fetchFromGitHub(ctx, s, githubRepo, githubRef, githubFiles)
 	} else if len(filePaths) > 0 {
 		// Handle local file paths

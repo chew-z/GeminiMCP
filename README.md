@@ -286,6 +286,8 @@ Combining file attachments with caching for repeated queries:
     "arguments": {
         "query": "Explain the main data structures in these files and how they interact",
         "model": "gemini-2.5-flash",
+        "github_repo": "owner/repo",
+        "github_ref": "main",
         "github_files": ["models.go", "structs.go"],
         "use_cache": true,
         "cache_ttl": "30m"
@@ -400,7 +402,7 @@ Example with caching:
 
 Robust file processing with:
 
-- **GitHub Integration**: Fetch files directly from a GitHub repository using the `github_repo`, `github_ref`, and `github_files` arguments. This is the recommended method for providing files, especially in HTTP transport mode.
+- **GitHub Integration**: Fetch files directly from a GitHub repository using the `github_repo`, `github_ref`, and `github_files` arguments. `github_repo` is required when `github_files` is provided.
 - **Local File Access (stdio only)**: The `file_paths` argument can be used to access local files, but only when the server is running in `stdio` mode. This method is deprecated for `http` transport due to security concerns.
 - **Automatic Validation**: Size checking, MIME type detection, and content validation
 - **Wide Format Support**: Handles common code, text, and document formats
@@ -519,6 +521,9 @@ export GEMINI_MAX_BACKOFF=15s
 | `GEMINI_SYSTEM_PROMPT`        | System prompt for general queries    | _Custom review prompt_   |
 | `GEMINI_SEARCH_SYSTEM_PROMPT` | System prompt for search             | _Custom search prompt_   |
 | `GEMINI_GITHUB_TOKEN`         | GitHub token for private repo access | _Optional_               |
+| `GEMINI_GITHUB_API_BASE_URL`  | GitHub API base URL for GHES   | `https://api.github.com` |
+| `GEMINI_MAX_GITHUB_FILES`     | Max number of files per call         | `20`                     |
+| `GEMINI_MAX_GITHUB_FILE_SIZE` | Max size per file in bytes           | `1048576` (1MB)          |
 | `GEMINI_MAX_FILE_SIZE`        | Max upload size (bytes)              | `10485760` (10MB)        |
 | `GEMINI_ALLOWED_FILE_TYPES`   | Comma-separated MIME types           | [Common text/code types] |
 
