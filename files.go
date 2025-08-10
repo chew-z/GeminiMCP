@@ -11,6 +11,8 @@ import (
 	"google.golang.org/genai"
 )
 
+var githubBaseURL = "https://api.github.com"
+
 // FileUploadRequest struct definition moved to structs.go
 
 // FileInfo struct definition moved to structs.go

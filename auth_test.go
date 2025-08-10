@@ -5,118 +5,127 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAuthMiddleware(t *testing.T) {
 	logger := NewLogger(LevelDebug)
 	secret := "test-secret"
-	auth := NewAuthMiddleware(secret, true, logger)
+	auth := NewAuthMiddleware(secret, true, logger) // Auth enabled
+	disabledAuth := NewAuthMiddleware(secret, false, logger) // Auth disabled
 
-	t.Run("valid token", func(t *testing.T) {
-		token, err := auth.GenerateToken("123", "testuser", "user", 1)
-		if err != nil {
-			t.Fatalf("failed to generate token: %v", err)
-		}
+	validToken, err := auth.GenerateToken("123", "testuser", "user", 1)
+	require.NoError(t, err)
 
-		req := httptest.NewRequest("GET", "/", nil)
-		req.Header.Set("Authorization", "Bearer "+token)
+	expiredToken, err := auth.GenerateToken("123", "testuser", "user", -1) // expired 1 hour ago
+	require.NoError(t, err)
 
-		next := func(ctx context.Context, r *http.Request) context.Context {
-			return ctx
-		}
+	otherAuth := NewAuthMiddleware("different-secret", false, logger)
+	invalidSigToken, err := otherAuth.GenerateToken("123", "testuser", "user", 1)
+	require.NoError(t, err)
 
-		ctx := auth.HTTPContextFunc(next)(context.Background(), req)
+	// Token with a different algorithm
+	
+	
 
-		if !isAuthenticated(ctx) {
-			t.Error("expected authentication to succeed")
-		}
-		if getAuthError(ctx) != "" {
-			t.Errorf("unexpected auth error: %s", getAuthError(ctx))
-		}
-		userID, username, role := getUserInfo(ctx)
-		if userID != "123" || username != "testuser" || role != "user" {
-			t.Errorf("unexpected user info: got %s, %s, %s", userID, username, role)
-		}
-	})
+	testCases := []struct {
+		name              string
+		authMiddleware    *AuthMiddleware
+		authHeader        string
+		expectAuth        bool
+		expectErr         string
+		expectUserID      string
+		expectUsername    string
+		expectRole        string
+	}{
+		{
+			name:           "valid token",
+			authMiddleware: auth,
+			authHeader:     "Bearer " + validToken,
+			expectAuth:     true,
+			expectErr:      "",
+			expectUserID:   "123",
+			expectUsername: "testuser",
+			expectRole:     "user",
+		},
+		{
+			name:           "auth disabled",
+			authMiddleware: disabledAuth,
+			authHeader:     "", // No header needed
+			expectAuth:     false, // Authenticated is false because middleware is skipped
+			expectErr:      "",
+			expectUserID:   "", // No user info
+		},
+		{
+			name:           "expired token",
+			authMiddleware: auth,
+			authHeader:     "Bearer " + expiredToken,
+			expectAuth:     false,
+			expectErr:      "invalid_token",
+		},
+		{
+			name:           "invalid signature",
+			authMiddleware: auth,
+			authHeader:     "Bearer " + invalidSigToken,
+			expectAuth:     false,
+			expectErr:      "invalid_token",
+		},
+		
+		{
+			name:           "missing authorization header",
+			authMiddleware: auth,
+			authHeader:     "",
+			expectAuth:     false,
+			expectErr:      "missing_token",
+		},
+		{
+			name:           "malformed header - no bearer prefix",
+			authMiddleware: auth,
+			authHeader:     validToken,
+			expectAuth:     false,
+			expectErr:      "invalid_token",
+		},
+		{
+			name:           "malformed header - wrong scheme",
+			authMiddleware: auth,
+			authHeader:     "Basic " + validToken,
+			expectAuth:     false,
+			expectErr:      "invalid_token",
+		},
+		{
+			name:           "not a valid jwt token",
+			authMiddleware: auth,
+			authHeader:     "Bearer not-a-jwt",
+			expectAuth:     false,
+			expectErr:      "invalid_token",
+		},
+	}
 
-	t.Run("expired token", func(t *testing.T) {
-		token, err := auth.GenerateToken("123", "testuser", "user", -1) // expired 1 hour ago
-		if err != nil {
-			t.Fatalf("failed to generate token: %v", err)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/", nil)
+			if tc.authHeader != "" {
+				req.Header.Set("Authorization", tc.authHeader)
+			}
 
-		req := httptest.NewRequest("GET", "/", nil)
-		req.Header.Set("Authorization", "Bearer "+token)
+			// Dummy next function that does nothing but return the context it was given.
+			next := func(ctx context.Context, r *http.Request) context.Context {
+				return ctx
+			}
 
-		next := func(ctx context.Context, r *http.Request) context.Context {
-			return ctx
-		}
+			ctx := tc.authMiddleware.HTTPContextFunc(next)(context.Background(), req)
 
-		ctx := auth.HTTPContextFunc(next)(context.Background(), req)
+			assert.Equal(t, tc.expectAuth, isAuthenticated(ctx), "isAuthenticated mismatch")
+			assert.Equal(t, tc.expectErr, getAuthError(ctx), "authError mismatch")
 
-		if isAuthenticated(ctx) {
-			t.Error("expected authentication to fail for expired token")
-		}
-		if getAuthError(ctx) != "invalid_token" {
-			t.Errorf("expected 'invalid_token' error, got '%s'", getAuthError(ctx))
-		}
-	})
-
-	t.Run("invalid signature", func(t *testing.T) {
-		otherAuth := NewAuthMiddleware("different-secret", true, logger)
-		token, err := otherAuth.GenerateToken("123", "testuser", "user", 1)
-		if err != nil {
-			t.Fatalf("failed to generate token: %v", err)
-		}
-
-		req := httptest.NewRequest("GET", "/", nil)
-		req.Header.Set("Authorization", "Bearer "+token)
-
-		next := func(ctx context.Context, r *http.Request) context.Context {
-			return ctx
-		}
-
-		ctx := auth.HTTPContextFunc(next)(context.Background(), req)
-
-		if isAuthenticated(ctx) {
-			t.Error("expected authentication to fail for invalid signature")
-		}
-		if getAuthError(ctx) != "invalid_token" {
-			t.Errorf("expected 'invalid_token' error, got '%s'", getAuthError(ctx))
-		}
-	})
-
-	t.Run("wrong signing method", func(t *testing.T) {
-		claims := Claims{
-			UserID:   "123",
-			Username: "testuser",
-			Role:     "user",
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
-			},
-		}
-		token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
-		// We can't sign this token without a private key, so we'll just use a dummy string
-		// The validation should fail before it even gets to signature verification
-		dummyToken, _ := token.SignedString("dummy")
-
-		req := httptest.NewRequest("GET", "/", nil)
-		req.Header.Set("Authorization", "Bearer "+dummyToken)
-
-		next := func(ctx context.Context, r *http.Request) context.Context {
-			return ctx
-		}
-
-		ctx := auth.HTTPContextFunc(next)(context.Background(), req)
-
-		if isAuthenticated(ctx) {
-			t.Error("expected authentication to fail for wrong signing method")
-		}
-		if getAuthError(ctx) != "invalid_token" {
-			t.Errorf("expected 'invalid_token' error, got '%s'", getAuthError(ctx))
-		}
-	})
+			if tc.expectAuth && tc.expectUserID != "" {
+				userID, username, role := getUserInfo(ctx)
+				assert.Equal(t, tc.expectUserID, userID, "userID mismatch")
+				assert.Equal(t, tc.expectUsername, username, "username mismatch")
+				assert.Equal(t, tc.expectRole, role, "role mismatch")
+			}
+		})
+	}
 }

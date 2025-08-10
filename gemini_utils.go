@@ -15,7 +15,7 @@ func getLoggerFromContext(ctx context.Context) Logger {
 		}
 	}
 	// Create a new logger if one isn't in the context or type assertion fails
-	return NewLogger(LevelInfo)
+	return NewLogger(LevelDebug)
 }
 
 // This function has been removed after refactoring to use direct MCP types

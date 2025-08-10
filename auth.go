@@ -43,12 +43,17 @@ func (a *AuthMiddleware) HTTPContextFunc(next func(ctx context.Context, r *http.
 			return next(ctx, r)
 		}
 
-		// Extract token from Authorization header
 		authHeader := r.Header.Get("Authorization")
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			a.logger.Warn("Missing or invalid authorization header from %s", r.RemoteAddr)
-			// Set authentication error in context instead of failing the request
+		if authHeader == "" {
+			a.logger.Warn("Missing authorization header from %s", r.RemoteAddr)
 			ctx = context.WithValue(ctx, authErrorKey, "missing_token")
+			return next(ctx, r)
+		}
+
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			a.logger.Warn("Invalid authorization header from %s", r.RemoteAddr)
+			// Set authentication error in context instead of failing the request
+			ctx = context.WithValue(ctx, authErrorKey, "invalid_token")
 			return next(ctx, r)
 		}
 

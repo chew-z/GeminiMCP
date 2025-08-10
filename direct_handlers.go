@@ -88,7 +88,6 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 		uploads = localUploads
 	}
 
-
 	// Check if caching is requested
 	useCache := extractArgumentBool(req, "use_cache", false)
 	cacheTTL := extractArgumentString(req, "cache_ttl", "")
@@ -163,6 +162,29 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 		fullPath := filepath.Join(config.FileReadBaseDir, cleanedPath)
 
 		// Final, most important check: ensure the resolved path is still within the base directory.
+		fileInfo, err := os.Lstat(fullPath)
+		if err != nil {
+			logger.Error("Failed to stat file %s: %v", filePath, err)
+			continue
+		}
+
+		if fileInfo.IsDir() {
+			logger.Warn("Skipping directory: %s", filePath)
+			continue
+		}
+
+		if fileInfo.Mode()&os.ModeSymlink != 0 {
+			linkDest, err := os.Readlink(fullPath)
+			if err != nil {
+				logger.Error("Failed to read symlink %s: %v", filePath, err)
+				continue
+			}
+			if filepath.IsAbs(linkDest) || strings.HasPrefix(filepath.Clean(linkDest), "..") {
+				logger.Error("Skipping unsafe symlink: %s -> %s", filePath, linkDest)
+				continue
+			}
+		}
+
 		if !strings.HasPrefix(fullPath, config.FileReadBaseDir) {
 			return nil, fmt.Errorf("path traversal attempt detected: %s", filePath)
 		}
@@ -174,7 +196,8 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 		}
 
 		if int64(len(content)) > config.MaxFileSize {
-			return nil, fmt.Errorf("file %s is too large: %d bytes, limit is %d", filePath, len(content), config.MaxFileSize)
+			logger.Warn("Skipping file %s because it is too large: %d bytes, limit is %d", filePath, len(content), config.MaxFileSize)
+			continue
 		}
 
 		mimeType := getMimeTypeFromPath(filePath)
@@ -262,14 +285,14 @@ func (s *GeminiServer) handleQueryWithCacheDirect(ctx context.Context, cacheID, 
 		CachedContent: cacheInfo.Name,
 	}
 
-    // Make the request to the API
-    response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
-        return s.client.Models.GenerateContent(ctx, cacheInfo.Model, contents, config)
-    })
-    if err != nil {
-        logger.Error("Failed to generate content with cached content: %v", err)
-        return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
-    }
+	// Make the request to the API
+	response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
+		return s.client.Models.GenerateContent(ctx, cacheInfo.Model, contents, config)
+	})
+	if err != nil {
+		logger.Error("Failed to generate content with cached content: %v", err)
+		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
+	}
 
 	// Convert to MCP result
 	return convertGenaiResponseToMCPResult(response), nil
@@ -310,22 +333,21 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, uploa
 	}
 
 	// Generate content with files
-    response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
-        return s.client.Models.GenerateContent(ctx, modelName, contents, config)
-    })
-    if err != nil {
-        logger.Error("Gemini API error: %v", err)
-        if cacheErr != nil {
-            // If there was also a cache error, include it in the response
-            return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
-        }
-        return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
-    }
+	response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
+		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
+	})
+	if err != nil {
+		logger.Error("Gemini API error: %v", err)
+		if cacheErr != nil {
+			// If there was also a cache error, include it in the response
+			return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
+		}
+		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
+	}
 
 	// Convert to MCP result
 	return convertGenaiResponseToMCPResult(response), nil
 }
-
 
 // processWithoutFiles handles a Gemini API request without file attachments
 func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
@@ -339,17 +361,17 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
 	}
 
 	// Generate content
-    response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
-        return s.client.Models.GenerateContent(ctx, modelName, contents, config)
-    })
-    if err != nil {
-        logger.Error("Gemini API error: %v", err)
-        if cacheErr != nil {
-            // If there was also a cache error, include it in the response
-            return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
-        }
-        return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
-    }
+	response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
+		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
+	})
+	if err != nil {
+		logger.Error("Gemini API error: %v", err)
+		if cacheErr != nil {
+			// If there was also a cache error, include it in the response
+			return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
+		}
+		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
+	}
 
 	// Convert to MCP result
 	return convertGenaiResponseToMCPResult(response), nil
