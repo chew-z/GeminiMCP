@@ -137,6 +137,7 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 // readLocalFiles reads files from the local filesystem and returns them as FileUploadRequest objects.
 func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]*FileUploadRequest, error) {
 	logger := getLoggerFromContext(ctx)
+	logger.Info("Reading files from local filesystem (source: 'file_paths')")
 	var uploads []*FileUploadRequest
 
 	for _, filePath := range filePaths {
@@ -153,6 +154,7 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 		mimeType := getMimeTypeFromPath(filePath)
 		fileName := filepath.Base(filePath)
 
+		logger.Info("Adding file to context: %s", filePath)
 		uploads = append(uploads, &FileUploadRequest{
 			FileName:    fileName,
 			MimeType:    mimeType,
@@ -613,10 +615,13 @@ func parseGitHubRepo(repoStr string) (owner string, repo string, err error) {
 
 // fetchFromGitHub fetches files from a GitHub repository.
 func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, files []string) ([]*FileUploadRequest, error) {
+	logger := getLoggerFromContext(ctx)
+	logger.Info("Fetching files from GitHub (source: 'github_files')")
 	owner, repo, err := parseGitHubRepo(repoURL)
 	if err != nil {
 		return nil, err
 	}
+	logger.Info("Accessing GitHub repository: %s/%s", owner, repo)
 
 	if len(files) > s.config.MaxGitHubFiles {
 		return nil, fmt.Errorf("too many files requested, limit is %d", s.config.MaxGitHubFiles)
@@ -661,6 +666,7 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 				errs <- fmt.Errorf("failed to fetch %s: status %d, body: %s", filePath, resp.StatusCode, string(body))
 				return
 			}
+			logger.Info("Successfully connected to GitHub and fetched: %s", filePath)
 
 			var fileContent struct {
 				Content  string `json:"content"`
@@ -687,6 +693,7 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 				errs <- fmt.Errorf("failed to decode content for %s: %w", filePath, err)
 				return
 			}
+			logger.Info("Adding file to context: %s", filePath)
 
 			uploadsChan <- &FileUploadRequest{
 				FileName: filePath,
