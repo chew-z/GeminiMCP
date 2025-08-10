@@ -70,7 +70,7 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 		uploads, fileErr = fetchFromGitHub(ctx, s, githubRepo, githubRef, githubFiles)
 	} else if len(filePaths) > 0 {
 		// Handle local file paths
-		if s.config.EnableHTTP { // A simple way to check if running in HTTP mode
+		if isHTTPTransport(ctx) {
 			return createErrorResult("'file_paths' is not supported in HTTP transport mode. Use 'github_files' instead."), nil
 		}
 		uploads, fileErr = readLocalFiles(ctx, filePaths, s.config)

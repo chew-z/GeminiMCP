@@ -123,6 +123,7 @@ func createHTTPMiddleware(config *Config, logger Logger) server.HTTPContextFunc 
 		}
 
 		// Add request info to context
+		ctx = withHTTPTransport(ctx)
 		ctx = context.WithValue(ctx, httpMethodKey, r.Method)
 		ctx = context.WithValue(ctx, httpPathKey, r.URL.Path)
 		ctx = context.WithValue(ctx, httpRemoteAddrKey, r.RemoteAddr)

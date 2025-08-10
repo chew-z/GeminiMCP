@@ -1,5 +1,7 @@
 package main
 
+import "context"
+
 // contextKey is a type for context keys to prevent collisions
 type contextKey string
 
@@ -25,4 +27,23 @@ const (
 	httpPathKey contextKey = "http_path"
 	// httpRemoteAddrKey is the context key for HTTP remote address
 	httpRemoteAddrKey contextKey = "http_remote_addr"
+	// transportKey is the context key for the transport type
+	transportKey contextKey = "transport"
 )
+
+const (
+	transportHTTP = "http"
+)
+
+func withHTTPTransport(ctx context.Context) context.Context {
+	return context.WithValue(ctx, transportKey, transportHTTP)
+}
+
+func isHTTPTransport(ctx context.Context) bool {
+	if v := ctx.Value(transportKey); v != nil {
+		if s, ok := v.(string); ok {
+			return s == transportHTTP
+		}
+	}
+	return false
+}
