@@ -83,5 +83,6 @@ func (l *StandardLogger) Error(format string, args ...interface{}) {
 func (l *StandardLogger) log(level, format string, args ...interface{}) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	message := fmt.Sprintf(format, args...)
+	//nolint:errcheck
 	fmt.Fprintf(l.writer, "[%s] %s: %s\n", timestamp, level, message)
 }

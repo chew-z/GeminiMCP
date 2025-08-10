@@ -66,7 +66,8 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 			}
 		}
 
-		uploads, fileErrs := fetchFromGitHub(ctx, s, githubRepo, githubRef, githubFiles)
+		fetchedUploads, fileErrs := fetchFromGitHub(ctx, s, githubRepo, githubRef, githubFiles)
+		uploads = fetchedUploads
 		if len(fileErrs) > 0 {
 			for _, err := range fileErrs {
 				logger.Error("Error processing github file: %v", err)
@@ -665,8 +666,14 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 			defer resp.Body.Close()
 
 			if resp.StatusCode != http.StatusOK {
-				body, _ := io.ReadAll(resp.Body)
-				errChannel <- fmt.Errorf("failed to fetch %s: status %d, body: %s", filePath, resp.StatusCode, string(body))
+				var bodyMsg string
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					bodyMsg = fmt.Sprintf("(could not read response body: %v)", err)
+				} else {
+					bodyMsg = string(body)
+				}
+				errChannel <- fmt.Errorf("failed to fetch %s: status %d, body: %s", filePath, resp.StatusCode, bodyMsg)
 				return
 			}
 			logger.Info("Successfully connected to GitHub and fetched: %s", filePath)
