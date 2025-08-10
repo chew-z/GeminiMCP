@@ -3,11 +3,16 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -31,8 +36,44 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 		return createErrorResult(fmt.Sprintf("Error creating model configuration: %v", err)), nil
 	}
 
-	// Extract file paths if provided
+	// --- File Handling Logic ---
+	var uploads []*FileUploadRequest
+	var fileErr error
+
 	filePaths := extractArgumentStringArray(req, "file_paths")
+	githubFiles := extractArgumentStringArray(req, "github_files")
+
+	// Validation: Cannot use both file_paths and github_files
+	if len(filePaths) > 0 && len(githubFiles) > 0 {
+		return createErrorResult("Cannot use both 'file_paths' and 'github_files' in the same request."), nil
+	}
+
+	// Handle GitHub files
+	if len(githubFiles) > 0 {
+		githubRepo := extractArgumentString(req, "github_repo", s.config.DefaultGitHubRepo)
+		if githubRepo == "" {
+			return createErrorResult("'github_repo' is required when using 'github_files' and no default is configured."), nil
+		}
+		githubRef := extractArgumentString(req, "github_ref", s.config.DefaultGitHubRef)
+		if githubRef == "" {
+			// If no ref is provided and no default is set, it's not necessarily an error, the API might use the repo's default.
+			logger.Info("No 'github_ref' provided, will use repository's default branch.")
+		}
+		uploads, fileErr = fetchFromGitHub(ctx, s, githubRepo, githubRef, githubFiles)
+	} else if len(filePaths) > 0 {
+		// Handle local file paths
+		if s.config.EnableHTTP { // A simple way to check if running in HTTP mode
+			return createErrorResult("'file_paths' is not supported in HTTP transport mode. Use 'github_files' instead."), nil
+		}
+		uploads, fileErr = readLocalFiles(ctx, filePaths, s.config)
+	}
+
+	if fileErr != nil {
+		logger.Error("Error processing files: %v", fileErr)
+		return createErrorResult(fmt.Sprintf("Error processing files: %v", fileErr)), nil
+	}
+	// --- End File Handling Logic ---
+
 
 	// Check if caching is requested
 	useCache := extractArgumentBool(req, "use_cache", false)
@@ -55,9 +96,10 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 		// Get model information to check if it supports caching
 		modelVersion := GetModelVersion(modelName)
 		if modelVersion != nil && modelVersion.SupportsCaching {
-			// Try to create cache from files if provided
-			cacheID, cacheErr = s.createCacheFromFiles(ctx, query, modelName, filePaths, cacheTTL,
-				extractArgumentString(req, "systemPrompt", s.config.GeminiSystemPrompt))
+			if len(uploads) > 0 {
+				cacheID, cacheErr = s.createCacheFromFiles(ctx, query, modelName, uploads, cacheTTL,
+					extractArgumentString(req, "systemPrompt", s.config.GeminiSystemPrompt))
+			}
 
 			if cacheErr != nil {
 				logger.Warn("Failed to create cache, falling back to regular request: %v", cacheErr)
@@ -77,16 +119,45 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 	}
 
 	// Process with files if provided
-	if len(filePaths) > 0 {
-		return s.processWithFiles(ctx, query, filePaths, modelName, config, cacheErr)
+	if len(uploads) > 0 {
+		return s.processWithFiles(ctx, query, uploads, modelName, config, cacheErr)
 	} else {
 		return s.processWithoutFiles(ctx, query, modelName, config, cacheErr)
 	}
 }
 
+// readLocalFiles reads files from the local filesystem and returns them as FileUploadRequest objects.
+func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]*FileUploadRequest, error) {
+	logger := getLoggerFromContext(ctx)
+	var uploads []*FileUploadRequest
+
+	for _, filePath := range filePaths {
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			logger.Error("Failed to read file %s: %v", filePath, err)
+			continue // Or return error immediately
+		}
+
+		if int64(len(content)) > config.MaxFileSize {
+			return nil, fmt.Errorf("file %s is too large: %d bytes, limit is %d", filePath, len(content), config.MaxFileSize)
+		}
+
+		mimeType := getMimeTypeFromPath(filePath)
+		fileName := filepath.Base(filePath)
+
+		uploads = append(uploads, &FileUploadRequest{
+			FileName:    fileName,
+			MimeType:    mimeType,
+			Content:     content,
+			DisplayName: fileName,
+		})
+	}
+	return uploads, nil
+}
+
 // createCacheFromFiles creates a cache from the provided files and returns the cache ID
 func (s *GeminiServer) createCacheFromFiles(ctx context.Context, query, modelName string,
-	filePaths []string, cacheTTL, systemPrompt string) (string, error) {
+	uploads []*FileUploadRequest, cacheTTL, systemPrompt string) (string, error) {
 
 	logger := getLoggerFromContext(ctx)
 
@@ -99,39 +170,20 @@ func (s *GeminiServer) createCacheFromFiles(ctx context.Context, query, modelNam
 	var fileIDs []string
 
 	// Upload each file to the API
-	for _, filePath := range filePaths {
-		// Read the file
-		content, err := os.ReadFile(filePath)
-		if err != nil {
-			logger.Error("Failed to read file %s: %v", filePath, err)
-			continue
-		}
-
-		// Get mime type and filename
-		mimeType := getMimeTypeFromPath(filePath)
-		fileName := filepath.Base(filePath)
-
-		// Create upload request
-		uploadReq := &FileUploadRequest{
-			FileName:    fileName,
-			MimeType:    mimeType,
-			Content:     content,
-			DisplayName: fileName,
-		}
-
+	for _, uploadReq := range uploads {
 		// Upload the file
 		fileInfo, err := s.fileStore.UploadFile(ctx, uploadReq)
 		if err != nil {
-			logger.Error("Failed to upload file %s: %v", filePath, err)
-			continue
+			logger.Error("Failed to upload file %s: %v", uploadReq.FileName, err)
+			continue // Continue with other files
 		}
 
-		logger.Info("Successfully uploaded file %s with ID: %s for caching", fileName, fileInfo.ID)
+		logger.Info("Successfully uploaded file %s with ID: %s for caching", uploadReq.FileName, fileInfo.ID)
 		fileIDs = append(fileIDs, fileInfo.ID)
 	}
 
 	// If no files were uploaded successfully, return error
-	if len(fileIDs) == 0 && len(filePaths) > 0 {
+	if len(fileIDs) == 0 && len(uploads) > 0 {
 		return "", fmt.Errorf("failed to upload any files for caching")
 	}
 
@@ -188,7 +240,7 @@ func (s *GeminiServer) handleQueryWithCacheDirect(ctx context.Context, cacheID, 
 }
 
 // processWithFiles handles a Gemini API request with file attachments
-func (s *GeminiServer) processWithFiles(ctx context.Context, query string, filePaths []string,
+func (s *GeminiServer) processWithFiles(ctx context.Context, query string, uploads []*FileUploadRequest,
 	modelName string, config *genai.GenerateContentConfig, cacheErr error) (*mcp.CallToolResult, error) {
 
 	logger := getLoggerFromContext(ctx)
@@ -199,37 +251,26 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, fileP
 	}
 
 	// Process each file
-	for _, filePath := range filePaths {
-		// Read the file
-		content, err := os.ReadFile(filePath)
+	for _, upload := range uploads {
+		// Upload the file to Gemini
+		logger.Info("Uploading file %s with mime type %s", upload.FileName, upload.MimeType)
+		uploadConfig := &genai.UploadFileConfig{
+			MIMEType:    upload.MimeType,
+			DisplayName: upload.FileName,
+		}
+
+		file, err := withRetry(ctx, s.config, logger, "gemini.files.upload", func(ctx context.Context) (*genai.File, error) {
+			return s.client.Files.Upload(ctx, bytes.NewReader(upload.Content), uploadConfig)
+		})
 		if err != nil {
-			logger.Error("Failed to read file %s: %v", filePath, err)
+			logger.Error("Failed to upload file %s: %v - falling back to direct content", upload.FileName, err)
+			// Fallback to direct content if upload fails
+			contents = append(contents, genai.NewContentFromText(string(upload.Content), genai.RoleUser))
 			continue
 		}
 
-		// Get mime type and filename
-		mimeType := getMimeTypeFromPath(filePath)
-		fileName := filepath.Base(filePath)
-
-		// Upload the file to Gemini
-		logger.Info("Uploading file %s with mime type %s", fileName, mimeType)
-		uploadConfig := &genai.UploadFileConfig{
-			MIMEType:    mimeType,
-			DisplayName: fileName,
-		}
-
-    file, err := withRetry(ctx, s.config, logger, "gemini.files.upload", func(ctx context.Context) (*genai.File, error) {
-        return s.client.Files.Upload(ctx, bytes.NewReader(content), uploadConfig)
-    })
-    if err != nil {
-        logger.Error("Failed to upload file %s: %v - falling back to direct content", filePath, err)
-        // Fallback to direct content if upload fails
-        contents = append(contents, genai.NewContentFromText(string(content), genai.RoleUser))
-        continue
-    }
-
 		// Add file to contents using the URI
-		contents = append(contents, genai.NewContentFromURI(file.URI, mimeType, genai.RoleUser))
+		contents = append(contents, genai.NewContentFromURI(file.URI, upload.MimeType, genai.RoleUser))
 	}
 
 	// Generate content with files
@@ -248,6 +289,7 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, fileP
 	// Convert to MCP result
 	return convertGenaiResponseToMCPResult(response), nil
 }
+
 
 // processWithoutFiles handles a Gemini API request without file attachments
 func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
@@ -532,6 +574,144 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 			mcp.NewTextContent(string(responseJSON)),
 		},
 	}, nil
+}
+
+// parseGitHubRepo parses a GitHub repository string into owner and repo.
+// It accepts "owner/repo" or a full GitHub URL.
+func parseGitHubRepo(repoStr string) (owner string, repo string, err error) {
+	// Handle SSH URLs: git@github.com:owner/repo.git
+	if strings.HasPrefix(repoStr, "git@") {
+		repoStr = strings.Replace(repoStr, ":", "/", 1)
+		repoStr = strings.Replace(repoStr, "git@", "https://", 1)
+	}
+
+	u, err := url.Parse(repoStr)
+	if err != nil || u.Host == "" {
+		// If parsing as a URL fails, it might be in "owner/repo" format
+		parts := strings.Split(repoStr, "/")
+		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+			return parts[0], parts[1], nil
+		}
+		return "", "", fmt.Errorf("invalid github_repo format: %s", repoStr)
+	}
+
+	path := strings.TrimSuffix(u.Path, ".git")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) < 2 {
+		return "", "", fmt.Errorf("invalid github_repo URL path: %s", u.Path)
+	}
+	return parts[0], parts[1], nil
+}
+
+// fetchFromGitHub fetches files from a GitHub repository.
+func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, files []string) ([]*FileUploadRequest, error) {
+	owner, repo, err := parseGitHubRepo(repoURL)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(files) > s.config.MaxGitHubFiles {
+		return nil, fmt.Errorf("too many files requested, limit is %d", s.config.MaxGitHubFiles)
+	}
+
+	var uploads []*FileUploadRequest
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	errs := make(chan error, len(files))
+	uploadsChan := make(chan *FileUploadRequest, len(files))
+
+	for _, file := range files {
+		wg.Add(1)
+		go func(filePath string) {
+			defer wg.Done()
+
+			apiURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s", s.config.GitHubAPIBaseURL, owner, repo, filePath)
+			if ref != "" {
+				apiURL += "?ref=" + ref
+			}
+
+			req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+			if err != nil {
+				errs <- fmt.Errorf("failed to create request for %s: %w", filePath, err)
+				return
+			}
+
+			req.Header.Set("Accept", "application/vnd.github.v3+json")
+			if s.config.GitHubToken != "" {
+				req.Header.Set("Authorization", "token "+s.config.GitHubToken)
+			}
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				errs <- fmt.Errorf("failed to fetch %s: %w", filePath, err)
+				return
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				errs <- fmt.Errorf("failed to fetch %s: status %d, body: %s", filePath, resp.StatusCode, string(body))
+				return
+			}
+
+			var fileContent struct {
+				Content  string `json:"content"`
+				Encoding string `json:"encoding"`
+				Size     int64  `json:"size"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&fileContent); err != nil {
+				errs <- fmt.Errorf("failed to decode response for %s: %w", filePath, err)
+				return
+			}
+
+			if fileContent.Encoding != "base64" {
+				errs <- fmt.Errorf("unsupported encoding for %s: %s", filePath, fileContent.Encoding)
+				return
+			}
+
+			if fileContent.Size > s.config.MaxGitHubFileSize {
+				errs <- fmt.Errorf("file %s is too large: %d bytes, limit is %d", filePath, fileContent.Size, s.config.MaxGitHubFileSize)
+				return
+			}
+
+			decodedContent, err := base64.StdEncoding.DecodeString(fileContent.Content)
+			if err != nil {
+				errs <- fmt.Errorf("failed to decode content for %s: %w", filePath, err)
+				return
+			}
+
+			uploadsChan <- &FileUploadRequest{
+				FileName: filePath,
+				MimeType: getMimeTypeFromPath(filePath),
+				Content:  decodedContent,
+			}
+		}(file)
+	}
+
+	wg.Wait()
+	close(errs)
+	close(uploadsChan)
+
+	var combinedErr error
+	for err := range errs {
+		if combinedErr == nil {
+			combinedErr = err
+		} else {
+			combinedErr = fmt.Errorf("%v; %w", combinedErr, err)
+		}
+	}
+
+	if combinedErr != nil {
+		return nil, combinedErr
+	}
+
+	for upload := range uploadsChan {
+		mu.Lock()
+		uploads = append(uploads, upload)
+		mu.Unlock()
+	}
+
+	return uploads, nil
 }
 
 // GeminiModelsHandler is a handler for the gemini_models tool that uses mcp-go types directly

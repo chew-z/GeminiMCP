@@ -104,6 +104,14 @@ type Config struct {
 	MaxFileSize      int64    // Max file size in bytes
 	AllowedFileTypes []string // Allowed MIME types
 
+	// GitHub settings
+	GitHubToken         string // Token for private repo access
+	GitHubAPIBaseURL    string // For GitHub Enterprise
+	DefaultGitHubRepo   string // Default repo (owner/repo)
+	DefaultGitHubRef    string // Default branch
+	MaxGitHubFiles      int    // Max number of files per call
+	MaxGitHubFileSize   int64  // Max size per file in bytes
+
 	// Cache settings
 	EnableCaching   bool          // Enable/disable caching
 	DefaultCacheTTL time.Duration // Default TTL if not specified

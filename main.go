@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/mark3labs/mcp-go/server"
@@ -48,6 +50,9 @@ func main() {
 		handleStartupError(ctx, err)
 		return
 	}
+
+	// Discover git defaults if in a git repository
+	discoverGitDefaults(ctx, config)
 
 	// Store config in context for error handler to access
 	ctx = context.WithValue(ctx, configKey, config)
@@ -149,4 +154,47 @@ func getCachingStatusStr(enabled bool) string {
 		return "enabled"
 	}
 	return "disabled"
+}
+
+// discoverGitDefaults tries to determine the default GitHub repo and branch
+// from the current git repository context.
+func discoverGitDefaults(ctx context.Context, config *Config) {
+	logger := getLoggerFromContext(ctx)
+
+	// Discover remote origin URL
+	repoURL, err := exec.Command("git", "config", "--get", "remote.origin.url").Output()
+	if err != nil {
+		logger.Warn("Could not determine git remote URL. `github_repo` will need to be provided explicitly.")
+	} else {
+		// Clean up the URL
+		url := strings.TrimSpace(string(repoURL))
+		// A simple way to convert ssh to https for parsing
+		if strings.HasPrefix(url, "git@") {
+			url = strings.Replace(url, ":", "/", 1)
+			url = strings.Replace(url, "git@", "https://", 1)
+		}
+		if strings.HasSuffix(url, ".git") {
+			url = strings.TrimSuffix(url, ".git")
+		}
+		// Extract owner/repo
+		parts := strings.Split(url, "/")
+		if len(parts) >= 2 {
+			config.DefaultGitHubRepo = parts[len(parts)-2] + "/" + parts[len(parts)-1]
+			logger.Info("Discovered default GitHub repo: %s", config.DefaultGitHubRepo)
+		}
+	}
+
+	// Discover default branch
+	ref, err := exec.Command("git", "rev-parse", "--abbrev-ref", "origin/HEAD").Output()
+	if err != nil {
+		logger.Warn("Could not determine default git branch. `github_ref` will need to be provided explicitly.")
+	} else {
+		branch := strings.TrimSpace(string(ref))
+		if branch != "HEAD" {
+			// The command returns 'origin/main', we just want 'main'
+			parts := strings.Split(branch, "/")
+			config.DefaultGitHubRef = parts[len(parts)-1]
+			logger.Info("Discovered default GitHub branch: %s", config.DefaultGitHubRef)
+		}
+	}
 }

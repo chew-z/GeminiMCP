@@ -258,7 +258,7 @@ For code analysis, general queries, and creative tasks with optional file contex
         "query": "Review this Go code for concurrency issues...",
         "model": "gemini-2.5-flash",
         "systemPrompt": "You are a senior Go developer. Focus on concurrency patterns, potential race conditions, and performance implications.",
-        "file_paths": ["main.go", "config.go"],
+        "github_files": ["main.go", "config.go"],
         "use_cache": true,
         "cache_ttl": "1h"
     }
@@ -273,7 +273,7 @@ Simple code analysis with file attachments:
     "arguments": {
         "query": "Analyze this code and suggest improvements",
         "model": "gemini-2.5-pro",
-        "file_paths": ["models.go"]
+        "github_files": ["models.go"]
     }
 }
 ```
@@ -286,7 +286,7 @@ Combining file attachments with caching for repeated queries:
     "arguments": {
         "query": "Explain the main data structures in these files and how they interact",
         "model": "gemini-2.5-flash",
-        "file_paths": ["models.go", "structs.go"],
+        "github_files": ["models.go", "structs.go"],
         "use_cache": true,
         "cache_ttl": "30m"
     }
@@ -400,7 +400,8 @@ Example with caching:
 
 Robust file processing with:
 
-- **Direct Path Integration**: Simply specify local file paths in `file_paths` array
+- **GitHub Integration**: Fetch files directly from a GitHub repository using the `github_repo`, `github_ref`, and `github_files` arguments. This is the recommended method for providing files, especially in HTTP transport mode.
+- **Local File Access (stdio only)**: The `file_paths` argument can be used to access local files, but only when the server is running in `stdio` mode. This method is deprecated for `http` transport due to security concerns.
 - **Automatic Validation**: Size checking, MIME type detection, and content validation
 - **Wide Format Support**: Handles common code, text, and document formats
 - **Metadata Caching**: Stores file information for quick future reference
@@ -517,6 +518,7 @@ export GEMINI_MAX_BACKOFF=15s
 | `GEMINI_SEARCH_MODEL`         | Default model for `gemini_search`    | `gemini-2.5-flash-lite`  |
 | `GEMINI_SYSTEM_PROMPT`        | System prompt for general queries    | _Custom review prompt_   |
 | `GEMINI_SEARCH_SYSTEM_PROMPT` | System prompt for search             | _Custom search prompt_   |
+| `GEMINI_GITHUB_TOKEN`         | GitHub token for private repo access | _Optional_               |
 | `GEMINI_MAX_FILE_SIZE`        | Max upload size (bytes)              | `10485760` (10MB)        |
 | `GEMINI_ALLOWED_FILE_TYPES`   | Comma-separated MIME types           | [Common text/code types] |
 
