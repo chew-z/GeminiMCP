@@ -200,9 +200,8 @@ func NewConfig() (*Config, error) {
 
 	// GitHub settings
 	githubToken := os.Getenv("GEMINI_GITHUB_TOKEN")
-	githubAPIBaseURL := os.Getenv("GEMINI_GITHUB_API_BASEURL")
-	if githubAPIBaseURL == ""
-{
+	githubAPIBaseURL := os.Getenv("GEMINI_GITHUB_API_BASE_URL")
+	if githubAPIBaseURL == "" {
 		githubAPIBaseURL = defaultGitHubAPIBaseURL
 	}
 	maxGitHubFiles := parseEnvVarInt("GEMINI_MAX_GITHUB_FILES", defaultMaxGitHubFiles)
@@ -373,5 +372,6 @@ func NewConfig() (*Config, error) {
 		PromptDefaultFramework:   promptDefaultFramework,
 		PromptDefaultCoverage:    promptDefaultCoverage,
 		PromptDefaultCompliance:  promptDefaultCompliance,
-	}, nil
+	},
+		nil
 }
