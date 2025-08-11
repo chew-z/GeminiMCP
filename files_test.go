@@ -34,18 +34,18 @@ func TestReadLocalFiles(t *testing.T) {
 	require.NoError(t, os.Symlink(relPath, filepath.Join(baseDir, "badlink.txt")))
 
 	testCases := []struct {
-		name          string
-		paths         []string
-		config        *Config
-		expectedCount int
+		name            string
+		paths           []string
+		config          *Config
+		expectedCount   int
 		expectedContent map[string]string
-		expectError   bool
+		expectError     bool
 	}{
 		{
-			name:   "read valid file",
-			paths:  []string{"small.txt"},
-			config: &Config{FileReadBaseDir: baseDir, MaxFileSize: 100},
-			expectedCount: 1,
+			name:            "read valid file",
+			paths:           []string{"small.txt"},
+			config:          &Config{FileReadBaseDir: baseDir, MaxFileSize: 100},
+			expectedCount:   1,
 			expectedContent: map[string]string{"small.txt": "small"},
 		},
 		{
@@ -55,10 +55,10 @@ func TestReadLocalFiles(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:          "partial success with non-existent file",
-			paths:         []string{"small.txt", "nonexistent.txt"},
-			config:        &Config{FileReadBaseDir: baseDir, MaxFileSize: 100},
-			expectedCount: 1,
+			name:            "partial success with non-existent file",
+			paths:           []string{"small.txt", "nonexistent.txt"},
+			config:          &Config{FileReadBaseDir: baseDir, MaxFileSize: 100},
+			expectedCount:   1,
 			expectedContent: map[string]string{"small.txt": "small"},
 		},
 		{
@@ -74,24 +74,24 @@ func TestReadLocalFiles(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:   "read valid symlink",
-			paths:  []string{"goodlink.txt"},
-			config: &Config{FileReadBaseDir: baseDir, MaxFileSize: 100},
-			expectedCount: 1,
+			name:            "read valid symlink",
+			paths:           []string{"goodlink.txt"},
+			config:          &Config{FileReadBaseDir: baseDir, MaxFileSize: 100},
+			expectedCount:   1,
 			expectedContent: map[string]string{"goodlink.txt": "small"},
 		},
 		{
-			name:        "error on symlink path traversal",
-			paths:       []string{"badlink.txt"},
-			config:      &Config{FileReadBaseDir: baseDir, MaxFileSize: 100},
+			name:          "error on symlink path traversal",
+			paths:         []string{"badlink.txt"},
+			config:        &Config{FileReadBaseDir: baseDir, MaxFileSize: 100},
 			expectedCount: 0,
-			expectError: false,
+			expectError:   false,
 		},
 		{
-			name:          "skip file larger than max size",
-			paths:         []string{"small.txt", "large.txt"},
-			config:        &Config{FileReadBaseDir: baseDir, MaxFileSize: 10}, // large.txt is > 10 bytes
-			expectedCount: 1,
+			name:            "skip file larger than max size",
+			paths:           []string{"small.txt", "large.txt"},
+			config:          &Config{FileReadBaseDir: baseDir, MaxFileSize: 10}, // large.txt is > 10 bytes
+			expectedCount:   1,
 			expectedContent: map[string]string{"small.txt": "small"},
 		},
 	}
@@ -119,15 +119,15 @@ func TestFetchFromGitHub(t *testing.T) {
 	logger := NewLogger(LevelDebug)
 	ctx := context.WithValue(context.Background(), loggerKey, logger)
 	s := &GeminiServer{config: &Config{
-		MaxGitHubFiles: 10,
+		MaxGitHubFiles:    10,
 		MaxGitHubFileSize: 1024 * 1024,
 	}}
 
 	// Mock GitHub API response for file content
 	type githubContentResponse struct {
-		Name    string `json:"name"`
-		Path    string `json:"path"`
-		Content string `json:"content"`
+		Name     string `json:"name"`
+		Path     string `json:"path"`
+		Content  string `json:"content"`
 		Encoding string `json:"encoding"`
 	}
 
@@ -136,17 +136,17 @@ func TestFetchFromGitHub(t *testing.T) {
 		switch r.URL.Path {
 		case "/repos/owner/repo/contents/path/to/file.go":
 			resp := githubContentResponse{
-				Name:    "file.go",
-				Path:    "path/to/file.go",
-				Content: base64.StdEncoding.EncodeToString([]byte("package main")),
+				Name:     "file.go",
+				Path:     "path/to/file.go",
+				Content:  base64.StdEncoding.EncodeToString([]byte("package main")),
 				Encoding: "base64",
 			}
 			json.NewEncoder(w).Encode(resp)
 		case "/repos/owner/repo/contents/path/to/bad-base64.txt":
 			resp := githubContentResponse{
-				Name:    "bad-base64.txt",
-				Path:    "path/to/bad-base64.txt",
-				Content: "not-base64-$$",
+				Name:     "bad-base64.txt",
+				Path:     "path/to/bad-base64.txt",
+				Content:  "not-base64-$$",
 				Encoding: "base64",
 			}
 			json.NewEncoder(w).Encode(resp)

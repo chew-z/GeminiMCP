@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"google.golang.org/genai"
@@ -177,4 +180,164 @@ func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse) *mcp.C
 			mcp.NewTextContent(text),
 		},
 	}
+}
+
+// SafeWriter provides error-safe writing to strings.Builder for handlers
+type SafeWriter struct {
+	builder *strings.Builder
+	logger  Logger
+	failed  bool
+}
+
+// NewSafeWriter creates a new SafeWriter instance
+func NewSafeWriter(logger Logger) *SafeWriter {
+	return &SafeWriter{
+		builder: &strings.Builder{},
+		logger:  logger,
+		failed:  false,
+	}
+}
+
+// Write adds formatted content to the builder, logging errors but continuing
+func (sw *SafeWriter) Write(format string, args ...interface{}) {
+	if sw.failed {
+		return // Don't write if we've already failed
+	}
+	_, err := sw.builder.WriteString(fmt.Sprintf(format, args...))
+	if err != nil {
+		sw.logger.Error("Error writing to response: %v", err)
+		sw.failed = true
+	}
+}
+
+// Failed returns true if any write operations have failed
+func (sw *SafeWriter) Failed() bool {
+	return sw.failed
+}
+
+// String returns the built string
+func (sw *SafeWriter) String() string {
+	return sw.builder.String()
+}
+
+// Validation helper functions
+
+// validateRequiredString validates that a required string parameter is not empty
+func validateRequiredString(req mcp.CallToolRequest, paramName string) (string, error) {
+	value, ok := req.GetArguments()[paramName].(string)
+	if !ok || value == "" {
+		return "", fmt.Errorf("%s must be a string and cannot be empty", paramName)
+	}
+	return value, nil
+}
+
+// validateFilePathArray validates an array of file paths
+func validateFilePathArray(filePaths []string, isGitHub bool) error {
+	for _, filePath := range filePaths {
+		if isGitHub {
+			// GitHub file paths validation
+			if strings.Contains(filePath, "..") || strings.HasPrefix(filePath, "/") {
+				return fmt.Errorf("invalid file path: %s. Path must be relative and within the repository", filePath)
+			}
+		} else {
+			// Local file paths are validated later in readLocalFiles
+		}
+	}
+	return nil
+}
+
+// validateTimeRange validates RFC3339 time range parameters
+func validateTimeRange(startTimeStr, endTimeStr string) (*time.Time, *time.Time, error) {
+	// Both must be provided if either is provided
+	if (startTimeStr != "" && endTimeStr == "") || (startTimeStr == "" && endTimeStr != "") {
+		return nil, nil, fmt.Errorf("both start_time and end_time must be provided for time range filtering")
+	}
+
+	if startTimeStr == "" && endTimeStr == "" {
+		return nil, nil, nil // No time range specified
+	}
+
+	startTime, err := time.Parse(time.RFC3339, startTimeStr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid start_time format: %v. Must be RFC3339 format (e.g. '2024-01-01T00:00:00Z')", err)
+	}
+
+	endTime, err := time.Parse(time.RFC3339, endTimeStr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid end_time format: %v. Must be RFC3339 format (e.g. '2024-12-31T23:59:59Z')", err)
+	}
+
+	// Ensure start time is before or equal to end time
+	if startTime.After(endTime) {
+		return nil, nil, fmt.Errorf("start_time must be before or equal to end_time")
+	}
+
+	return &startTime, &endTime, nil
+}
+
+// Response builder functions
+
+// buildSearchResponse creates a formatted search response with sources and queries
+func buildSearchResponse(responseText string, sources []SourceInfo, searchQueries []string) (*mcp.CallToolResult, error) {
+	// Check for empty content and provide a fallback message
+	if responseText == "" {
+		responseText = `The Gemini Search model returned an empty response.
+			This might indicate an issue with the search functionality or that
+			no relevant information was found. Please try rephrasing your question
+			or providing more specific details.`
+	}
+
+	// Create the response JSON
+	searchResp := SearchResponse{
+		Answer:        responseText,
+		Sources:       sources,
+		SearchQueries: searchQueries,
+	}
+
+	// Convert to JSON and return as text content
+	responseJSON, err := json.Marshal(searchResp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to format search response: %w", err)
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.NewTextContent(string(responseJSON)),
+		},
+	}, nil
+}
+
+// processSearchResponse processes grounding metadata from a search response
+func processSearchResponse(resp *genai.GenerateContentResponse, sources *[]SourceInfo, searchQueries *[]string, seenURLs map[string]bool) string {
+	responseText := ""
+
+	if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
+		responseText = resp.Text()
+		if metadata := resp.Candidates[0].GroundingMetadata; metadata != nil {
+			if len(metadata.WebSearchQueries) > 0 && len(*searchQueries) == 0 {
+				*searchQueries = metadata.WebSearchQueries
+			}
+			for _, chunk := range metadata.GroundingChunks {
+				var source SourceInfo
+				if web := chunk.Web; web != nil {
+					if seenURLs[web.URI] {
+						continue
+					}
+					source = SourceInfo{Title: web.Title, Type: "web"}
+					seenURLs[web.URI] = true
+				} else if retrievedCtx := chunk.RetrievedContext; retrievedCtx != nil {
+					if seenURLs[retrievedCtx.URI] {
+						continue
+					}
+					source = SourceInfo{Title: retrievedCtx.Title, Type: "retrieved_context"}
+					seenURLs[retrievedCtx.URI] = true
+				}
+				if source.Title != "" {
+					*sources = append(*sources, source)
+				}
+			}
+		}
+	}
+
+	return responseText
 }

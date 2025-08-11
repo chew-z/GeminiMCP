@@ -67,13 +67,13 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "custom values override defaults",
 			env: map[string]string{
-				"GEMINI_API_KEY":          "custom-key",
-				"GEMINI_MODEL":            "gemini-1.5-pro",
-				"GEMINI_TIMEOUT":          "120s",
-				"GEMINI_MAX_RETRIES":      "5",
-				"GEMINI_INITIAL_BACKOFF":  "2s",
-				"GEMINI_MAX_BACKOFF":      "20s",
-				"GEMINI_ENABLE_CACHING":   "false",
+				"GEMINI_API_KEY":           "custom-key",
+				"GEMINI_MODEL":             "gemini-1.5-pro",
+				"GEMINI_TIMEOUT":           "120s",
+				"GEMINI_MAX_RETRIES":       "5",
+				"GEMINI_INITIAL_BACKOFF":   "2s",
+				"GEMINI_MAX_BACKOFF":       "20s",
+				"GEMINI_ENABLE_CACHING":    "false",
 				"GEMINI_DEFAULT_CACHE_TTL": "1h",
 			},
 			check: func(t *testing.T, cfg *Config) {
@@ -119,9 +119,9 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "custom thinking settings",
 			env: map[string]string{
-				"GEMINI_API_KEY":                 "key",
-				"GEMINI_THINKING_BUDGET_LEVEL":   "high",
-				"GEMINI_THINKING_BUDGET":         "9999", // Explicit budget overrides level
+				"GEMINI_API_KEY":               "key",
+				"GEMINI_THINKING_BUDGET_LEVEL": "high",
+				"GEMINI_THINKING_BUDGET":       "9999", // Explicit budget overrides level
 			},
 			check: func(t *testing.T, cfg *Config) {
 				assert.Equal(t, "high", cfg.ThinkingBudgetLevel)

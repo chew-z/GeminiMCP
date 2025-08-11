@@ -13,7 +13,7 @@ import (
 func TestAuthMiddleware(t *testing.T) {
 	logger := NewLogger(LevelDebug)
 	secret := "test-secret"
-	auth := NewAuthMiddleware(secret, true, logger) // Auth enabled
+	auth := NewAuthMiddleware(secret, true, logger)          // Auth enabled
 	disabledAuth := NewAuthMiddleware(secret, false, logger) // Auth disabled
 
 	validToken, err := auth.GenerateToken("123", "testuser", "user", 1)
@@ -27,18 +27,16 @@ func TestAuthMiddleware(t *testing.T) {
 	require.NoError(t, err)
 
 	// Token with a different algorithm
-	
-	
 
 	testCases := []struct {
-		name              string
-		authMiddleware    *AuthMiddleware
-		authHeader        string
-		expectAuth        bool
-		expectErr         string
-		expectUserID      string
-		expectUsername    string
-		expectRole        string
+		name           string
+		authMiddleware *AuthMiddleware
+		authHeader     string
+		expectAuth     bool
+		expectErr      string
+		expectUserID   string
+		expectUsername string
+		expectRole     string
 	}{
 		{
 			name:           "valid token",
@@ -53,7 +51,7 @@ func TestAuthMiddleware(t *testing.T) {
 		{
 			name:           "auth disabled",
 			authMiddleware: disabledAuth,
-			authHeader:     "", // No header needed
+			authHeader:     "",    // No header needed
 			expectAuth:     false, // Authenticated is false because middleware is skipped
 			expectErr:      "",
 			expectUserID:   "", // No user info
@@ -72,7 +70,7 @@ func TestAuthMiddleware(t *testing.T) {
 			expectAuth:     false,
 			expectErr:      "invalid_token",
 		},
-		
+
 		{
 			name:           "missing authorization header",
 			authMiddleware: auth,
