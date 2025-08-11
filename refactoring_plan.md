@@ -30,10 +30,6 @@ Based on an analysis by the Gemini AI model, the following improvements are reco
     *   **Issue:** The OAuth well-known endpoint metadata hardcodes the `http://` scheme, which is insecure in a production environment using HTTPS.
     *   **Suggestion:** Dynamically determine the scheme from the request (e.g., `X-Forwarded-Proto` header or `r.TLS`).
 
-*   **Code Quality: Awkward Middleware Chaining (Severity: Low)**
-    *   **Issue:** The authentication middleware is invoked in a convoluted way, making the code less clear.
-    *   **Suggestion:** Refactor the `AuthMiddleware` to have a more direct method for modifying the context if it's not used for chaining.
-
 ### `direct_handlers.go`
 
 *   **Potential Bug: Silent File Read Failures (Severity: Medium)**
@@ -43,10 +39,6 @@ Based on an analysis by the Gemini AI model, the following improvements are reco
 *   **Performance: Unnecessary Mutex (Severity: Low)**
     *   **Issue:** A `sync.Mutex` is used in a single-threaded section of `fetchFromGitHub`, adding unnecessary overhead.
     *   **Suggestion:** Remove the mutex.
-
-*   **Maintainability: Highly Repetitive Code (Severity: Low)**
-    *   **Issue:** The `GeminiModelsHandler` function has a large amount of repetitive error-checking code.
-    *   **Suggestion:** Use a helper function to consolidate error handling and improve readability.
 
 ### `tools.go` & `context.go`
 

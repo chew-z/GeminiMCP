@@ -30,32 +30,54 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 	}
 
 	// --- File Handling Logic ---
+	logger.Info("Starting file handling logic")
 	var uploads []*FileUploadRequest
 
 	filePaths := extractArgumentStringArray(req, "file_paths")
 	githubFiles := extractArgumentStringArray(req, "github_files")
 
+	logger.Info("Extracted file parameters - local files: %d, github files: %d", len(filePaths), len(githubFiles))
+	if len(filePaths) > 0 {
+		logger.Info("Local file paths: %v", filePaths)
+	}
+	if len(githubFiles) > 0 {
+		logger.Info("GitHub file paths: %v", githubFiles)
+	}
+
 	// Validation: Cannot use both file_paths and github_files
 	if len(filePaths) > 0 && len(githubFiles) > 0 {
+		logger.Error("Invalid request: both local and GitHub files specified")
 		return createErrorResult("Cannot use both 'file_paths' and 'github_files' in the same request."), nil
 	}
 
 	// Handle GitHub files
 	if len(githubFiles) > 0 {
+		logger.Info("Processing GitHub files request")
+		logger.Info("GitHub files count: %d", len(githubFiles))
+		logger.Info("GitHub files list: %v", githubFiles)
+
 		githubRepo := extractArgumentString(req, "github_repo", "")
 		if githubRepo == "" {
+			logger.Error("GitHub repository parameter missing")
 			return createErrorResult("'github_repo' is required when using 'github_files'."), nil
 		}
+		logger.Info("GitHub repository: %s", githubRepo)
+
 		githubRef := extractArgumentString(req, "github_ref", "")
 		if githubRef == "" {
 			// If no ref is provided and no default is set, it's not necessarily an error, the API might use the repo's default.
 			logger.Info("No 'github_ref' provided, will use repository's default branch.")
+		} else {
+			logger.Info("GitHub reference: %s", githubRef)
 		}
 
 		// Validate GitHub file paths
+		logger.Info("Validating GitHub file paths...")
 		if err := validateFilePathArray(githubFiles, true); err != nil {
+			logger.Error("GitHub file path validation failed: %v", err)
 			return createErrorResult(err.Error()), nil
 		}
+		logger.Info("GitHub file path validation passed")
 
 		fetchedUploads, fileErrs := fetchFromGitHub(ctx, s, githubRepo, githubRef, githubFiles)
 		uploads = fetchedUploads
