@@ -126,7 +126,23 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 					bodyMsg = string(body)
 					logger.Error("[%s] Error response body: %s", filePath, bodyMsg)
 				}
-				errChannel <- fmt.Errorf("failed to fetch %s: status %d, body: %s", filePath, resp.StatusCode, bodyMsg)
+
+				// Provide more user-friendly error messages based on HTTP status
+				var userMsg string
+				switch resp.StatusCode {
+				case http.StatusNotFound:
+					userMsg = fmt.Sprintf("file '%s' not found in repository '%s/%s' (ref: %s)", filePath, owner, repo, ref)
+				case http.StatusUnauthorized:
+					userMsg = fmt.Sprintf("authentication failed - check GitHub token permissions for '%s/%s'", owner, repo)
+				case http.StatusForbidden:
+					userMsg = fmt.Sprintf("access denied to '%s/%s' - token may lack required permissions", owner, repo)
+				case http.StatusTooManyRequests:
+					userMsg = fmt.Sprintf("rate limit exceeded for GitHub API - try again later")
+				default:
+					userMsg = fmt.Sprintf("GitHub API error for %s: status %d", filePath, resp.StatusCode)
+				}
+
+				errChannel <- fmt.Errorf("%s", userMsg)
 				return
 			}
 			logger.Info("[%s] Successfully received response from GitHub API", filePath)
