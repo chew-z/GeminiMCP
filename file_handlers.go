@@ -131,7 +131,11 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 				var userMsg string
 				switch resp.StatusCode {
 				case http.StatusNotFound:
-					userMsg = fmt.Sprintf("file '%s' not found in repository '%s/%s' (ref: %s)", filePath, owner, repo, ref)
+					if s.config.GitHubToken == "" {
+						userMsg = fmt.Sprintf("repository '%s/%s' not found or private (no GitHub token configured)", owner, repo)
+					} else {
+						userMsg = fmt.Sprintf("file '%s' not found in repository '%s/%s' (ref: %s) - repository may be private or file doesn't exist", filePath, owner, repo, ref)
+					}
 				case http.StatusUnauthorized:
 					userMsg = fmt.Sprintf("authentication failed - check GitHub token permissions for '%s/%s'", owner, repo)
 				case http.StatusForbidden:
