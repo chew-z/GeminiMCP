@@ -79,6 +79,8 @@ func getMimeTypeFromPath(path string) string {
 		return "text/plain"
 	case ".md":
 		return "text/markdown"
+	case ".sql":
+		return "text/plain"
 	default:
 		return "application/octet-stream"
 	}

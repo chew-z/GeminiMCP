@@ -117,13 +117,11 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 
 			if resp.StatusCode != http.StatusOK {
 				logger.Error("[%s] HTTP request failed with status %d", filePath, resp.StatusCode)
-				var bodyMsg string
 				body, err := io.ReadAll(resp.Body)
 				if err != nil {
-					bodyMsg = fmt.Sprintf("(could not read response body: %v)", err)
 					logger.Error("[%s] Failed to read error response body: %v", filePath, err)
 				} else {
-					bodyMsg = string(body)
+					bodyMsg := string(body)
 					logger.Error("[%s] Error response body: %s", filePath, bodyMsg)
 				}
 
@@ -141,7 +139,7 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 				case http.StatusForbidden:
 					userMsg = fmt.Sprintf("access denied to '%s/%s' - token may lack required permissions", owner, repo)
 				case http.StatusTooManyRequests:
-					userMsg = fmt.Sprintf("rate limit exceeded for GitHub API - try again later")
+					userMsg = "rate limit exceeded for GitHub API - try again later"
 				default:
 					userMsg = fmt.Sprintf("GitHub API error for %s: status %d", filePath, resp.StatusCode)
 				}
@@ -185,7 +183,7 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 				return
 			}
 
-			totalTime := time.Now().Sub(startTime)
+			totalTime := time.Since(startTime)
 			logger.Info("[%s] Successfully processed file - Decoded size: %d bytes", filePath, len(decodedContent))
 			logger.Info("[%s] Adding file to context with MIME type: %s", filePath, getMimeTypeFromPath(filePath))
 			logger.Info("[%s] File fetch completed in %v", filePath, totalTime)
