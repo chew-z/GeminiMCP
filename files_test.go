@@ -183,7 +183,7 @@ func TestFetchFromGitHub(t *testing.T) {
 	t.Run("error on file not found (404)", func(t *testing.T) {
 		_, errs := fetchFromGitHub(ctx, s, "owner/repo", "", []string{"path/to/not-found.txt"})
 		assert.NotEmpty(t, errs)
-		assert.Contains(t, errs[0].Error(), "status 404")
+		assert.Contains(t, errs[0].Error(), "not found or private")
 	})
 
 	t.Run("error on server error (500)", func(t *testing.T) {

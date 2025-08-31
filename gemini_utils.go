@@ -27,18 +27,15 @@ func getMimeTypeFromPath(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
 
 	switch ext {
-	case ".txt":
+	// Treat all common code and text-based formats as plain text
+	case ".txt", ".html", ".htm", ".css", ".js", ".json", ".xml", ".csv", ".sql", ".php", ".rb", ".go", ".py", ".java", ".c", ".cpp", ".h", ".hpp":
 		return "text/plain"
-	case ".html", ".htm":
-		return "text/html"
-	case ".css":
-		return "text/css"
-	case ".js":
-		return "application/javascript"
-	case ".json":
-		return "application/json"
-	case ".xml":
-		return "application/xml"
+
+	// Markdown has its own type
+	case ".md":
+		return "text/markdown"
+
+	// Non-text file types
 	case ".pdf":
 		return "application/pdf"
 	case ".png":
@@ -63,24 +60,8 @@ func getMimeTypeFromPath(path string) string {
 		return "application/vnd.ms-powerpoint"
 	case ".zip":
 		return "application/zip"
-	case ".csv":
-		return "text/csv"
-	case ".go":
-		return "text/plain" // Changed from "text/x-go" to "text/plain"
-	case ".py":
-		return "text/plain" // Changed from "text/x-python" to "text/plain"
-	case ".java":
-		return "text/plain" // Changed from "text/x-java" to "text/plain"
-	case ".c", ".cpp", ".h", ".hpp":
-		return "text/plain" // Changed from "text/x-c" to "text/plain"
-	case ".rb":
-		return "text/plain"
-	case ".php":
-		return "text/plain"
-	case ".md":
-		return "text/markdown"
-	case ".sql":
-		return "text/plain"
+
+	// Default for unknown types
 	default:
 		return "application/octet-stream"
 	}
