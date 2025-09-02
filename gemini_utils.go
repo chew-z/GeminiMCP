@@ -22,47 +22,59 @@ func getLoggerFromContext(ctx context.Context) Logger {
 
 // This function has been removed after refactoring to use formatMCPResponse and direct MCP types
 
+var mimeTypes = map[string]string{
+	".txt":  "text/plain",
+	".html": "text/plain",
+	".htm":  "text/plain",
+	".css":  "text/plain",
+	".js":   "text/plain",
+	".json": "text/plain",
+	".xml":  "text/plain",
+	".csv":  "text/plain",
+	".sql":  "text/plain",
+	".php":  "text/plain",
+	".rb":   "text/plain",
+	".go":   "text/plain",
+	".py":   "text/plain",
+	".java": "text/plain",
+	".c":    "text/plain",
+	".cpp":  "text/plain",
+	".h":    "text/plain",
+	".hpp":  "text/plain",
+	".md":   "text/plain",
+	".pdf":  "application/pdf",
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif":  "image/gif",
+	".svg":  "image/svg+xml",
+	".mp3":  "audio/mpeg",
+	".mp4":  "video/mp4",
+	".wav":  "audio/wav",
+	".doc":  "application/msword",
+	".docx": "application/msword",
+	".xls":  "application/vnd.ms-excel",
+	".xlsx": "application/vnd.ms-excel",
+	".ppt":  "application/vnd.ms-powerpoint",
+	".pptx": "application/vnd.ms-powerpoint",
+	".zip":  "application/zip",
+}
+
 // Helper function to get MIME type from file path
 func getMimeTypeFromPath(path string) string {
-	ext := strings.ToLower(filepath.Ext(path))
-
-	switch ext {
-	// Treat all common code and text-based formats as plain text
-	case ".txt", ".html", ".htm", ".css", ".js", ".json", ".xml", ".csv", ".sql", ".php", ".rb", ".go", ".py", ".java", ".c", ".cpp", ".h", ".hpp":
+	// First, check for specific filenames that don't have extensions
+	// but should be treated as text.
+	switch filepath.Base(path) {
+	case "go.mod", "go.sum", "Makefile", "Dockerfile", ".gitignore":
 		return "text/plain"
+	}
 
-	// Markdown has its own type
-	case ".md":
-		return "text/markdown"
-
-	// Non-text file types
-	case ".pdf":
-		return "application/pdf"
-	case ".png":
-		return "image/png"
-	case ".jpg", ".jpeg":
-		return "image/jpeg"
-	case ".gif":
-		return "image/gif"
-	case ".svg":
-		return "image/svg+xml"
-	case ".mp3":
-		return "audio/mpeg"
-	case ".mp4":
-		return "video/mp4"
-	case ".wav":
-		return "audio/wav"
-	case ".doc", ".docx":
-		return "application/msword"
-	case ".xls", ".xlsx":
-		return "application/vnd.ms-excel"
-	case ".ppt", ".pptx":
-		return "application/vnd.ms-powerpoint"
-	case ".zip":
-		return "application/zip"
+	// If it's not a special filename, check the extension
+	ext := strings.ToLower(filepath.Ext(path))
+	if mime, ok := mimeTypes[ext]; ok {
+		return mime
+	}
 
 	// Default for unknown types
-	default:
-		return "application/octet-stream"
-	}
+	return "application/octet-stream"
 }

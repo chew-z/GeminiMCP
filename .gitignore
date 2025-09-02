@@ -7,12 +7,13 @@ bin/**
 
 test_*
 
-.repomix/
-repomix.config.json
-
 AGENT.md
 GOLANG.md
 USING-GODOC.md
+
+.repomix/
+repomix.config.json
+repomix-output.xml
 
 .aider*
 .claude/**
