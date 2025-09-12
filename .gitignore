@@ -10,6 +10,7 @@ test_*
 AGENT.md
 GOLANG.md
 USING-GODOC.md
+CODANNA.md
 
 .repomix/
 repomix.config.json

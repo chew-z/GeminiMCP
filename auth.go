@@ -35,6 +35,16 @@ func NewAuthMiddleware(secretKey string, enabled bool, logger Logger) *AuthMiddl
 	}
 }
 
+// extractTokenFromHeader extracts the JWT token from Authorization header
+// Handles case-insensitivity and multiple spaces robustly
+func extractTokenFromHeader(authHeader string) string {
+	parts := strings.Fields(authHeader)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return ""
+	}
+	return parts[1]
+}
+
 // HTTPContextFunc returns a middleware function compatible with mcp-go
 func (a *AuthMiddleware) HTTPContextFunc(next func(ctx context.Context, r *http.Request) context.Context) func(ctx context.Context, r *http.Request) context.Context {
 	return func(ctx context.Context, r *http.Request) context.Context {
@@ -50,14 +60,13 @@ func (a *AuthMiddleware) HTTPContextFunc(next func(ctx context.Context, r *http.
 			return next(ctx, r)
 		}
 
-		if !strings.HasPrefix(authHeader, "Bearer ") {
+		tokenString := extractTokenFromHeader(authHeader)
+		if tokenString == "" {
 			a.logger.Warn("Invalid authorization header from %s", r.RemoteAddr)
 			// Set authentication error in context instead of failing the request
 			ctx = context.WithValue(ctx, authErrorKey, "invalid_token")
 			return next(ctx, r)
 		}
-
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
 		// Validate JWT token
 		claims, err := a.validateJWT(tokenString)
@@ -82,12 +91,16 @@ func (a *AuthMiddleware) HTTPContextFunc(next func(ctx context.Context, r *http.
 // validateJWT validates a JWT token and returns the claims
 func (a *AuthMiddleware) validateJWT(tokenString string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		// Ensure the signing method is HMAC, as expected
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		// Pin to specific HS256 algorithm for enhanced security
+		if token.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return a.secretKey, nil
-	})
+	},
+		jwt.WithIssuer("gemini-mcp"),
+		jwt.WithAudience("gemini-mcp-user"),
+		jwt.WithLeeway(60*time.Second),
+	)
 
 	if err != nil {
 		return nil, err // The library handles various parsing/validation errors
@@ -108,8 +121,11 @@ func (a *AuthMiddleware) GenerateToken(userID, username, role string, expiration
 		Username: username,
 		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "gemini-mcp",
+			Audience:  jwt.ClaimStrings{"gemini-mcp-user"},
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(expirationHours) * time.Hour)),
+			NotBefore: jwt.NewNumericDate(now),
 		},
 	}
 

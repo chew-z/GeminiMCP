@@ -42,3 +42,5 @@ This project is a Go-based MCP (Model Control Protocol) server that acts as a br
 ## Other instructions
 
 @./GOLANG.md
+@./CODANNA.md
+@./USING-GODOC.md
