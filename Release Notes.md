@@ -1,25 +1,23 @@
 # Release Notes
 
-## v0.2.0 - 2025-08-12
+## v0.3.0 - 2025-09-12
 
 ### 🎉 New Features
-- **GitHub Integration**: Enhanced file fetching with improved logging, error handling, and configurable limits. Secure file fetching from GitHub is now enabled.
-- **Authentication**: Replaced the custom JWT implementation with the more robust `golang-jwt` library, improving token validation and error handling.
-- **Gemini API**: Improved code fetching instructions and clarified GitHub file parameters for the GeminiAskTool.
-- **Logging**: Added logging for file fetching operations to improve traceability.
-- **Release Process**: Automated the project release process.
-- **Retry Mechanism**: Implemented exponential backoff and retries for API calls to improve resilience.
-- **Configuration**: Enabled HTTP transport by default when stdio is not specified.
-- **Tooling**: Clarified file path usage for the GeminiAskTool.
+- **Modernized JWT Authentication**: Replaced the custom JWT implementation with the standard `golang-jwt/jwt` library for improved security, reliability, and maintainability.
+- **Enhanced GitHub File Fetching**: Added configurable limits for file size and total bytes when fetching from GitHub repositories, preventing excessive API usage. File fetching logic and logging have been significantly improved.
+- **Automated Release Process**: Introduced initial framework and scripts to streamline the project release process.
+- **Improved File Uploads**: Enhanced mime type detection for file uploads to the Gemini API, ensuring greater compatibility and fewer errors.
 
 ### 🐛 Bug Fixes
-- **GitHub**: Improved error messages for not found files and API requests.
-- **Gemini**: Corrected file handling and model configuration issues.
-- **Context**: Added the missing HTTP transport context key.
-- **Configuration**: Corrected the GitHub API base URL environment variable name.
+- **GitHub API Errors**: Improved error messages and reporting for GitHub API requests, making it easier to diagnose issues with file fetching.
+- **Gemini API Mime Types**: Standardized the mime types sent to the Gemini API and a corresponding error messages for clarity.
+- **Configuration**: Corrected the environment variable name for the GitHub API base URL to `GITHUB_API_BASE_URL`.
+- **Authentication**: Fixed issues in token validation and improved error handling for authentication failures.
 
 ### 🔧 Improvements
-- **Gemini**: Refactored to clarify GitHub file parameters in the GeminiAskTool.
+- **JWT Validation**: Strengthened the JWT validation logic and improved the token extraction process.
+- **Logging**: Added detailed logging for file fetching operations to improve traceability.
+- **Tool Definitions**: Clarified the usage of `file_paths` vs. `github_files` in the `GeminiAskTool` to prevent confusion.
 
 ### ⚙️ Internal Changes
-- Removed the unused `testify` dependency.
+- **Dependency Cleanup**: Removed the unused `testify` dependency.
