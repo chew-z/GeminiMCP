@@ -101,8 +101,8 @@ func handleStartupError(ctx context.Context, err error) {
 	var config *Config
 	configValue := ctx.Value(configKey)
 	if configValue != nil {
-		if cfg, ok := configValue.(Config); ok {
-			config = &cfg
+		if cfg, ok := configValue.(*Config); ok {
+			config = cfg
 		}
 	}
 
@@ -132,26 +132,37 @@ func handleStartupError(ctx context.Context, err error) {
 // Define the expected handler signature for tools
 type MCPToolHandlerFunc = server.ToolHandlerFunc
 
+// enforceHTTPAuth checks for authentication on HTTP requests and logs user info.
+// It returns an error if authentication fails.
+func enforceHTTPAuth(ctx context.Context, resourceType, resourceName string, logger Logger) error {
+	// Check if this is an HTTP request
+	if httpMethod, ok := ctx.Value(httpMethodKey).(string); !ok || httpMethod == "" {
+		return nil // Not an HTTP request, so no auth check needed
+	}
+
+	// Check for authentication errors
+	if authError := getAuthError(ctx); authError != "" {
+		logger.Warn("Authentication failed for %s '%s': %s", resourceType, resourceName, authError)
+		return fmt.Errorf("authentication required: %s", authError)
+	}
+
+	// Log successful authentication
+	if isAuthenticated(ctx) {
+		userID, username, role := getUserInfo(ctx)
+		logger.Info("%s '%s' called by authenticated user %s (%s) with role %s",
+			resourceType, resourceName, username, userID, role)
+	}
+
+	return nil
+}
+
 // wrapHandlerWithLogger creates a middleware wrapper for logging and authentication around a tool handler
 func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logger Logger) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		logger.Info("Calling tool '%s'...", toolName)
 
-		// Check authentication for HTTP requests if enabled
-		// Note: We need to check if this is an HTTP request and if auth is enabled
-		if httpMethod, ok := ctx.Value(httpMethodKey).(string); ok && httpMethod != "" {
-			// This is an HTTP request, check if auth is required
-			// Get config from the context (we'll need to pass it through)
-			if authError := getAuthError(ctx); authError != "" {
-				logger.Warn("Authentication failed for tool '%s': %s", toolName, authError)
-				return createErrorResult(fmt.Sprintf("Authentication required: %s", authError)), nil
-			}
-
-			// Log successful authentication if present
-			if isAuthenticated(ctx) {
-				userID, username, role := getUserInfo(ctx)
-				logger.Info("Tool '%s' called by authenticated user %s (%s) with role %s", toolName, username, userID, role)
-			}
+		if err := enforceHTTPAuth(ctx, "tool", toolName, logger); err != nil {
+			return createErrorResult(err.Error()), nil
 		}
 
 		// Call the actual handler
@@ -173,22 +184,11 @@ func wrapPromptHandlerWithLogger(handler server.PromptHandlerFunc, promptName st
 	return func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 		logger.Info("Calling prompt '%s'...", promptName)
 
-		// Check authentication for HTTP requests if enabled
-		if httpMethod, ok := ctx.Value(httpMethodKey).(string); ok && httpMethod != "" {
-			// This is an HTTP request, check if auth is required
-			if authError := getAuthError(ctx); authError != "" {
-				logger.Warn("Authentication failed for prompt '%s': %s", promptName, authError)
-				return &mcp.GetPromptResult{
-					Description: fmt.Sprintf("Authentication required: %s", authError),
-					Messages:    []mcp.PromptMessage{},
-				}, nil
-			}
-
-			// Log successful authentication if present
-			if isAuthenticated(ctx) {
-				userID, username, role := getUserInfo(ctx)
-				logger.Info("Prompt '%s' called by authenticated user %s (%s) with role %s", promptName, username, userID, role)
-			}
+		if err := enforceHTTPAuth(ctx, "prompt", promptName, logger); err != nil {
+			return &mcp.GetPromptResult{
+				Description: err.Error(),
+				Messages:    []mcp.PromptMessage{},
+			}, nil
 		}
 
 		// Call the actual handler

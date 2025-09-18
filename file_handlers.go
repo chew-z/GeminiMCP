@@ -69,12 +69,25 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 	errChannel := make(chan error, len(files))
 	uploadsChan := make(chan *FileUploadRequest, len(files))
 
-	logger.Info("Starting concurrent file fetch for %d files", len(files))
+	// Create a semaphore to limit concurrency
+	concurrencyLimit := 4 // Limit to 4 concurrent downloads
+	semaphore := make(chan struct{}, concurrencyLimit)
+
+	// Create a reusable HTTP client with a timeout
+	httpClient := &http.Client{
+		Timeout: s.config.HTTPTimeout,
+	}
+
+	logger.Info("Starting concurrent file fetch for %d files with a limit of %d", len(files), concurrencyLimit)
 
 	for _, file := range files {
 		wg.Add(1)
 		go func(filePath string) {
 			defer wg.Done()
+
+			// Acquire semaphore
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
 
 			startTime := time.Now()
 			logger.Info("[%s] Starting fetch at %s", filePath, startTime.Format(time.RFC3339))
@@ -102,7 +115,7 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 
 			logger.Info("[%s] Sending request to GitHub API...", filePath)
 
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := httpClient.Do(req)
 			httpTime := time.Now()
 			if err != nil {
 				logger.Error("[%s] HTTP request failed after %v: %v", filePath, httpTime.Sub(startTime), err)

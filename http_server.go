@@ -42,8 +42,11 @@ func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *C
 
 	// Create custom HTTP server with OAuth well-known endpoint
 	customServer := &http.Server{
-		Addr:    config.HTTPAddress,
-		Handler: createCustomHTTPHandler(httpServer, config, logger),
+		Addr:         config.HTTPAddress,
+		Handler:      createCustomHTTPHandler(httpServer, config, logger),
+		ReadTimeout:  config.HTTPTimeout,
+		WriteTimeout: config.HTTPTimeout,
+		IdleTimeout:  config.HTTPTimeout * 2, // Typically longer
 	}
 
 	// Set up graceful shutdown
@@ -115,7 +118,7 @@ func createHTTPMiddleware(config *Config, logger Logger) server.HTTPContextFunc 
 		if config.HTTPCORSEnabled {
 			// Check if request origin is allowed
 			origin := r.Header.Get("Origin")
-			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins) {
+			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins, config.AuthEnabled) {
 				// Note: We can't set response headers directly here as this is a context function
 				// CORS headers would need to be handled at the HTTP server level
 				logger.Info("CORS: Origin %s is allowed", origin)
@@ -132,10 +135,16 @@ func createHTTPMiddleware(config *Config, logger Logger) server.HTTPContextFunc 
 	}
 }
 
-// isOriginAllowed checks if the origin is in the allowed list
-func isOriginAllowed(origin string, allowedOrigins []string) bool {
+// isOriginAllowed checks if the origin is in the allowed list, with special handling for auth
+func isOriginAllowed(origin string, allowedOrigins []string, authEnabled bool) bool {
 	for _, allowed := range allowedOrigins {
-		if allowed == "*" || allowed == origin {
+		if allowed == "*" {
+			if authEnabled {
+				continue // Do not allow wildcard origin if auth is enabled
+			}
+			return true
+		}
+		if allowed == origin {
 			return true
 		}
 		// Support wildcard subdomains (e.g., "*.example.com")
@@ -173,7 +182,7 @@ func createCustomHTTPHandler(mcpHandler http.Handler, config *Config, logger Log
 		// Add CORS headers if enabled
 		if config.HTTPCORSEnabled {
 			origin := r.Header.Get("Origin")
-			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins) {
+			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins, config.AuthEnabled) {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
