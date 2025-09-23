@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -72,7 +73,20 @@ func (a *AuthMiddleware) HTTPContextFunc(next func(ctx context.Context, r *http.
 		claims, err := a.validateJWT(tokenString)
 		if err != nil {
 			a.logger.Warn("Invalid token from %s: %v", r.RemoteAddr, err)
-			ctx = context.WithValue(ctx, authErrorKey, "invalid_token")
+			var authErr string
+			switch {
+			case errors.Is(err, jwt.ErrTokenExpired):
+				authErr = "expired_token"
+			case errors.Is(err, jwt.ErrTokenNotValidYet):
+				authErr = "token_not_valid_yet"
+			case errors.Is(err, jwt.ErrTokenMalformed):
+				authErr = "malformed_token"
+			case errors.Is(err, jwt.ErrTokenSignatureInvalid):
+				authErr = "invalid_signature"
+			default:
+				authErr = "invalid_token"
+			}
+			ctx = context.WithValue(ctx, authErrorKey, authErr)
 			return next(ctx, r)
 		}
 
@@ -159,26 +173,6 @@ func getUserInfo(ctx context.Context) (userID, username, role string) {
 		}
 	}
 	return "", "", ""
-}
-
-// RequireAuth is a utility function to check authentication and return error if not authenticated
-func RequireAuth(ctx context.Context) error {
-	if !isAuthenticated(ctx) {
-		if authError := getAuthError(ctx); authError != "" {
-			switch authError {
-			case "missing_token":
-				return fmt.Errorf("authentication required: missing or invalid authorization header")
-			case "invalid_token":
-				return fmt.Errorf("authentication required: invalid token")
-			case "expired_token":
-				return fmt.Errorf("authentication required: token expired")
-			default:
-				return fmt.Errorf("authentication required: %s", authError)
-			}
-		}
-		return fmt.Errorf("authentication required")
-	}
-	return nil
 }
 
 // CreateTokenCommand creates a command-line utility to generate tokens

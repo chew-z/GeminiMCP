@@ -63,14 +63,14 @@ func TestAuthMiddleware(t *testing.T) {
 			authMiddleware: auth,
 			authHeader:     "Bearer " + expiredToken,
 			expectAuth:     false,
-			expectErr:      "invalid_token",
+			expectErr:      "expired_token",
 		},
 		{
 			name:           "invalid signature",
 			authMiddleware: auth,
 			authHeader:     "Bearer " + invalidSigToken,
 			expectAuth:     false,
-			expectErr:      "invalid_token",
+			expectErr:      "invalid_signature",
 		},
 
 		{
@@ -99,7 +99,7 @@ func TestAuthMiddleware(t *testing.T) {
 			authMiddleware: auth,
 			authHeader:     "Bearer not-a-jwt",
 			expectAuth:     false,
-			expectErr:      "invalid_token",
+			expectErr:      "malformed_token",
 		},
 		{
 			name:           "case insensitive bearer",

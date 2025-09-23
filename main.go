@@ -107,6 +107,14 @@ func main() {
 		logger.Info("Authentication feature enabled via command line flag")
 	}
 
+	// Final validation of authentication configuration after all overrides
+	if config.AuthEnabled && config.AuthSecretKey == "" {
+		// This is a critical security failure.
+		// We must exit immediately and not enter degraded mode.
+		logger.Error("CRITICAL: Authentication is enabled, but GEMINI_AUTH_SECRET_KEY is not set. Server is shutting down.")
+		os.Exit(1)
+	}
+
 	// Store config in context for error handler to access (already done earlier)
 
 	// Create MCP server

@@ -13,7 +13,9 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			PreferredForThinking: true,
 			PreferredForCaching:  true,
 			PreferredForSearch:   false,
-			Versions:             []ModelVersion{}, // Production model uses family ID directly
+			Versions: []ModelVersion{
+				{ID: "gemini-2.5-pro", SupportsCaching: true},
+			},
 		},
 
 		// Gemini 2.5 Flash - Production model
@@ -26,7 +28,9 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			PreferredForThinking: false,
 			PreferredForCaching:  true,
 			PreferredForSearch:   false,
-			Versions:             []ModelVersion{}, // Production model uses family ID directly
+			Versions: []ModelVersion{
+				{ID: "gemini-2.5-flash", SupportsCaching: true},
+			},
 		},
 
 		// Gemini 2.5 Flash Lite - GA model
@@ -39,7 +43,9 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			PreferredForThinking: false,
 			PreferredForCaching:  false,
 			PreferredForSearch:   true,
-			Versions:             []ModelVersion{}, // Production model uses family ID directly
+			Versions: []ModelVersion{
+				{ID: "gemini-2.5-flash-lite", SupportsCaching: false},
+			},
 		},
 	}
 }

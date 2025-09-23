@@ -12,131 +12,44 @@ import (
 	"google.golang.org/genai"
 )
 
-// GeminiAskHandler is a handler for the gemini_ask tool that uses mcp-go types directly
-func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling gemini_ask request with direct handler")
-
+func (s *GeminiServer) parseAskRequest(ctx context.Context, req mcp.CallToolRequest) (string, *genai.GenerateContentConfig, string, error) {
 	// Extract and validate query parameter (required)
 	query, err := validateRequiredString(req, "query")
 	if err != nil {
-		return createErrorResult(err.Error()), nil
+		return "", nil, "", err
 	}
 
 	// Create Gemini model configuration
 	config, modelName, err := createModelConfig(ctx, req, s.config, s.config.GeminiModel)
 	if err != nil {
-		return createErrorResult(fmt.Sprintf("Error creating model configuration: %v", err)), nil
+		return "", nil, "", fmt.Errorf("error creating model configuration: %v", err)
+	}
+
+	return query, config, modelName, nil
+}
+
+// GeminiAskHandler is a handler for the gemini_ask tool that uses mcp-go types directly
+func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	logger := getLoggerFromContext(ctx)
+	logger.Info("Handling gemini_ask request with direct handler")
+
+	query, config, modelName, err := s.parseAskRequest(ctx, req)
+	if err != nil {
+		return createErrorResult(err.Error()), nil
 	}
 
 	// --- File Handling Logic ---
 	logger.Info("Starting file handling logic")
-	var uploads []*FileUploadRequest
-
-	filePaths := extractArgumentStringArray(req, "file_paths")
-	githubFiles := extractArgumentStringArray(req, "github_files")
-
-	logger.Info("Extracted file parameters - local files: %d, github files: %d", len(filePaths), len(githubFiles))
-	if len(filePaths) > 0 {
-		logger.Info("Local file paths: %v", filePaths)
-	}
-	if len(githubFiles) > 0 {
-		logger.Info("GitHub file paths: %v", githubFiles)
+	uploads, errResult := s.gatherFileUploads(ctx, req)
+	if errResult != nil {
+		return errResult, nil
 	}
 
-	// Validation: Cannot use both file_paths and github_files
-	if len(filePaths) > 0 && len(githubFiles) > 0 {
-		logger.Error("Invalid request: both local and GitHub files specified")
-		return createErrorResult("Cannot use both 'file_paths' and 'github_files' in the same request."), nil
-	}
-
-	// Handle GitHub files
-	if len(githubFiles) > 0 {
-		logger.Info("Processing GitHub files request")
-		logger.Info("GitHub files count: %d", len(githubFiles))
-		logger.Info("GitHub files list: %v", githubFiles)
-
-		githubRepo := extractArgumentString(req, "github_repo", "")
-		if githubRepo == "" {
-			logger.Error("GitHub repository parameter missing")
-			return createErrorResult("'github_repo' is required when using 'github_files'."), nil
-		}
-		logger.Info("GitHub repository: %s", githubRepo)
-
-		githubRef := extractArgumentString(req, "github_ref", "")
-		if githubRef == "" {
-			// If no ref is provided and no default is set, it's not necessarily an error, the API might use the repo's default.
-			logger.Info("No 'github_ref' provided, will use repository's default branch.")
-		} else {
-			logger.Info("GitHub reference: %s", githubRef)
-		}
-
-		// Validate GitHub file paths
-		logger.Info("Validating GitHub file paths...")
-		if err := validateFilePathArray(githubFiles, true); err != nil {
-			logger.Error("GitHub file path validation failed: %v", err)
-			return createErrorResult(err.Error()), nil
-		}
-		logger.Info("GitHub file path validation passed")
-
-		fetchedUploads, fileErrs := fetchFromGitHub(ctx, s, githubRepo, githubRef, githubFiles)
-		uploads = fetchedUploads
-		if len(fileErrs) > 0 {
-			for _, err := range fileErrs {
-				logger.Error("Error processing github file: %v", err)
-			}
-			if len(uploads) == 0 {
-				return createErrorResult(fmt.Sprintf("Error processing github files: %v", fileErrs)), nil
-			}
-		}
-	} else if len(filePaths) > 0 {
-		// Handle local file paths
-		if isHTTPTransport(ctx) {
-			return createErrorResult("'file_paths' is not supported in HTTP transport mode. Use 'github_files' instead."), nil
-		}
-		localUploads, err := readLocalFiles(ctx, filePaths, s.config)
-		if err != nil {
-			logger.Error("Error processing local files: %v", err)
-			return createErrorResult(fmt.Sprintf("Error processing local files: %v", err)), nil
-		}
-		uploads = localUploads
-	}
-
-	// Check if caching is requested
-	useCache := extractArgumentBool(req, "use_cache", false)
-	cacheTTL := extractArgumentString(req, "cache_ttl", "")
-
-	// Check if thinking mode is requested (used to determine if caching should be used)
-	enableThinking := extractArgumentBool(req, "enable_thinking", s.config.EnableThinking)
-
-	// Caching and thinking conflict - prioritize thinking if both are requested
-	if useCache && enableThinking {
-		logger.Warn("Both caching and thinking mode were requested - prioritizing thinking mode")
-		useCache = false
-	}
-
-	// Handle caching if enabled and supported by the model
-	var cacheID string
-	var cacheErr error
-
-	if useCache && s.config.EnableCaching {
-		// Get model information to check if it supports caching
-		modelVersion := GetModelVersion(modelName)
-		if modelVersion != nil && modelVersion.SupportsCaching {
-			if len(uploads) > 0 {
-				cacheID, cacheErr = s.createCacheFromFiles(ctx, query, modelName, uploads, cacheTTL,
-					extractArgumentString(req, "systemPrompt", s.config.GeminiSystemPrompt))
-			}
-
-			if cacheErr != nil {
-				logger.Warn("Failed to create cache, falling back to regular request: %v", cacheErr)
-			} else if cacheID != "" {
-				logger.Info("Using cache with ID: %s", cacheID)
-				return s.handleQueryWithCacheDirect(ctx, cacheID, query)
-			}
-		} else {
-			logger.Warn("Model %s does not support caching, falling back to regular request", modelName)
-		}
+	// Handle caching if enabled
+	cacheID, uploadedFiles, cacheErr := s.maybeCreateCache(ctx, req, query, modelName, uploads)
+	if cacheID != "" {
+		logger.Info("Using cache with ID: %s", cacheID)
+		return s.handleQueryWithCacheDirect(ctx, cacheID, query)
 	}
 
 	// Validate client and models before proceeding
@@ -147,10 +60,120 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 
 	// Process with files if provided
 	if len(uploads) > 0 {
-		return s.processWithFiles(ctx, query, uploads, modelName, config, cacheErr)
+		return s.processWithFiles(ctx, query, uploads, uploadedFiles, modelName, config, cacheErr)
 	} else {
 		return s.processWithoutFiles(ctx, query, modelName, config, cacheErr)
 	}
+}
+
+// gatherFileUploads handles the logic of selecting, validating, and fetching files
+// from either local paths or a GitHub repository.
+func (s *GeminiServer) gatherFileUploads(ctx context.Context, req mcp.CallToolRequest) ([]*FileUploadRequest, *mcp.CallToolResult) {
+	logger := getLoggerFromContext(ctx)
+
+	filePaths := extractArgumentStringArray(req, "file_paths")
+	githubFiles := extractArgumentStringArray(req, "github_files")
+
+	logger.Info("Extracted file parameters - local files: %d, github files: %d", len(filePaths), len(githubFiles))
+
+	// Validation: Cannot use both file_paths and github_files
+	if len(filePaths) > 0 && len(githubFiles) > 0 {
+		logger.Error("Invalid request: both local and GitHub files specified")
+		return nil, createErrorResult("Cannot use both 'file_paths' and 'github_files' in the same request.")
+	}
+
+	// Handle file sources
+	if len(githubFiles) > 0 {
+		return s.gatherGitHubFiles(ctx, req, githubFiles)
+	} else if len(filePaths) > 0 {
+		return s.gatherLocalFiles(ctx, filePaths)
+	}
+
+	return nil, nil // No files requested
+}
+
+// gatherGitHubFiles fetches files from a GitHub repository.
+func (s *GeminiServer) gatherGitHubFiles(ctx context.Context, req mcp.CallToolRequest, githubFiles []string) ([]*FileUploadRequest, *mcp.CallToolResult) {
+	logger := getLoggerFromContext(ctx)
+	logger.Info("Processing GitHub files request")
+
+	githubRepo := extractArgumentString(req, "github_repo", "")
+	if githubRepo == "" {
+		logger.Error("GitHub repository parameter missing")
+		return nil, createErrorResult("'github_repo' is required when using 'github_files'.")
+	}
+
+	githubRef := extractArgumentString(req, "github_ref", "")
+
+	// Validate and fetch
+	if err := validateFilePathArray(githubFiles, true); err != nil {
+		logger.Error("GitHub file path validation failed: %v", err)
+		return nil, createErrorResult(err.Error())
+	}
+
+	fetchedUploads, fileErrs := fetchFromGitHub(ctx, s, githubRepo, githubRef, githubFiles)
+	if len(fileErrs) > 0 {
+		for _, err := range fileErrs {
+			logger.Error("Error processing github file: %v", err)
+		}
+		if len(fetchedUploads) == 0 {
+			return nil, createErrorResult(fmt.Sprintf("Error processing github files: %v", fileErrs))
+		}
+	}
+	return fetchedUploads, nil
+}
+
+// gatherLocalFiles fetches files from the local filesystem.
+func (s *GeminiServer) gatherLocalFiles(ctx context.Context, filePaths []string) ([]*FileUploadRequest, *mcp.CallToolResult) {
+	if isHTTPTransport(ctx) {
+		return nil, createErrorResult("'file_paths' is not supported in HTTP transport mode. Use 'github_files' instead.")
+	}
+
+	localUploads, err := readLocalFiles(ctx, filePaths, s.config)
+	if err != nil {
+		getLoggerFromContext(ctx).Error("Error processing local files: %v", err)
+		return nil, createErrorResult(fmt.Sprintf("Error processing local files: %v", err))
+	}
+	return localUploads, nil
+}
+
+// maybeCreateCache handles the logic for checking caching eligibility and creating a cache.
+func (s *GeminiServer) maybeCreateCache(ctx context.Context, req mcp.CallToolRequest, query, modelName string, uploads []*FileUploadRequest) (string, []*FileInfo, error) {
+	logger := getLoggerFromContext(ctx)
+
+	useCache := extractArgumentBool(req, "use_cache", false)
+	cacheTTL := extractArgumentString(req, "cache_ttl", "")
+	enableThinking := extractArgumentBool(req, "enable_thinking", s.config.EnableThinking)
+
+	if useCache && enableThinking {
+		logger.Warn("Both caching and thinking mode were requested - prioritizing thinking mode")
+		useCache = false
+	}
+
+	if !useCache || !s.config.EnableCaching {
+		return "", nil, nil
+	}
+
+	modelVersion := GetModelVersion(modelName)
+	if modelVersion == nil || !modelVersion.SupportsCaching {
+		logger.Warn("Model %s does not support caching, falling back to regular request", modelName)
+		return "", nil, nil
+	}
+
+	if len(uploads) == 0 {
+		return "", nil, nil // Caching with no files is not implemented in this flow
+	}
+
+	cacheID, uploadedFiles, cacheErr := s.createCacheFromFiles(ctx, query, modelName, uploads, cacheTTL,
+		extractArgumentString(req, "systemPrompt", s.config.GeminiSystemPrompt))
+
+	if cacheErr != nil {
+		logger.Warn("Failed to create cache, falling back to regular request: %v", cacheErr)
+		// Return the error but also the uploaded files so they can be reused
+		return "", uploadedFiles, cacheErr
+	}
+
+	return cacheID, uploadedFiles, nil
 }
 
 // readLocalFiles reads files from the local filesystem and returns them as FileUploadRequest objects.
@@ -228,36 +251,34 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 	return uploads, nil
 }
 
-// createCacheFromFiles creates a cache from the provided files and returns the cache ID
+// createCacheFromFiles creates a cache from the provided files and returns the cache ID and file info
 func (s *GeminiServer) createCacheFromFiles(ctx context.Context, query, modelName string,
-	uploads []*FileUploadRequest, cacheTTL, systemPrompt string) (string, error) {
+	uploads []*FileUploadRequest, cacheTTL, systemPrompt string) (string, []*FileInfo, error) {
 
 	logger := getLoggerFromContext(ctx)
 
 	// Check if file store is properly initialized
 	if s.fileStore == nil {
-		return "", fmt.Errorf("FileStore not properly initialized")
+		return "", nil, fmt.Errorf("FileStore not properly initialized")
 	}
 
-	// Create a list of file IDs from uploaded files
+	// Upload files and collect their info
+	var fileInfos []*FileInfo
 	var fileIDs []string
-
-	// Upload each file to the API
 	for _, uploadReq := range uploads {
-		// Upload the file
 		fileInfo, err := s.fileStore.UploadFile(ctx, uploadReq)
 		if err != nil {
 			logger.Error("Failed to upload file %s: %v", uploadReq.FileName, err)
 			continue // Continue with other files
 		}
-
 		logger.Info("Successfully uploaded file %s with ID: %s for caching", uploadReq.FileName, fileInfo.ID)
+		fileInfos = append(fileInfos, fileInfo)
 		fileIDs = append(fileIDs, fileInfo.ID)
 	}
 
 	// If no files were uploaded successfully, return error
 	if len(fileIDs) == 0 && len(uploads) > 0 {
-		return "", fmt.Errorf("failed to upload any files for caching")
+		return "", fileInfos, fmt.Errorf("failed to upload any files for caching")
 	}
 
 	// Create cache request
@@ -272,10 +293,10 @@ func (s *GeminiServer) createCacheFromFiles(ctx context.Context, query, modelNam
 	// Create the cache
 	cacheInfo, err := s.cacheStore.CreateCache(ctx, cacheReq)
 	if err != nil {
-		return "", fmt.Errorf("failed to create cache: %w", err)
+		return "", fileInfos, fmt.Errorf("failed to create cache: %w", err)
 	}
 
-	return cacheInfo.ID, nil
+	return cacheInfo.ID, fileInfos, nil
 }
 
 // handleQueryWithCacheDirect handles a query with a previously created cache
@@ -312,9 +333,9 @@ func (s *GeminiServer) handleQueryWithCacheDirect(ctx context.Context, cacheID, 
 	return convertGenaiResponseToMCPResult(response), nil
 }
 
-// processWithFiles handles a Gemini API request with file attachments
+// processWithFiles handles a Gemini API request with file attachments, reusing existing uploads if available
 func (s *GeminiServer) processWithFiles(ctx context.Context, query string, uploads []*FileUploadRequest,
-	modelName string, config *genai.GenerateContentConfig, cacheErr error) (*mcp.CallToolResult, error) {
+	uploadedFiles []*FileInfo, modelName string, config *genai.GenerateContentConfig, cacheErr error) (*mcp.CallToolResult, error) {
 
 	logger := getLoggerFromContext(ctx)
 
@@ -323,27 +344,32 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, uploa
 		genai.NewContentFromText(query, genai.RoleUser),
 	}
 
-	// Process each file
-	for _, upload := range uploads {
-		// Upload the file to Gemini
-		logger.Info("Uploading file %s with mime type %s", upload.FileName, upload.MimeType)
-		uploadConfig := &genai.UploadFileConfig{
-			MIMEType:    upload.MimeType,
-			DisplayName: upload.FileName,
+	// Use pre-uploaded files if available
+	if len(uploadedFiles) > 0 {
+		logger.Info("Reusing %d pre-uploaded files", len(uploadedFiles))
+		for _, fileInfo := range uploadedFiles {
+			contents = append(contents, genai.NewContentFromURI(fileInfo.URI, fileInfo.MimeType, genai.RoleUser))
 		}
+	} else if len(uploads) > 0 {
+		logger.Info("No pre-uploaded files found, proceeding with manual upload")
+		// Process each file by uploading it now
+		for _, upload := range uploads {
+			logger.Info("Uploading file %s with mime type %s", upload.FileName, upload.MimeType)
+			uploadConfig := &genai.UploadFileConfig{
+				MIMEType:    upload.MimeType,
+				DisplayName: upload.FileName,
+			}
 
-		file, err := withRetry(ctx, s.config, logger, "gemini.files.upload", func(ctx context.Context) (*genai.File, error) {
-			return s.client.Files.Upload(ctx, bytes.NewReader(upload.Content), uploadConfig)
-		})
-		if err != nil {
-			logger.Error("Failed to upload file %s: %v - falling back to direct content", upload.FileName, err)
-			// Fallback to direct content if upload fails
-			contents = append(contents, genai.NewContentFromText(string(upload.Content), genai.RoleUser))
-			continue
+			file, err := withRetry(ctx, s.config, logger, "gemini.files.upload", func(ctx context.Context) (*genai.File, error) {
+				return s.client.Files.Upload(ctx, bytes.NewReader(upload.Content), uploadConfig)
+			})
+			if err != nil {
+				logger.Error("Failed to upload file %s: %v - falling back to direct content", upload.FileName, err)
+				contents = append(contents, genai.NewContentFromText(string(upload.Content), genai.RoleUser))
+				continue
+			}
+			contents = append(contents, genai.NewContentFromURI(file.URI, upload.MimeType, genai.RoleUser))
 		}
-
-		// Add file to contents using the URI
-		contents = append(contents, genai.NewContentFromURI(file.URI, upload.MimeType, genai.RoleUser))
 	}
 
 	// Generate content with files
