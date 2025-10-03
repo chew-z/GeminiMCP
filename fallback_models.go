@@ -20,7 +20,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 
 		// Gemini 2.5 Flash - Production model
 		{
-			FamilyID:             "gemini-2.5-flash",
+			FamilyID:             "gemini-flash-latest",
 			Name:                 "Gemini 2.5 Flash",
 			Description:          "Best model in terms of price-performance, offering well-rounded capabilities",
 			SupportsThinking:     true,
@@ -29,13 +29,13 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			PreferredForCaching:  true,
 			PreferredForSearch:   false,
 			Versions: []ModelVersion{
-				{ID: "gemini-2.5-flash", SupportsCaching: true},
+				{ID: "gemini-flash-latest", SupportsCaching: true},
 			},
 		},
 
 		// Gemini 2.5 Flash Lite - GA model
 		{
-			FamilyID:             "gemini-2.5-flash-lite",
+			FamilyID:             "gemini-flash-lite-latest",
 			Name:                 "Gemini 2.5 Flash Lite",
 			Description:          "Optimized for cost efficiency and low latency",
 			SupportsThinking:     true,
@@ -44,7 +44,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			PreferredForCaching:  false,
 			PreferredForSearch:   true,
 			Versions: []ModelVersion{
-				{ID: "gemini-2.5-flash-lite", SupportsCaching: false},
+				{ID: "gemini-flash-lite-latest", SupportsCaching: false},
 			},
 		},
 	}

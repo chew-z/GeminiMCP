@@ -13,7 +13,7 @@ import (
 const (
 	// Note: if this value changes, make sure to update the models.go list
 	defaultGeminiModel        = "gemini-2.5-pro"
-	defaultGeminiSearchModel  = "gemini-2.5-flash-lite" // Default model specifically for search
+	defaultGeminiSearchModel  = "gemini-flash-lite-latest" // Default model specifically for search
 	defaultGeminiTemperature  = 0.4
 	defaultGeminiSystemPrompt = `
 You are a senior developer. Your job is to do a thorough code review of this code.

@@ -33,7 +33,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 
 	// Gemini 2.5 Flash
 	writer.Write("## Gemini 2.5 Flash\n")
-	writer.Write("- **Model ID**: `gemini-2.5-flash` (production)\n")
+	writer.Write("- **Model ID**: `gemini-flash-latest` (production)\n")
 	writer.Write("- **Description**: Balanced price-performance with fast responses\n")
 	writer.Write("- **Context Window**: 32K tokens\n")
 	writer.Write("- **Best for**: General programming tasks, standard code review\n")
@@ -43,7 +43,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 
 	// Gemini 2.5 Flash Lite
 	writer.Write("## Gemini 2.5 Flash Lite\n")
-	writer.Write("- **Model ID**: `gemini-2.5-flash-lite`\n")
+	writer.Write("- **Model ID**: `gemini-flash-lite-latest`\n")
 	writer.Write("- **Description**: Optimized for cost efficiency and low latency\n")
 	writer.Write("- **Context Window**: 32K tokens\n")
 	writer.Write("- **Best for**: Search queries, lightweight tasks, quick responses\n")
@@ -57,7 +57,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	// gemini_ask examples
 	writer.Write("### gemini_ask Examples\n\n")
 
-	writer.Write("**General Problem (non-coding):**\n```json\n{\n  \"query\": \"Explain quantum computing in simple terms\",\n  \"model\": \"gemini-2.5-flash\",\n  \"systemPrompt\": \"You are an expert science communicator. Explain complex topics clearly for a general audience.\"\n}\n```\n\n")
+	writer.Write("**General Problem (non-coding):**\n```json\n{\n  \"query\": \"Explain quantum computing in simple terms\",\n  \"model\": \"gemini-flash-latest\",\n  \"systemPrompt\": \"You are an expert science communicator. Explain complex topics clearly for a general audience.\"\n}\n```\n\n")
 
 	writer.Write("**Coding Problem with Files and Cache:**\n```json\n{\n  \"query\": \"Review this code for security vulnerabilities and performance issues\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\"/path/to/auth.go\", \"/path/to/database.go\"],\n  \"use_cache\": true,\n  \"cache_ttl\": \"30m\",\n  \"enable_thinking\": true\n}\n```\n*Note: Default system prompt optimized for code review will be used*\n\n")
 
@@ -66,11 +66,11 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	// gemini_search examples
 	writer.Write("### gemini_search Examples\n\n")
 
-	writer.Write("**Basic Search:**\n```json\n{\n  \"query\": \"What are the latest developments in Go programming language?\",\n  \"model\": \"gemini-2.5-flash-lite\"\n}\n```\n\n")
+	writer.Write("**Basic Search:**\n```json\n{\n  \"query\": \"What are the latest developments in Go programming language?\",\n  \"model\": \"gemini-flash-lite-latest\"\n}\n```\n\n")
 
-	writer.Write("**Search with Time Filtering:**\n```json\n{\n  \"query\": \"Recent security vulnerabilities in JavaScript frameworks\",\n  \"model\": \"gemini-2.5-flash\",\n  \"start_time\": \"2024-01-01T00:00:00Z\",\n  \"end_time\": \"2024-12-31T23:59:59Z\"\n}\n```\n\n")
+	writer.Write("**Search with Time Filtering:**\n```json\n{\n  \"query\": \"Recent security vulnerabilities in JavaScript frameworks\",\n  \"model\": \"gemini-flash-latest\",\n  \"start_time\": \"2024-01-01T00:00:00Z\",\n  \"end_time\": \"2024-12-31T23:59:59Z\"\n}\n```\n\n")
 
-	writer.Write("**Search with Thinking Mode (Flash Lite):**\n```json\n{\n  \"query\": \"Compare the pros and cons of different cloud deployment strategies\",\n  \"model\": \"gemini-2.5-flash-lite\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\"\n}\n```\n\n")
+	writer.Write("**Search with Thinking Mode (Flash Lite):**\n```json\n{\n  \"query\": \"Compare the pros and cons of different cloud deployment strategies\",\n  \"model\": \"gemini-flash-lite-latest\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\"\n}\n```\n\n")
 
 	// System Prompt Details
 	writer.Write("## System Prompt Details\n\n")
@@ -86,7 +86,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	// File Attachments
 	writer.Write("## File Attachments (gemini_ask only)\n\n")
 	writer.Write("Attach files to provide context for your queries. This is particularly useful for code review, debugging, and analysis:\n\n")
-	writer.Write("```json\n// Code review with multiple files\n{\n  \"query\": \"Review this code for potential issues and suggest improvements\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\n    \"/path/to/main.go\",\n    \"/path/to/utils.go\",\n    \"/path/to/config.yaml\"\n  ]\n}\n\n// Documentation analysis\n{\n  \"query\": \"Explain how these components interact and suggest documentation improvements\",\n  \"model\": \"gemini-2.5-flash\",\n  \"file_paths\": [\n    \"/path/to/README.md\",\n    \"/path/to/api.go\"\n  ]\n}\n```\n\n")
+	writer.Write("```json\n// Code review with multiple files\n{\n  \"query\": \"Review this code for potential issues and suggest improvements\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\n    \"/path/to/main.go\",\n    \"/path/to/utils.go\",\n    \"/path/to/config.yaml\"\n  ]\n}\n\n// Documentation analysis\n{\n  \"query\": \"Explain how these components interact and suggest documentation improvements\",\n  \"model\": \"gemini-flash-latest\",\n  \"file_paths\": [\n    \"/path/to/README.md\",\n    \"/path/to/api.go\"\n  ]\n}\n```\n\n")
 
 	// Caching
 	writer.Write("## Caching (gemini_ask only)\n\n")
@@ -100,7 +100,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	writer.Write("- Available for Pro and Flash only\n")
 	writer.Write("- Use `use_cache: true` parameter\n")
 	writer.Write("- Custom TTL with `cache_ttl` (default: 10 minutes)\n\n")
-	writer.Write("```json\n// Enable explicit caching\n{\n  \"query\": \"Analyze this codebase structure\",\n  \"model\": \"gemini-2.5-flash\",\n  \"file_paths\": [\"/path/to/large/codebase\"],\n  \"use_cache\": true,\n  \"cache_ttl\": \"30m\"\n}\n```\n\n")
+	writer.Write("```json\n// Enable explicit caching\n{\n  \"query\": \"Analyze this codebase structure\",\n  \"model\": \"gemini-flash-latest\",\n  \"file_paths\": [\"/path/to/large/codebase\"],\n  \"use_cache\": true,\n  \"cache_ttl\": \"30m\"\n}\n```\n\n")
 
 	// Thinking Mode
 	writer.Write("## Thinking Mode (both tools)\n\n")

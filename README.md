@@ -36,7 +36,7 @@ export GEMINI_MODEL=gemini-2.5-pro
 ./bin/mcp-gemini --transport=http
 
 ## Or override settings via command line
-./bin/mcp-gemini --transport=http --gemini-model=gemini-2.5-flash --enable-caching=true
+./bin/mcp-gemini --transport=http --gemini-model=gemini-flash-latest --enable-caching=true
 ```
 
 ### Client Configuration
@@ -50,7 +50,7 @@ Add this server to any MCP-compatible client like Claude Desktop by adding to yo
         "env": {
             "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY",
             "GEMINI_MODEL": "gemini-2.5-pro",
-            "GEMINI_SEARCH_MODEL": "gemini-2.5-flash-lite",
+            "GEMINI_SEARCH_MODEL": "gemini-flash-lite-latest",
             "GEMINI_SYSTEM_PROMPT": "You are a senior developer. Your job is to do a thorough code review of this code...",
             "GEMINI_SEARCH_SYSTEM_PROMPT": "You are a search assistant. Your job is to find the most relevant information about this topic..."
         }
@@ -139,12 +139,12 @@ The LLM will invoke the **`gemini_models`** tool and return the list of availabl
 Say to your LLM:
 
 > _Use the **`gemini_ask`** tool to analyze this Go code for potential concurrency issues:_
->
+> 
 > ```
 > func processItems(items []string) {
 >     var wg sync.WaitGroup
 >     results := make([]string, len(items))
->
+> 
 >     for i, item := range items {
 >         wg.Add(1)
 >         go func(i int, item string) {
@@ -152,12 +152,12 @@ Say to your LLM:
 >             wg.Done()
 >         }(i, item)
 >     }
->
+> 
 >     wg.Wait()
 >     return results
 > }
 > ```
->
+> 
 > _Please use a system prompt that focuses on code review and performance optimization._
 
 ### Creative Writing with **`gemini_ask`**
@@ -177,9 +177,9 @@ Say to your LLM:
 Say to your LLM:
 
 > _Use the `gemini_ask` tool with a thinking-capable model to solve this algorithmic problem:_
->
+> 
 > _"Given an array of integers, find the longest consecutive sequence of integers. For example, given [100, 4, 200, 1, 3, 2], the longest consecutive sequence is [1, 2, 3, 4], so return 4."_
->
+> 
 > _Enable thinking mode with a high budget level so I can see the detailed step-by-step reasoning process._
 
 This will show both the final answer and the model's comprehensive reasoning process with maximum detail.
@@ -205,7 +205,7 @@ This approach makes it easy to have an extended conversation about your codebase
 For programming tasks, you can directly use the file attachments feature with caching to create a more efficient workflow:
 
 > _Use gemini_ask with model gemini-2.0-flash-001 to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
-> _Use gemini_ask with model `gemini-2.5-flash` to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
+> _Use gemini_ask with model `gemini-flash-latest` to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
 
 The server has special optimizations for this use case, particularly useful when:
 - Working with complex codebases requiring multiple files for context
@@ -219,7 +219,7 @@ When combining file attachments with caching, files are analyzed once and stored
 
 During a conversation, you can create and use multiple caches for different sets of files or contexts:
 
-> _Please create a new **cache** for our frontend code (App.js, components/_.js) and analyze it separately from our backend code cache we created earlier.\*
+> _Please create a new **cache** for our frontend code (App.js, components/_.js) and analyze it separately from our backend code cache we created earlier.*
 
 The LLM can intelligently manage these different caches, switching between them as needed based on your queries. This capability is particularly valuable for projects with distinct components that require different analysis approaches.
 
@@ -256,7 +256,7 @@ For code analysis, general queries, and creative tasks with optional file contex
     "name": "gemini_ask",
     "arguments": {
         "query": "Review this Go code for concurrency issues...",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-flash-latest",
         "systemPrompt": "You are a senior Go developer. Focus on concurrency patterns, potential race conditions, and performance implications.",
         "github_files": ["main.go", "config.go"],
         "use_cache": true,
@@ -285,7 +285,7 @@ Combining file attachments with caching for repeated queries:
     "name": "gemini_ask",
     "arguments": {
         "query": "Explain the main data structures in these files and how they interact",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-flash-latest",
         "github_repo": "owner/repo",
         "github_ref": "main",
         "github_files": ["models.go", "structs.go"],
@@ -362,11 +362,11 @@ Key supported models (as detailed by the `gemini_models` tool):
     *   Most powerful model, 1M token context window.
     *   Best for: Complex reasoning, detailed analysis, comprehensive code review.
     *   Capabilities: Advanced thinking mode, implicit caching (2048+ token minimum), explicit caching.
--   **`gemini-2.5-flash`** (production):
+-   **`gemini-flash-latest`** (production):
     *   Balanced price-performance, 32K token context window.
     *   Best for: General programming tasks, standard code review.
     *   Capabilities: Thinking mode, implicit caching (1024+ token minimum), explicit caching.
--   **`gemini-2.5-flash-lite`** (production):
+-   **`gemini-flash-lite-latest`** (production):
     *   Optimized for cost efficiency and low latency, 32K token context window.
     *   Best for: Search queries, lightweight tasks, quick responses.
     *   Capabilities: Thinking mode (off by default), no implicit or explicit caching.
@@ -464,7 +464,7 @@ Examples:
   "name": "gemini_search",
   "arguments": {
     "query": "Research quantum computing developments...",
-    "model": "gemini-2.5-pro", // Or gemini-2.5-flash / gemini-2.5-flash-lite
+    "model": "gemini-2.5-pro", // Or gemini-flash-latest / gemini-flash-lite-latest
     "enable_thinking": true,
     "thinking_budget": 12000
   }
@@ -517,7 +517,7 @@ export GEMINI_MAX_BACKOFF=15s
 | ----------------------------- | ------------------------------------ | ------------------------ |
 | `GEMINI_API_KEY`              | Google Gemini API key                | _Required_               |
 | `GEMINI_MODEL`                | Default model for `gemini_ask`       | `gemini-2.5-pro`         |
-| `GEMINI_SEARCH_MODEL`         | Default model for `gemini_search`    | `gemini-2.5-flash-lite`  |
+| `GEMINI_SEARCH_MODEL`         | Default model for `gemini_search`    | `gemini-flash-lite-latest`  |
 | `GEMINI_SYSTEM_PROMPT`        | System prompt for general queries    | _Custom review prompt_   |
 | `GEMINI_SEARCH_SYSTEM_PROMPT` | System prompt for search             | _Custom search prompt_   |
 | `GEMINI_GITHUB_TOKEN`         | GitHub token for private repo access | _Optional_               |
@@ -529,18 +529,18 @@ export GEMINI_MAX_BACKOFF=15s
 
 #### Optimization Variables
 
-| Variable                       | Description                                          | Default |
-| ------------------------------ | ---------------------------------------------------- | ------- |
-| `GEMINI_TIMEOUT`               | API timeout (Go duration, e.g., `90s`)               | `90s`   |
-| `GEMINI_MAX_RETRIES`           | Max API retries                                      | `2`     |
-| `GEMINI_INITIAL_BACKOFF`       | Initial retry backoff (duration)                     | `1s`    |
-| `GEMINI_MAX_BACKOFF`           | Maximum retry backoff cap (duration)                 | `10s`   |
-| `GEMINI_TEMPERATURE`           | Model temperature (0.0-1.0)                          | `0.4`   |
-| `GEMINI_ENABLE_CACHING`        | Enable context caching                               | `true`  |
-| `GEMINI_DEFAULT_CACHE_TTL`     | Default cache time-to-live                           | `1h`    |
-| `GEMINI_ENABLE_THINKING`       | Enable thinking mode capability                      | `true`  |
-| `GEMINI_THINKING_BUDGET_LEVEL` | Default thinking budget level (none/low/medium/high) | `low`   |
-| `GEMINI_THINKING_BUDGET`       | Explicit thinking token budget (0-24576)             | `4096`  |
+| Variable                       | Description                                          | Default | 
+| ------------------------------ | ---------------------------------------------------- | ------- | 
+| `GEMINI_TIMEOUT`               | API timeout (Go duration, e.g., `90s`)               | `90s`   | 
+| `GEMINI_MAX_RETRIES`           | Max API retries                                      | `2`     | 
+| `GEMINI_INITIAL_BACKOFF`       | Initial retry backoff (duration)                     | `1s`    | 
+| `GEMINI_MAX_BACKOFF`           | Maximum retry backoff cap (duration)                 | `10s`   | 
+| `GEMINI_TEMPERATURE`           | Model temperature (0.0-1.0)                          | `0.4`   | 
+| `GEMINI_ENABLE_CACHING`        | Enable context caching                               | `true`  | 
+| `GEMINI_DEFAULT_CACHE_TTL`     | Default cache time-to-live                           | `1h`    | 
+| `GEMINI_ENABLE_THINKING`       | Enable thinking mode capability                      | `true`  | 
+| `GEMINI_THINKING_BUDGET_LEVEL` | Default thinking budget level (none/low/medium/high) | `low`   | 
+| `GEMINI_THINKING_BUDGET`       | Explicit thinking token budget (0-24576)             | `4096`  | 
 
 ### Operational Features
 
