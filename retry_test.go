@@ -60,7 +60,7 @@ func TestWithRetry(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:          "context canceled",
+			name: "context canceled",
 			fn: func(ctx context.Context) (int, error) {
 				return 0, errors.New("retryable error: unavailable")
 			},

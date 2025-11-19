@@ -21,7 +21,7 @@ func withRetry[T any](ctx context.Context, cfg *Config, logger Logger, opName st
 		maxAttempts = 1
 	}
 
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for attempt := range maxAttempts {
 		if ctx.Err() != nil {
 			return zero, ctx.Err()
 		}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -102,7 +103,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 			}
 
 			// Set thinking level for Gemini 3
-			thinkingConfig.ThinkingLevel = &thinkingLevel
+			thinkingConfig.ThinkingLevel = genai.ThinkingLevel(thinkingLevel)
 			logger.Info("Thinking mode enabled for search with level '%s' and Gemini 3 model %s", thinkingLevel, modelName)
 		} else {
 			// Gemini 2.5: Use legacy thinking_budget parameter

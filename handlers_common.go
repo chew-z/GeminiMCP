@@ -107,7 +107,7 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 			}
 
 			// Set thinking level for Gemini 3
-			thinkingConfig.ThinkingLevel = &thinkingLevel
+			thinkingConfig.ThinkingLevel = genai.ThinkingLevel(thinkingLevel)
 			logger.Info("Thinking mode enabled with level '%s' for Gemini 3 model %s", thinkingLevel, modelName)
 		} else {
 			// Gemini 2.5: Use legacy thinking_budget parameter

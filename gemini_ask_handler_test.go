@@ -33,7 +33,7 @@ func TestParseAskRequest(t *testing.T) {
 			name: "missing query",
 			req: mcp.CallToolRequest{
 				Params: mcp.CallToolParams{
-					Name:      "gemini_ask",
+					Name: "gemini_ask",
 					Arguments: map[string]interface{}{
 						"query": "",
 					},
