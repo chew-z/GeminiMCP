@@ -2,7 +2,7 @@
 
 MCP (Model Control Protocol) server integrating with Google's Gemini API.
 
-> **Important**: This server exclusively supports **Gemini 2.5 family models** for optimal thinking mode and implicit caching capabilities.
+> **Important**: This server now supports **Gemini 3 Pro** (latest) along with the Gemini 2.5 family models for optimal thinking mode and implicit caching capabilities.
 
 ## Key Advantages
 
@@ -29,7 +29,7 @@ go build -o ./bin/mcp-gemini .
 
 ## Start server with environment variables
 export GEMINI_API_KEY=your_api_key
-export GEMINI_MODEL=gemini-2.5-pro
+export GEMINI_MODEL=gemini-3-pro-preview
 ./bin/mcp-gemini
 
 ## Or start with HTTP transport
@@ -49,7 +49,7 @@ Add this server to any MCP-compatible client like Claude Desktop by adding to yo
         "command": "/Users/<user>/Path/to/bin/mcp-gemini",
         "env": {
             "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY",
-            "GEMINI_MODEL": "gemini-2.5-pro",
+            "GEMINI_MODEL": "gemini-3-pro-preview",
             "GEMINI_SEARCH_MODEL": "gemini-flash-lite-latest",
             "GEMINI_SYSTEM_PROMPT": "You are a senior developer. Your job is to do a thorough code review of this code...",
             "GEMINI_SEARCH_SYSTEM_PROMPT": "You are a search assistant. Your job is to find the most relevant information about this topic..."
@@ -306,10 +306,9 @@ Provides grounded answers using Google Search integration with enhanced model ca
         "query": "What is the current population of Warsaw, Poland?",
         "systemPrompt": "Optional custom search instructions",
         "enable_thinking": true,
-        "thinking_budget": 8192,
-        "thinking_budget_level": "medium",
+        "thinking_level": "high",
         "max_tokens": 4096,
-        "model": "gemini-2.5-pro",
+        "model": "gemini-3-pro-preview",
         "start_time": "2024-01-01T00:00:00Z",
         "end_time": "2024-12-31T23:59:59Z"
     }
@@ -412,61 +411,61 @@ Robust file processing with:
 
 #### Thinking Mode
 
-The server supports "thinking mode" for all compatible Gemini 2.5 models (Pro, Flash, and Flash Lite, though it's off by default for Flash Lite):
+The server supports "thinking mode" for Gemini 3 Pro and compatible Gemini 2.5 models:
 
+- **Gemini 3 Pro**: Uses the new `thinking_level` parameter (low, high; medium coming soon)
+- **Gemini 2.5 Models**: Uses legacy `thinking_budget` and `thinking_budget_level` parameters
 - **Model Compatibility**: Automatically validates thinking capability based on requested model
 - **Tool Support**: Available in both `gemini_ask` and `gemini_search` tools
-- **Configurable Budget**: Control thinking depth with budget levels or explicit token counts
 
-Example with thinking mode:
+Example with Gemini 3 Pro thinking mode:
 
 ```json
 {
     "name": "gemini_ask",
     "arguments": {
         "query": "Analyze the algorithmic complexity of merge sort vs. quick sort",
-        "model": "gemini-2.5-pro",
+        "model": "gemini-3-pro-preview",
         "enable_thinking": true,
-        "thinking_budget_level": "high"
+        "thinking_level": "high"
     }
 }
 ```
 
-##### Thinking Budget Control
+##### Thinking Level Control (Gemini 3 Pro)
 
-Configure the depth and detail of the model's thinking process:
+Configure the depth and detail of Gemini 3 Pro's thinking process using the `thinking_level` parameter:
 
-- **Predefined Budget Levels**:
+- **Thinking Levels**:
 
-    - `none`: 0 tokens (thinking disabled)
-    - `low`: 4096 tokens (default, quick analysis)
-    - `medium`: 16384 tokens (detailed reasoning)
-    - `high`: 24576 tokens (maximum depth for complex problems)
+    - `low`: Minimizes latency and cost. Best for simple instruction following, chat, or high-throughput applications
+    - `high` (default): Maximizes reasoning depth. The model may take longer for first token, but output will be more carefully reasoned
+    - `medium`: Coming soon, not supported at launch
 
-- **Custom Token Budget**: Alternatively, set a specific token count with `thinking_budget` parameter (0-24576)
+**Important**: Cannot use both `thinking_level` and legacy `thinking_budget` parameter in the same request (returns 400 error).
 
 Examples:
 
 ```json
-// Using predefined level
+// Gemini 3 Pro with high thinking level (default)
 {
   "name": "gemini_ask",
   "arguments": {
-    "query": "Analyze this algorithm...",
-    "model": "gemini-2.5-pro",
+    "query": "Analyze this complex algorithm...",
+    "model": "gemini-3-pro-preview",
     "enable_thinking": true,
-    "thinking_budget_level": "medium"
+    "thinking_level": "high"
   }
 }
 
-// Using explicit token count
+// Gemini 3 Pro with low thinking level for faster responses
 {
   "name": "gemini_search",
   "arguments": {
-    "query": "Research quantum computing developments...",
-    "model": "gemini-2.5-pro", // Or gemini-flash-latest / gemini-flash-lite-latest
+    "query": "Quick search for recent developments...",
+    "model": "gemini-3-pro-preview",
     "enable_thinking": true,
-    "thinking_budget": 12000
+    "thinking_level": "low"
   }
 }
 ```

@@ -81,39 +81,32 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 		Temperature:       genai.Ptr(float32(config.GeminiTemperature)),
 	}
 
-	// Configure thinking if supported
+	// Configure thinking if supported (Gemini 3 uses thinking_level instead of thinking_budget)
 	enableThinking := extractArgumentBool(req, "enable_thinking", config.EnableThinking)
 	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
 		thinkingConfig := &genai.ThinkingConfig{
 			IncludeThoughts: true,
 		}
 
-		// Determine thinking budget
-		thinkingBudget := 0
+		// Determine thinking level for Gemini 3
+		thinkingLevel := config.ThinkingLevel
 
-		// Check for level first
+		// Check for thinking_level parameter
 		args := req.GetArguments()
-		if levelStr, ok := args["thinking_budget_level"].(string); ok && levelStr != "" {
-			thinkingBudget = getThinkingBudgetFromLevel(levelStr)
-			logger.Info("Setting thinking budget to %d tokens from level: %s", thinkingBudget, levelStr)
-		} else if budgetRaw, ok := args["thinking_budget"].(float64); ok && budgetRaw >= 0 {
-			// If explicit budget was provided, use that instead of level
-			thinkingBudget = int(budgetRaw)
-			logger.Info("Setting thinking budget to %d tokens from explicit value", thinkingBudget)
-		} else if config.ThinkingBudget > 0 {
-			// Fall back to config value if neither level nor explicit budget provided
-			thinkingBudget = config.ThinkingBudget
-			logger.Info("Using default thinking budget of %d tokens", thinkingBudget)
+		if levelStr, ok := args["thinking_level"].(string); ok && levelStr != "" {
+			if validateThinkingLevel(levelStr) {
+				thinkingLevel = strings.ToLower(levelStr)
+				logger.Info("Setting thinking level to: %s", thinkingLevel)
+			} else {
+				logger.Warn("Invalid thinking_level '%s' (valid: 'low', 'high'). Using config default: %s", levelStr, config.ThinkingLevel)
+			}
 		}
 
-		// Set budget if greater than 0
-		if thinkingBudget > 0 {
-			budget := int32(thinkingBudget)
-			thinkingConfig.ThinkingBudget = &budget
-		}
+		// Set thinking level
+		thinkingConfig.ThinkingLevel = &thinkingLevel
 
 		contentConfig.ThinkingConfig = thinkingConfig
-		logger.Info("Thinking mode enabled with budget %d for model %s", thinkingBudget, modelName)
+		logger.Info("Thinking mode enabled with level '%s' for model %s", thinkingLevel, modelName)
 	} else if enableThinking && (modelInfo == nil || !modelInfo.SupportsThinking) {
 		logger.Warn("Thinking mode was requested but model doesn't support it")
 	}

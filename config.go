@@ -12,9 +12,9 @@ import (
 // Default configuration values
 const (
 	// Note: if this value changes, make sure to update the models.go list
-	defaultGeminiModel        = "gemini-2.5-pro"
+	defaultGeminiModel        = "gemini-3-pro-preview"
 	defaultGeminiSearchModel  = "gemini-flash-lite-latest" // Default model specifically for search
-	defaultGeminiTemperature  = 0.4
+	defaultGeminiTemperature  = 1.0                        // Gemini 3 default temperature
 	defaultGeminiSystemPrompt = `
 You are a senior developer. Your job is to do a thorough code review of this code.
 You should write it up and output markdown.
@@ -52,31 +52,18 @@ If the search results don't contain enough information to fully answer the query
 	defaultEnableCaching   = true
 	defaultDefaultCacheTTL = 1 * time.Hour
 
-	// Thinking settings
-	defaultEnableThinking      = true
-	defaultThinkingBudgetLevel = "low" // Default thinking budget level
-	thinkingBudgetNone         = 0     // None: Thinking disabled
-	thinkingBudgetLow          = 4096  // Low: 4096 tokens
-	thinkingBudgetMedium       = 16384 // Medium: 16384 tokens
-	thinkingBudgetHigh         = 24576 // High: Maximum allowed by Gemini (24576 tokens)
+	// Thinking settings for Gemini 3
+	defaultEnableThinking = true
+	defaultThinkingLevel  = "high" // Default thinking level for Gemini 3 (low, medium [coming soon], high [default])
 )
 
 // Config struct definition moved to structs.go
 
-// getThinkingBudgetFromLevel converts a thinking budget level string to a token count
-func getThinkingBudgetFromLevel(level string) int {
-	switch strings.ToLower(level) {
-	case "none":
-		return thinkingBudgetNone
-	case "low":
-		return thinkingBudgetLow
-	case "medium":
-		return thinkingBudgetMedium
-	case "high":
-		return thinkingBudgetHigh
-	default:
-		return thinkingBudgetLow // Default to low if invalid level
-	}
+// validateThinkingLevel validates the thinking level string for Gemini 3
+func validateThinkingLevel(level string) bool {
+	normalizedLevel := strings.ToLower(level)
+	return normalizedLevel == "low" || normalizedLevel == "high"
+	// Note: "medium" is coming soon and not supported at launch
 }
 
 // Helper function to parse an integer environment variable with a default
@@ -224,26 +211,20 @@ func NewConfig(logger Logger) (*Config, error) {
 		defaultCacheTTL = defaultDefaultCacheTTL
 	}
 
-	// Thinking settings
+	// Thinking settings for Gemini 3
 	enableThinking := parseEnvVarBool("GEMINI_ENABLE_THINKING", defaultEnableThinking, logger)
 
-	// Set thinking budget level from environment variable or use default
-	thinkingBudgetLevel := defaultThinkingBudgetLevel
-	if levelStr := os.Getenv("GEMINI_THINKING_BUDGET_LEVEL"); levelStr != "" {
+	// Set thinking level from environment variable or use default
+	thinkingLevel := defaultThinkingLevel
+	if levelStr := os.Getenv("GEMINI_THINKING_LEVEL"); levelStr != "" {
 		level := strings.ToLower(levelStr)
-		if level == "none" || level == "low" || level == "medium" || level == "high" {
-			thinkingBudgetLevel = level
+		if validateThinkingLevel(level) {
+			thinkingLevel = level
 		} else {
-			logger.Warnf("Invalid GEMINI_THINKING_BUDGET_LEVEL value: %q. Using default: %q",
-				levelStr, defaultThinkingBudgetLevel)
+			logger.Warnf("Invalid GEMINI_THINKING_LEVEL value: %q (valid values: 'low', 'high'). Using default: %q",
+				levelStr, defaultThinkingLevel)
 		}
 	}
-
-	// Set thinking budget from environment variable or derive from level
-	thinkingBudget := getThinkingBudgetFromLevel(thinkingBudgetLevel)
-	// If GEMINI_THINKING_BUDGET is set, it overrides the level-derived value.
-	// The helper will use the level-derived budget as a fallback if parsing fails.
-	thinkingBudget = parseEnvVarInt("GEMINI_THINKING_BUDGET", thinkingBudget, logger)
 
 	// HTTP transport settings
 	enableHTTP := parseEnvVarBool("GEMINI_ENABLE_HTTP", defaultEnableHTTP, logger)
@@ -364,8 +345,7 @@ func NewConfig(logger Logger) (*Config, error) {
 			EnableCaching:           enableCaching,
 			DefaultCacheTTL:         defaultCacheTTL,
 			EnableThinking:          enableThinking,
-			ThinkingBudget:          thinkingBudget,
-			ThinkingBudgetLevel:     thinkingBudgetLevel,
+			ThinkingLevel:           thinkingLevel,
 			ProjectLanguage:         projectLanguage,
 			PromptDefaultAudience:   promptDefaultAudience,
 			PromptDefaultFocus:      promptDefaultFocus,

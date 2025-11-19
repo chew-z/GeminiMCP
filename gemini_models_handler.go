@@ -15,19 +15,30 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	writer := NewSafeWriter(logger)
 
 	// Write the header
-	writer.Write("# Available Gemini 2.5 Models\n\n")
+	writer.Write("# Available Gemini Models\n\n")
 
-	writer.Write("This server supports 3 Gemini 2.5 models and provides 2 main tools:\n")
+	writer.Write("This server supports Gemini 3 Pro (latest) and Gemini 2.5 models, providing 2 main tools:\n")
 	writer.Write("- `gemini_ask`: For general queries, coding problems (default: code review system prompt)\n")
 	writer.Write("- `gemini_search`: For search-grounded queries (default: search assistant system prompt)\n\n")
 
-	// Gemini 2.5 Pro
-	writer.Write("## Gemini 2.5 Pro\n")
-	writer.Write("- **Model ID**: `gemini-2.5-pro` (production)\n")
-	writer.Write("- **Description**: Most powerful model with maximum accuracy and performance\n")
+	// Gemini 3 Pro - Latest model
+	writer.Write("## Gemini 3 Pro (Latest)\n")
+	writer.Write("- **Model ID**: `gemini-3-pro-preview` (default)\n")
+	writer.Write("- **Description**: First model in the Gemini 3 series. Best for complex tasks requiring broad world knowledge and advanced reasoning across modalities\n")
 	writer.Write("- **Context Window**: 1M tokens\n")
-	writer.Write("- **Best for**: Complex reasoning, detailed analysis, comprehensive code review\n")
-	writer.Write("- **Thinking Mode**: Yes (advanced reasoning capabilities)\n")
+	writer.Write("- **Best for**: Complex reasoning, detailed analysis, comprehensive code review, advanced problem-solving\n")
+	writer.Write("- **Thinking Mode**: Yes (uses `thinking_level` parameter: low, high [default]; medium coming soon)\n")
+	writer.Write("- **Implicit Caching**: Yes (automatic optimization)\n")
+	writer.Write("- **Explicit Caching**: Yes (user-controlled via `use_cache`)\n")
+	writer.Write("- **Temperature**: Default 1.0 (recommended to avoid looping issues on complex tasks)\n\n")
+
+	// Gemini 2.5 Pro
+	writer.Write("## Gemini 2.5 Pro (Previous Generation)\n")
+	writer.Write("- **Model ID**: `gemini-2.5-pro`\n")
+	writer.Write("- **Description**: Previous generation model with strong performance\n")
+	writer.Write("- **Context Window**: 1M tokens\n")
+	writer.Write("- **Best for**: Complex reasoning, detailed analysis, code review\n")
+	writer.Write("- **Thinking Mode**: Yes (legacy thinking_budget parameter)\n")
 	writer.Write("- **Implicit Caching**: Yes (automatic optimization, 2048+ token minimum)\n")
 	writer.Write("- **Explicit Caching**: Yes (user-controlled via `use_cache`)\n\n")
 
@@ -59,9 +70,9 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 
 	writer.Write("**General Problem (non-coding):**\n```json\n{\n  \"query\": \"Explain quantum computing in simple terms\",\n  \"model\": \"gemini-flash-latest\",\n  \"systemPrompt\": \"You are an expert science communicator. Explain complex topics clearly for a general audience.\"\n}\n```\n\n")
 
-	writer.Write("**Coding Problem with Files and Cache:**\n```json\n{\n  \"query\": \"Review this code for security vulnerabilities and performance issues\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\"/path/to/auth.go\", \"/path/to/database.go\"],\n  \"use_cache\": true,\n  \"cache_ttl\": \"30m\",\n  \"enable_thinking\": true\n}\n```\n*Note: Default system prompt optimized for code review will be used*\n\n")
+	writer.Write("**Coding Problem with Files and Cache (Gemini 3 Pro):**\n```json\n{\n  \"query\": \"Review this code for security vulnerabilities and performance issues\",\n  \"model\": \"gemini-3-pro-preview\",\n  \"file_paths\": [\"/path/to/auth.go\", \"/path/to/database.go\"],\n  \"use_cache\": true,\n  \"cache_ttl\": \"30m\",\n  \"enable_thinking\": true,\n  \"thinking_level\": \"high\"\n}\n```\n*Note: Default system prompt optimized for code review will be used*\n\n")
 
-	writer.Write("**Custom System Prompt Override:**\n```json\n{\n  \"query\": \"Analyze this code architecture\",\n  \"model\": \"gemini-2.5-pro\",\n  \"systemPrompt\": \"You are a senior software architect. Focus on design patterns, scalability, and maintainability.\",\n  \"file_paths\": [\"/path/to/main.go\"]\n}\n```\n\n")
+	writer.Write("**Custom System Prompt Override (Gemini 3 Pro):**\n```json\n{\n  \"query\": \"Analyze this code architecture\",\n  \"model\": \"gemini-3-pro-preview\",\n  \"systemPrompt\": \"You are a senior software architect. Focus on design patterns, scalability, and maintainability.\",\n  \"file_paths\": [\"/path/to/main.go\"]\n}\n```\n\n")
 
 	// gemini_search examples
 	writer.Write("### gemini_search Examples\n\n")
@@ -70,7 +81,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 
 	writer.Write("**Search with Time Filtering:**\n```json\n{\n  \"query\": \"Recent security vulnerabilities in JavaScript frameworks\",\n  \"model\": \"gemini-flash-latest\",\n  \"start_time\": \"2024-01-01T00:00:00Z\",\n  \"end_time\": \"2024-12-31T23:59:59Z\"\n}\n```\n\n")
 
-	writer.Write("**Search with Thinking Mode (Flash Lite):**\n```json\n{\n  \"query\": \"Compare the pros and cons of different cloud deployment strategies\",\n  \"model\": \"gemini-flash-lite-latest\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\"\n}\n```\n\n")
+	writer.Write("**Search with Thinking Mode (Gemini 3 Pro):**\n```json\n{\n  \"query\": \"Compare the pros and cons of different cloud deployment strategies\",\n  \"model\": \"gemini-3-pro-preview\",\n  \"enable_thinking\": true,\n  \"thinking_level\": \"high\"\n}\n```\n\n")
 
 	// System Prompt Details
 	writer.Write("## System Prompt Details\n\n")
@@ -104,9 +115,13 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 
 	// Thinking Mode
 	writer.Write("## Thinking Mode (both tools)\n\n")
-	writer.Write("All Gemini 2.5 models support thinking mode, which shows the model's detailed reasoning process. Flash-Lite has thinking off by default for speed/cost optimization.\n\n")
-	writer.Write("**Thinking Budget Levels:**\n- `none`: 0 tokens (disabled)\n- `low`: 4,096 tokens\n- `medium`: 16,384 tokens\n- `high`: 24,576 tokens (maximum)\n\nOr use `thinking_budget` to set a specific token count (0-24,576).\n\n")
-	writer.Write("```json\n// Enable thinking with budget level\n{\n  \"query\": \"Solve this complex algorithm problem step by step\",\n  \"model\": \"gemini-2.5-pro\",\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"high\"\n}\n\n// Custom thinking budget\n{\n  \"query\": \"Debug this complex issue\",\n  \"model\": \"gemini-2.5-pro\",\n  \"enable_thinking\": true,\n  \"thinking_budget\": 12000\n}\n```\n\n")
+	writer.Write("Gemini 3 Pro uses the new `thinking_level` parameter for controlling reasoning depth:\n\n")
+	writer.Write("**Gemini 3 Pro Thinking Levels:**\n")
+	writer.Write("- `low`: Minimizes latency and cost. Best for simple instruction following, chat, or high-throughput applications\n")
+	writer.Write("- `high` (default): Maximizes reasoning depth. The model may take longer for first token, but output will be more carefully reasoned\n")
+	writer.Write("- `medium`: Coming soon, not supported at launch\n\n")
+	writer.Write("**Important:** Cannot use both `thinking_level` and legacy `thinking_budget` parameter in the same request (returns 400 error).\n\n")
+	writer.Write("```json\n// Gemini 3 Pro with thinking (default is high)\n{\n  \"query\": \"Solve this complex algorithm problem step by step\",\n  \"model\": \"gemini-3-pro-preview\",\n  \"enable_thinking\": true,\n  \"thinking_level\": \"high\"\n}\n\n// Low thinking level for faster responses\n{\n  \"query\": \"Quick code syntax check\",\n  \"model\": \"gemini-3-pro-preview\",\n  \"enable_thinking\": true,\n  \"thinking_level\": \"low\"\n}\n```\n\n")
 
 	// Time Filtering
 	writer.Write("## Time Filtering (gemini_search only)\n\n")
@@ -116,7 +131,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 
 	// Advanced Examples
 	writer.Write("## Advanced Examples\n\n")
-	writer.Write("```json\n// Comprehensive code review with thinking and caching (gemini_ask)\n{\n  \"query\": \"Perform a thorough security and performance review of this codebase\",\n  \"model\": \"gemini-2.5-pro\",\n  \"file_paths\": [\n    \"/path/to/main.go\",\n    \"/path/to/auth.go\",\n    \"/path/to/database.go\"\n  ],\n  \"enable_thinking\": true,\n  \"thinking_budget_level\": \"medium\",\n  \"use_cache\": true,\n  \"cache_ttl\": \"1h\"\n}\n\n// Custom system prompt with file context (gemini_ask)\n{\n  \"query\": \"Suggest architectural improvements for better scalability\",\n  \"model\": \"gemini-2.5-pro\",\n  \"systemPrompt\": \"You are a senior software architect. Focus on scalability, maintainability, and best practices.\",\n  \"file_paths\": [\"/path/to/architecture/overview.md\"],\n  \"enable_thinking\": true\n}\n```\n")
+	writer.Write("```json\n// Comprehensive code review with thinking and caching (gemini_ask with Gemini 3 Pro)\n{\n  \"query\": \"Perform a thorough security and performance review of this codebase\",\n  \"model\": \"gemini-3-pro-preview\",\n  \"file_paths\": [\n    \"/path/to/main.go\",\n    \"/path/to/auth.go\",\n    \"/path/to/database.go\"\n  ],\n  \"enable_thinking\": true,\n  \"thinking_level\": \"high\",\n  \"use_cache\": true,\n  \"cache_ttl\": \"1h\"\n}\n\n// Custom system prompt with file context (gemini_ask with Gemini 3 Pro)\n{\n  \"query\": \"Suggest architectural improvements for better scalability\",\n  \"model\": \"gemini-3-pro-preview\",\n  \"systemPrompt\": \"You are a senior software architect. Focus on scalability, maintainability, and best practices.\",\n  \"file_paths\": [\"/path/to/architecture/overview.md\"],\n  \"enable_thinking\": true,\n  \"thinking_level\": \"high\"\n}\n```\n")
 
 	// Check for write failures and return error if any occurred
 	if writer.Failed() {
