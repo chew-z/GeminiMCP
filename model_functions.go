@@ -88,6 +88,22 @@ func ResolveModelID(modelID string) string {
 	return modelID
 }
 
+// IsGemini3Model checks if a model ID represents a Gemini 3 model
+func IsGemini3Model(modelID string) bool {
+	// Check if the model ID contains "gemini-3"
+	if strings.Contains(strings.ToLower(modelID), "gemini-3") {
+		return true
+	}
+
+	// Also check the model info if available
+	modelInfo := GetModelByID(modelID)
+	if modelInfo != nil && strings.HasPrefix(strings.ToLower(modelInfo.FamilyID), "gemini-3") {
+		return true
+	}
+
+	return false
+}
+
 // ValidateModelID checks if a model ID is in the list of available models
 // Returns nil if valid, error otherwise
 func ValidateModelID(modelID string) error {

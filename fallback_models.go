@@ -1,16 +1,31 @@
 package main
 
-// fallbackGeminiModels provides the 3 actual Gemini 2.5 models as documented by Google
+// fallbackGeminiModels provides the Gemini models supported by this server
 func fallbackGeminiModels() []GeminiModelInfo {
 	return []GeminiModelInfo{
-		// Gemini 2.5 Pro - Production model
+		// Gemini 3 Pro - Latest model with advanced reasoning
 		{
-			FamilyID:             "gemini-2.5-pro",
-			Name:                 "Gemini 2.5 Pro",
-			Description:          "Our most powerful thinking model with maximum response accuracy and state-of-the-art performance",
+			FamilyID:             "gemini-3-pro-preview",
+			Name:                 "Gemini 3 Pro",
+			Description:          "First model in the Gemini 3 series. Best for complex tasks requiring broad world knowledge and advanced reasoning across modalities",
 			SupportsThinking:     true,
 			ContextWindowSize:    1048576,
 			PreferredForThinking: true,
+			PreferredForCaching:  true,
+			PreferredForSearch:   false,
+			Versions: []ModelVersion{
+				{ID: "gemini-3-pro-preview", SupportsCaching: true, IsPreferred: true},
+			},
+		},
+
+		// Gemini 2.5 Pro - Previous generation (still supported)
+		{
+			FamilyID:             "gemini-2.5-pro",
+			Name:                 "Gemini 2.5 Pro",
+			Description:          "Previous generation thinking model with maximum response accuracy",
+			SupportsThinking:     true,
+			ContextWindowSize:    1048576,
+			PreferredForThinking: false,
 			PreferredForCaching:  true,
 			PreferredForSearch:   false,
 			Versions: []ModelVersion{

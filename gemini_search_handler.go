@@ -76,39 +76,61 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 		},
 	}
 
-	// Configure thinking
+	// Configure thinking if supported
+	// Gemini 3 uses thinking_level, Gemini 2.5 uses thinking_budget
 	enableThinking := extractArgumentBool(req, "enable_thinking", s.config.EnableThinking)
 	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
 		thinkingConfig := &genai.ThinkingConfig{
 			IncludeThoughts: true,
 		}
 
-		// Determine thinking budget
-		thinkingBudget := 0
-
-		// Check for level first
 		args := req.GetArguments()
-		if levelStr, ok := args["thinking_budget_level"].(string); ok && levelStr != "" {
-			thinkingBudget = getThinkingBudgetFromLevel(levelStr)
-			logger.Info("Setting thinking budget to %d tokens from level: %s", thinkingBudget, levelStr)
-		} else if budgetRaw, ok := args["thinking_budget"].(float64); ok && budgetRaw >= 0 {
-			// If explicit budget was provided
-			thinkingBudget = int(budgetRaw)
-			logger.Info("Setting thinking budget to %d tokens from explicit value", thinkingBudget)
-		} else if s.config.ThinkingBudget > 0 {
-			// Fall back to config value
-			thinkingBudget = s.config.ThinkingBudget
-			logger.Info("Using default thinking budget of %d tokens", thinkingBudget)
-		}
 
-		// Set thinking budget if greater than 0
-		if thinkingBudget > 0 {
-			budget := int32(thinkingBudget)
-			thinkingConfig.ThinkingBudget = &budget
+		// Check if this is a Gemini 3 model
+		if IsGemini3Model(modelName) {
+			// Gemini 3: Use thinking_level parameter
+			thinkingLevel := s.config.ThinkingLevel
+
+			// Check for thinking_level parameter in request
+			if levelStr, ok := args["thinking_level"].(string); ok && levelStr != "" {
+				if validateThinkingLevel(levelStr) {
+					thinkingLevel = strings.ToLower(levelStr)
+					logger.Info("Setting thinking level to: %s", thinkingLevel)
+				} else {
+					logger.Warn("Invalid thinking_level '%s' (valid: 'low', 'high'). Using config default: %s", levelStr, s.config.ThinkingLevel)
+				}
+			}
+
+			// Set thinking level for Gemini 3
+			thinkingConfig.ThinkingLevel = &thinkingLevel
+			logger.Info("Thinking mode enabled for search with level '%s' and Gemini 3 model %s", thinkingLevel, modelName)
+		} else {
+			// Gemini 2.5: Use legacy thinking_budget parameter
+			thinkingBudget := 0
+
+			// Check for level first
+			if levelStr, ok := args["thinking_budget_level"].(string); ok && levelStr != "" {
+				thinkingBudget = getThinkingBudgetFromLevel(levelStr)
+				logger.Info("Setting thinking budget to %d tokens from level: %s", thinkingBudget, levelStr)
+			} else if budgetRaw, ok := args["thinking_budget"].(float64); ok && budgetRaw >= 0 {
+				// If explicit budget was provided
+				thinkingBudget = int(budgetRaw)
+				logger.Info("Setting thinking budget to %d tokens from explicit value", thinkingBudget)
+			} else if s.config.ThinkingBudget > 0 {
+				// Fall back to config value
+				thinkingBudget = s.config.ThinkingBudget
+				logger.Info("Using default thinking budget of %d tokens", thinkingBudget)
+			}
+
+			// Set thinking budget if greater than 0
+			if thinkingBudget > 0 {
+				budget := int32(thinkingBudget)
+				thinkingConfig.ThinkingBudget = &budget
+			}
+			logger.Info("Thinking mode enabled for search with budget %d and Gemini 2.5 model %s", thinkingBudget, modelName)
 		}
 
 		config.ThinkingConfig = thinkingConfig
-		logger.Info("Thinking mode enabled for search request with model %s", modelName)
 	} else if enableThinking {
 		if modelInfo != nil {
 			logger.Warn("Thinking mode requested but model %s doesn't support it", modelName)

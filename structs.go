@@ -117,10 +117,13 @@ type Config struct {
 	EnableCaching   bool          // Enable/disable caching
 	DefaultCacheTTL time.Duration // Default TTL if not specified
 
-	// Thinking settings
-	EnableThinking      bool   // Enable/disable thinking mode for supported models
-	ThinkingBudget      int    // Maximum number of tokens to allocate for thinking
-	ThinkingBudgetLevel string // Thinking budget level (none, low, medium, high)
+	// Thinking settings for Gemini 3
+	EnableThinking bool   // Enable/disable thinking mode for supported models
+	ThinkingLevel  string // Thinking level for Gemini 3 (low, high; medium coming soon)
+
+	// Legacy thinking settings for Gemini 2.5 models
+	ThinkingBudget      int    // Maximum number of tokens to allocate for thinking (Gemini 2.5)
+	ThinkingBudgetLevel string // Thinking budget level (none, low, medium, high) for Gemini 2.5
 
 	// Prompt defaults
 	ProjectLanguage         string // Default language for code analysis (e.g., "go", "python")
