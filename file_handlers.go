@@ -181,7 +181,6 @@ func fetchSingleFile(ctx context.Context, s *GeminiServer, client *http.Client, 
 			logger.Warn("[%s] Request failed: %v", filePath, err)
 			continue
 		}
-		defer resp.Body.Close()
 
 		// Handle Rate Limits
 		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
@@ -191,19 +190,34 @@ func fetchSingleFile(ctx context.Context, s *GeminiServer, client *http.Client, 
 				resetTime, _ := strconv.ParseInt(resetTimeStr, 10, 64)
 				waitTime := time.Until(time.Unix(resetTime, 0))
 
+				// Close response body before handling rate limit
+				resp.Body.Close() // Ignore error as we're handling rate limit
+
 				if waitTime > 0 {
 					logger.Warn("[%s] Rate limit exceeded. Reset in %v", filePath, waitTime)
-					// If wait time is reasonable, we could wait, but for now just fail or retry if it's short
-					// For this implementation, we'll treat it as a retryable error if we haven't exhausted retries
+					// If wait time is reasonable (< 2 minutes), sleep for the reset time
+					// Otherwise, treat as retryable error with exponential backoff
+					if waitTime <= 2*time.Minute {
+						select {
+						case <-ctx.Done():
+							return nil, ctx.Err()
+						case <-time.After(waitTime):
+							lastErr = fmt.Errorf("rate limit exceeded")
+							continue
+						}
+					}
 					lastErr = fmt.Errorf("rate limit exceeded")
 					continue
 				}
+			} else {
+				resp.Body.Close() // Close body if no rate limit issue (ignore error)
 			}
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			// Read body for error message
+			// Read body for error message and close response
 			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close() // Ignore error as we're already handling an error condition
 			bodyMsg := string(body)
 			logger.Error("[%s] HTTP error %d: %s", filePath, resp.StatusCode, bodyMsg)
 
@@ -222,7 +236,7 @@ func fetchSingleFile(ctx context.Context, s *GeminiServer, client *http.Client, 
 					userMsg = fmt.Sprintf("file '%s' not found in repository '%s/%s' (ref: %s)", filePath, owner, repo, ref)
 				}
 			case http.StatusUnauthorized:
-				userMsg = fmt.Sprintf("authentication failed - check GitHub token permissions")
+				userMsg = "authentication failed - check GitHub token permissions"
 			case http.StatusForbidden:
 				userMsg = fmt.Sprintf("access denied to '%s/%s'", owner, repo)
 			default:
@@ -233,11 +247,13 @@ func fetchSingleFile(ctx context.Context, s *GeminiServer, client *http.Client, 
 
 		// Check content length if available
 		if resp.ContentLength > s.config.MaxGitHubFileSize {
+			resp.Body.Close() // Ignore error as we're returning an error
 			return nil, fmt.Errorf("file %s is too large: %d bytes, limit is %d", filePath, resp.ContentLength, s.config.MaxGitHubFileSize)
 		}
 
 		// Read content
 		content, err := io.ReadAll(io.LimitReader(resp.Body, s.config.MaxGitHubFileSize+1))
+		resp.Body.Close() // Ignore error as we have the content
 		if err != nil {
 			lastErr = fmt.Errorf("failed to read content: %w", err)
 			continue

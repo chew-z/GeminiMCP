@@ -133,23 +133,40 @@ func TestFetchFromGitHub(t *testing.T) {
 
 	// Setup mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check Accept header to determine response format
+		acceptHeader := r.Header.Get("Accept")
+
 		switch r.URL.Path {
 		case "/repos/owner/repo/contents/path/to/file.go":
-			resp := githubContentResponse{
-				Name:     "file.go",
-				Path:     "path/to/file.go",
-				Content:  base64.StdEncoding.EncodeToString([]byte("package main")),
-				Encoding: "base64",
+			if acceptHeader == "application/vnd.github.v3.raw" {
+				// Return raw content
+				w.Header().Set("Content-Type", "text/plain")
+				w.Write([]byte("package main"))
+			} else {
+				// Return JSON format (legacy)
+				resp := githubContentResponse{
+					Name:     "file.go",
+					Path:     "path/to/file.go",
+					Content:  base64.StdEncoding.EncodeToString([]byte("package main")),
+					Encoding: "base64",
+				}
+				json.NewEncoder(w).Encode(resp)
 			}
-			json.NewEncoder(w).Encode(resp)
 		case "/repos/owner/repo/contents/path/to/bad-base64.txt":
-			resp := githubContentResponse{
-				Name:     "bad-base64.txt",
-				Path:     "path/to/bad-base64.txt",
-				Content:  "not-base64-$$",
-				Encoding: "base64",
+			if acceptHeader == "application/vnd.github.v3.raw" {
+				// Return raw content (simulating a text file)
+				w.Header().Set("Content-Type", "text/plain")
+				w.Write([]byte("This is not base64 content - it's just plain text"))
+			} else {
+				// Return JSON format (legacy)
+				resp := githubContentResponse{
+					Name:     "bad-base64.txt",
+					Path:     "path/to/bad-base64.txt",
+					Content:  "not-base64-$$",
+					Encoding: "base64",
+				}
+				json.NewEncoder(w).Encode(resp)
 			}
-			json.NewEncoder(w).Encode(resp)
 		case "/repos/owner/repo/contents/path/to/not-found.txt":
 			http.Error(w, "Not Found", http.StatusNotFound)
 		case "/repos/owner/repo/contents/path/to/server-error.txt":
@@ -189,13 +206,15 @@ func TestFetchFromGitHub(t *testing.T) {
 	t.Run("error on server error (500)", func(t *testing.T) {
 		_, errs := fetchFromGitHub(ctx, s, "owner/repo", "", []string{"path/to/server-error.txt"})
 		assert.NotEmpty(t, errs)
-		assert.Contains(t, errs[0].Error(), "status 500")
+		assert.Contains(t, errs[0].Error(), "server error 500")
 	})
 
-	t.Run("error on bad base64 content", func(t *testing.T) {
-		_, errs := fetchFromGitHub(ctx, s, "owner/repo", "", []string{"path/to/bad-base64.txt"})
-		assert.NotEmpty(t, errs)
-		assert.Contains(t, errs[0].Error(), "illegal base64 data")
+	t.Run("success on non-base64 content (raw API)", func(t *testing.T) {
+		files, errs := fetchFromGitHub(ctx, s, "owner/repo", "", []string{"path/to/bad-base64.txt"})
+		assert.Empty(t, errs)
+		assert.Len(t, files, 1)
+		assert.Equal(t, "path/to/bad-base64.txt", files[0].FileName)
+		assert.NotEmpty(t, files[0].Content)
 	})
 
 	t.Run("partial success", func(t *testing.T) {
