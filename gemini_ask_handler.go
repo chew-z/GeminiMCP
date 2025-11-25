@@ -138,7 +138,12 @@ func (s *GeminiServer) gatherLocalFiles(ctx context.Context, filePaths []string)
 }
 
 // maybeCreateCache handles the logic for checking caching eligibility and creating a cache.
-func (s *GeminiServer) maybeCreateCache(ctx context.Context, req mcp.CallToolRequest, query, modelName string, uploads []*FileUploadRequest) (string, []*FileInfo, error) {
+func (s *GeminiServer) maybeCreateCache(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+	query, modelName string,
+	uploads []*FileUploadRequest,
+) (string, []*FileInfo, error) {
 	logger := getLoggerFromContext(ctx)
 
 	useCache := extractArgumentBool(req, "use_cache", false)

@@ -47,7 +47,9 @@ func extractTokenFromHeader(authHeader string) string {
 }
 
 // HTTPContextFunc returns a middleware function compatible with mcp-go
-func (a *AuthMiddleware) HTTPContextFunc(next func(ctx context.Context, r *http.Request) context.Context) func(ctx context.Context, r *http.Request) context.Context {
+func (a *AuthMiddleware) HTTPContextFunc(
+	next func(ctx context.Context, r *http.Request) context.Context,
+) func(ctx context.Context, r *http.Request) context.Context {
 	return func(ctx context.Context, r *http.Request) context.Context {
 		// If authentication is disabled, just call the next middleware
 		if !a.enabled {

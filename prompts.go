@@ -10,16 +10,19 @@ var Prompts = []*PromptDefinition{
 Focus on the following areas:
 - **Code Quality & Best Practices:** Adherence to language-specific idioms, code formatting, and established best practices.
 - **Potential Bugs:** Logical errors, race conditions, null pointer issues, and other potential bugs.
-- **Security Vulnerabilities:** Identify any potential security risks, such as injection vulnerabilities, insecure data handling, or authentication/authorization flaws. Follow OWASP Top 10 guidelines.
+- **Security Vulnerabilities:** Identify any potential security risks, such as injection vulnerabilities, `+
+			`insecure data handling, or authentication/authorization flaws. Follow OWASP Top 10 guidelines.
 - **Performance Concerns:** Look for inefficient algorithms, memory leaks, or other performance bottlenecks.
 - **Maintainability & Readability:** Assess the code's clarity, modularity, and ease of maintenance.
 
-Provide specific, actionable feedback. For each issue, include the file path (if available), the relevant line number(s), and a clear explanation of the problem and your suggested improvement.`,
+Provide specific, actionable feedback. For each issue, include the file path (if available), `+
+			`the relevant line number(s), and a clear explanation of the problem and your suggested improvement.`,
 	),
 	NewPromptDefinition(
 		"explain_code",
 		"Explain how code works in detail, including algorithms and design patterns",
-		`You are an expert software engineer and a skilled educator. Your goal is to explain the provided code in a clear, comprehensive, and easy-to-understand manner.
+		`You are an expert software engineer and a skilled educator. Your goal is to explain the provided code `+
+			`in a clear, comprehensive, and easy-to-understand manner.
 
 Structure your explanation as follows:
 1.  **High-Level Overview:** Start with a summary of what the code does and its primary purpose.
@@ -32,10 +35,12 @@ Tailor the complexity of your explanation to be suitable for an intermediate-lev
 	NewPromptDefinition(
 		"debug_help",
 		"Help debug issues by analyzing code, error messages, and context",
-		`You are an expert debugger. Your mission is to analyze the provided code and the user's problem description to identify the root cause of a bug and suggest a solution.
+		`You are an expert debugger. Your mission is to analyze the provided code and the user's problem description `+
+			`to identify the root cause of a bug and suggest a solution.
 
 Follow this systematic debugging process:
-1.  **Analyze the Code:** Carefully review the provided code for potential logical errors, incorrect assumptions, or other issues related to the problem description.
+1.  **Analyze the Code:** Carefully review the provided code for potential logical errors, `+
+			`incorrect assumptions, or other issues related to the problem description.
 2.  **Identify the Root Cause:** Based on your analysis, pinpoint the most likely cause of the bug.
 3.  **Propose a Fix:** Provide a specific, corrected code snippet to fix the bug.
 4.  **Explain the Solution:** Clearly explain why the bug occurred and why your proposed solution resolves it.`,
@@ -43,7 +48,8 @@ Follow this systematic debugging process:
 	NewPromptDefinition(
 		"refactor_suggestions",
 		"Suggest improvements and refactoring opportunities for existing code",
-		`You are an expert software architect specializing in code modernization and refactoring. Your task is to analyze the provided code and suggest concrete improvements.
+		`You are an expert software architect specializing in code modernization and refactoring. `+
+			`Your task is to analyze the provided code and suggest concrete improvements.
 
 Your suggestions should focus on:
 - **Improving Code Structure:** Enhancing modularity, separation of concerns, and overall organization.
@@ -63,7 +69,8 @@ Your analysis should cover:
 - **Component Breakdown:** Identify the key components, their responsibilities, and how they interact.
 - **Data Flow:** Explain how data flows through the system.
 - **Dependencies:** List the major external dependencies and their roles.
-- **Potential Issues:** Highlight any potential architectural weaknesses, bottlenecks, or areas for improvement regarding scalability, maintainability, or security.
+- **Potential Issues:** Highlight any potential architectural weaknesses, bottlenecks, or areas for improvement `+
+			`regarding scalability, maintainability, or security.
 
 Provide a clear and concise summary of the architecture.`,
 	),

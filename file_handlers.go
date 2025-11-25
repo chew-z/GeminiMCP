@@ -187,11 +187,18 @@ func fetchSingleFile(ctx context.Context, s *GeminiServer, client *http.Client, 
 			remaining := resp.Header.Get("X-RateLimit-Remaining")
 			if remaining == "0" || resp.StatusCode == http.StatusTooManyRequests {
 				resetTimeStr := resp.Header.Get("X-RateLimit-Reset")
-				resetTime, _ := strconv.ParseInt(resetTimeStr, 10, 64)
+				resetTime, err := strconv.ParseInt(resetTimeStr, 10, 64)
+				if err != nil {
+					// Fallback to current time plus default wait if parsing fails
+					resetTime = time.Now().Add(5 * time.Minute).Unix()
+					logger.Debug("[%s] Failed to parse reset time '%s': %v, using fallback", filePath, resetTimeStr, err)
+				}
 				waitTime := time.Until(time.Unix(resetTime, 0))
 
 				// Close response body before handling rate limit
-				resp.Body.Close() // Ignore error as we're handling rate limit
+				if err := resp.Body.Close(); err != nil {
+					logger.Debug("[%s] Error closing response body during rate limit handling: %v", filePath, err)
+				}
 
 				if waitTime > 0 {
 					logger.Warn("[%s] Rate limit exceeded. Reset in %v", filePath, waitTime)
@@ -210,14 +217,22 @@ func fetchSingleFile(ctx context.Context, s *GeminiServer, client *http.Client, 
 					continue
 				}
 			} else {
-				resp.Body.Close() // Close body if no rate limit issue (ignore error)
+				if err := resp.Body.Close(); err != nil {
+					logger.Debug("[%s] Error closing response body when no rate limit issue: %v", filePath, err)
+				}
 			}
 		}
 
 		if resp.StatusCode != http.StatusOK {
 			// Read body for error message and close response
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close() // Ignore error as we're already handling an error condition
+			body, err := io.ReadAll(resp.Body)
+			if err := resp.Body.Close(); err != nil {
+				logger.Debug("[%s] Error closing response body after error status %d: %v", filePath, resp.StatusCode, err)
+			}
+			if err != nil {
+				logger.Debug("[%s] Error reading response body for status %d: %v", filePath, resp.StatusCode, err)
+				body = []byte(fmt.Sprintf("failed to read error body: %v", err))
+			}
 			bodyMsg := string(body)
 			logger.Error("[%s] HTTP error %d: %s", filePath, resp.StatusCode, bodyMsg)
 
@@ -247,13 +262,17 @@ func fetchSingleFile(ctx context.Context, s *GeminiServer, client *http.Client, 
 
 		// Check content length if available
 		if resp.ContentLength > s.config.MaxGitHubFileSize {
-			resp.Body.Close() // Ignore error as we're returning an error
+			if err := resp.Body.Close(); err != nil {
+				logger.Debug("[%s] Error closing response body for oversized file: %v", filePath, err)
+			}
 			return nil, fmt.Errorf("file %s is too large: %d bytes, limit is %d", filePath, resp.ContentLength, s.config.MaxGitHubFileSize)
 		}
 
 		// Read content
 		content, err := io.ReadAll(io.LimitReader(resp.Body, s.config.MaxGitHubFileSize+1))
-		resp.Body.Close() // Ignore error as we have the content
+		if err := resp.Body.Close(); err != nil {
+			logger.Debug("[%s] Error closing response body after reading content: %v", filePath, err)
+		}
 		if err != nil {
 			lastErr = fmt.Errorf("failed to read content: %w", err)
 			continue

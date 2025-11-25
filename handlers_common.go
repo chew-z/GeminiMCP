@@ -147,7 +147,13 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 }
 
 // configureMaxTokensOutput configures the maximum output tokens for the request
-func configureMaxTokensOutput(ctx context.Context, config *genai.GenerateContentConfig, req mcp.CallToolRequest, modelInfo *GeminiModelInfo, defaultRatio float64) {
+func configureMaxTokensOutput(
+	ctx context.Context,
+	config *genai.GenerateContentConfig,
+	req mcp.CallToolRequest,
+	modelInfo *GeminiModelInfo,
+	defaultRatio float64,
+) {
 	logger := getLoggerFromContext(ctx)
 
 	// Check if max_tokens parameter was provided
@@ -188,7 +194,8 @@ func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse) *mcp.C
 	// Get the text from the response
 	text := resp.Text()
 	if text == "" {
-		text = "The Gemini model returned an empty response. This might indicate that the model couldn't generate an appropriate response for your query. Please try rephrasing your question or providing more context."
+		text = "The Gemini model returned an empty response. This might indicate that the model " +
+			"couldn't generate an appropriate response for your query. Please try rephrasing your question or providing more context."
 	}
 
 	// The 'thinking' field is not directly available in the Go client library.

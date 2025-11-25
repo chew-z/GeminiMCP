@@ -6,6 +6,7 @@ import (
 
 // FetchGeminiModels simply uses the predefined fallback models since we only support
 // the 3 specific Gemini 2.5 models: Pro, Flash, and Flash Lite
+// The apiKey parameter is kept for interface compatibility and future use when dynamic model fetching is needed
 func FetchGeminiModels(ctx context.Context, apiKey string) error {
 	// Get logger from context if available
 	var logger Logger
@@ -21,6 +22,21 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 	}
 
 	logger.Info("Setting up Gemini 2.5 model families...")
+
+	// Log API key status (masked for security)
+	_ = apiKey // Suppress unparam warning - apiKey kept for interface compatibility
+	if apiKey != "" {
+		// Mask API key for logging (show only first 4 and last 4 chars)
+		var maskedKey string
+		if len(apiKey) > 8 {
+			maskedKey = apiKey[:4] + "...(masked)..." + apiKey[len(apiKey)-4:]
+		} else {
+			maskedKey = "...(too short to mask safely)..."
+		}
+		logger.Debug("API key provided: %s", maskedKey)
+	} else {
+		logger.Debug("No API key provided")
+	}
 
 	// Use the 3 predefined Gemini 2.5 models
 	models := fallbackGeminiModels()

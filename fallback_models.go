@@ -5,9 +5,10 @@ func fallbackGeminiModels() []GeminiModelInfo {
 	return []GeminiModelInfo{
 		// Gemini 3 Pro - Latest model with advanced reasoning
 		{
-			FamilyID:             "gemini-3-pro-preview",
-			Name:                 "Gemini 3 Pro",
-			Description:          "First model in the Gemini 3 series. Best for complex tasks requiring broad world knowledge and advanced reasoning across modalities",
+			FamilyID: "gemini-3-pro-preview",
+			Name:     "Gemini 3 Pro",
+			Description: "First model in the Gemini 3 series. Best for complex tasks requiring " +
+				"broad world knowledge and advanced reasoning across modalities",
 			SupportsThinking:     true,
 			ContextWindowSize:    1048576,
 			PreferredForThinking: true,
