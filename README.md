@@ -36,7 +36,7 @@ export GEMINI_MODEL=gemini-3-pro-preview
 ./bin/mcp-gemini --transport=http
 
 ## Or override settings via command line
-./bin/mcp-gemini --transport=http --gemini-model=gemini-flash-latest --enable-caching=true
+./bin/mcp-gemini --transport=http --gemini-model=gemini-3-flash-preview --enable-caching=true
 ```
 
 ### Client Configuration
@@ -205,7 +205,7 @@ This approach makes it easy to have an extended conversation about your codebase
 For programming tasks, you can directly use the file attachments feature with caching to create a more efficient workflow:
 
 > _Use gemini_ask with model gemini-2.0-flash-001 to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
-> _Use gemini_ask with model `gemini-flash-latest` to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
+> _Use gemini_ask with model `gemini-3-flash-preview` to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
 
 The server has special optimizations for this use case, particularly useful when:
 - Working with complex codebases requiring multiple files for context
@@ -256,7 +256,7 @@ For code analysis, general queries, and creative tasks with optional file contex
     "name": "gemini_ask",
     "arguments": {
         "query": "Review this Go code for concurrency issues...",
-        "model": "gemini-flash-latest",
+        "model": "gemini-3-flash-preview",
         "systemPrompt": "You are a senior Go developer. Focus on concurrency patterns, potential race conditions, and performance implications.",
         "github_files": ["main.go", "config.go"],
         "use_cache": true,
@@ -285,7 +285,7 @@ Combining file attachments with caching for repeated queries:
     "name": "gemini_ask",
     "arguments": {
         "query": "Explain the main data structures in these files and how they interact",
-        "model": "gemini-flash-latest",
+        "model": "gemini-3-flash-preview",
         "github_repo": "owner/repo",
         "github_ref": "main",
         "github_files": ["models.go", "structs.go"],
@@ -361,10 +361,10 @@ Key supported models (as detailed by the `gemini_models` tool):
     *   Most powerful model, 1M token context window.
     *   Best for: Complex reasoning, detailed analysis, comprehensive code review.
     *   Capabilities: Advanced thinking mode, implicit caching (2048+ token minimum), explicit caching.
--   **`gemini-flash-latest`** (production):
-    *   Balanced price-performance, 32K token context window.
-    *   Best for: General programming tasks, standard code review.
-    *   Capabilities: Thinking mode, implicit caching (1024+ token minimum), explicit caching.
+-   **`gemini-3-flash-preview`** (latest Flash):
+    *   Latest Flash model with improved performance, 1M token context window.
+    *   Best for: General programming tasks, standard code review, balanced price-performance.
+    *   Capabilities: Thinking mode, implicit caching, explicit caching.
 -   **`gemini-flash-lite-latest`** (production):
     *   Optimized for cost efficiency and low latency, 32K token context window.
     *   Best for: Search queries, lightweight tasks, quick responses.

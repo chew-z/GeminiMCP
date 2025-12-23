@@ -12,13 +12,13 @@ var GeminiAskTool = mcp.NewTool(
 	mcp.WithArray("github_files", mcp.Description(
 		"An array of file paths from a GitHub repository to provide context. "+
 			"This is the preferred method. Requires 'github_repo' and 'github_ref' to be set.",
-	)),
+	), mcp.WithStringItems()),
 	mcp.WithString("github_repo", mcp.Description("GitHub repository (owner/repo) to fetch files from. Required when using 'github_files'.")),
 	mcp.WithString("github_ref", mcp.Description("Git branch, tag, or commit SHA. Required when using 'github_files'.")),
 	mcp.WithArray("file_paths", mcp.Description(
 		"An array of local file paths. This should only be used when specifically instructed, "+
 			"as it's only supported in 'stdio' transport mode.",
-	)),
+	), mcp.WithStringItems()),
 	mcp.WithBoolean("use_cache", mcp.Description("Optional: Whether to try using a cache for this request (only works with compatible models)")),
 	mcp.WithString("cache_ttl", mcp.Description("Optional: TTL for cache if created (e.g., '10m', '1h'). Default is 10 minutes")),
 	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process")),

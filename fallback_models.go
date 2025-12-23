@@ -34,17 +34,18 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			},
 		},
 
-		// Gemini 2.5 Flash - Production model
+		// Gemini 3 Flash - Latest Flash model
 		{
-			FamilyID:             "gemini-flash-latest",
-			Name:                 "Gemini 2.5 Flash",
-			Description:          "Best model in terms of price-performance, offering well-rounded capabilities",
+			FamilyID:             "gemini-3-flash-preview",
+			Name:                 "Gemini 3 Flash",
+			Description:          "Latest Flash model with improved performance and 1M context window",
 			SupportsThinking:     true,
-			ContextWindowSize:    32768,
+			ContextWindowSize:    1048576,
 			PreferredForThinking: false,
 			PreferredForCaching:  true,
 			PreferredForSearch:   false,
 			Versions: []ModelVersion{
+				{ID: "gemini-3-flash-preview", SupportsCaching: true, IsPreferred: true},
 				{ID: "gemini-flash-latest", SupportsCaching: true},
 			},
 		},
