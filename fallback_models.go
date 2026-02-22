@@ -3,11 +3,11 @@ package main
 // fallbackGeminiModels provides the Gemini models supported by this server
 func fallbackGeminiModels() []GeminiModelInfo {
 	return []GeminiModelInfo{
-		// Gemini 3 Pro - Latest model with advanced reasoning
+		// Gemini 3.1 Pro - Latest model with advanced reasoning
 		{
-			FamilyID: "gemini-3-pro-preview",
-			Name:     "Gemini 3 Pro",
-			Description: "First model in the Gemini 3 series. Best for complex tasks requiring " +
+			FamilyID: "gemini-3.1-pro-preview",
+			Name:     "Gemini 3.1 Pro",
+			Description: "Latest model in the Gemini 3 series. Best for complex tasks requiring " +
 				"broad world knowledge and advanced reasoning across modalities",
 			SupportsThinking:     true,
 			ContextWindowSize:    1048576,
@@ -15,7 +15,7 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			PreferredForCaching:  true,
 			PreferredForSearch:   false,
 			Versions: []ModelVersion{
-				{ID: "gemini-3-pro-preview", SupportsCaching: true, IsPreferred: true},
+				{ID: "gemini-3.1-pro-preview", SupportsCaching: true, IsPreferred: true},
 			},
 		},
 

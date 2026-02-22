@@ -12,7 +12,7 @@ import (
 // Default configuration values
 const (
 	// Note: if this value changes, make sure to update the models.go list
-	defaultGeminiModel        = "gemini-3-pro-preview"
+	defaultGeminiModel        = "gemini-3.1-pro-preview"
 	defaultGeminiSearchModel  = "gemini-flash-lite-latest" // Default model specifically for search
 	defaultGeminiTemperature  = 1.0                        // Gemini 3 default temperature
 	defaultGeminiSystemPrompt = `

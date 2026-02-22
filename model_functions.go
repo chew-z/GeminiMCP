@@ -12,6 +12,13 @@ var modelStore struct {
 	models []GeminiModelInfo
 }
 
+// modelAliases maps deprecated or old model IDs silently to their current replacements.
+// Used by ResolveModelID so callers don't need to know about renamed preview models.
+var modelAliases = map[string]string{
+	"gemini-3-pro-preview": "gemini-3.1-pro-preview",
+	"gemini-pro-latest":    "gemini-3.1-pro-preview",
+}
+
 // GetAvailableGeminiModels returns a list of available Gemini models
 func GetAvailableGeminiModels() []GeminiModelInfo {
 	// Get models with read lock
@@ -63,6 +70,11 @@ func GetModelVersion(modelID string) *ModelVersion {
 // If the provided ID is already a version ID, it returns it unchanged
 // If it's a family ID, it returns the ID of the preferred or first version
 func ResolveModelID(modelID string) string {
+	// Silently redirect deprecated/renamed model IDs to their current equivalents
+	if canonical, ok := modelAliases[modelID]; ok {
+		modelID = canonical
+	}
+
 	// First check if this is already a specific version ID
 	if GetModelVersion(modelID) != nil {
 		return modelID // Already a valid version ID

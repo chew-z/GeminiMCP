@@ -29,7 +29,7 @@ go build -o ./bin/mcp-gemini .
 
 ## Start server with environment variables
 export GEMINI_API_KEY=your_api_key
-export GEMINI_MODEL=gemini-3-pro-preview
+export GEMINI_MODEL=gemini-3.1-pro-preview
 ./bin/mcp-gemini
 
 ## Or start with HTTP transport
@@ -49,7 +49,7 @@ Add this server to any MCP-compatible client like Claude Desktop by adding to yo
         "command": "/Users/<user>/Path/to/bin/mcp-gemini",
         "env": {
             "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY",
-            "GEMINI_MODEL": "gemini-3-pro-preview",
+            "GEMINI_MODEL": "gemini-3.1-pro-preview",
             "GEMINI_SEARCH_MODEL": "gemini-flash-lite-latest",
             "GEMINI_SYSTEM_PROMPT": "You are a senior developer. Your job is to do a thorough code review of this code...",
             "GEMINI_SEARCH_SYSTEM_PROMPT": "You are a search assistant. Your job is to find the most relevant information about this topic..."
@@ -308,7 +308,7 @@ Provides grounded answers using Google Search integration with enhanced model ca
         "enable_thinking": true,
         "thinking_level": "high",
         "max_tokens": 4096,
-        "model": "gemini-3-pro-preview",
+        "model": "gemini-3.1-pro-preview",
         "start_time": "2024-01-01T00:00:00Z",
         "end_time": "2024-12-31T23:59:59Z"
     }
@@ -425,7 +425,7 @@ Example with Gemini 3 Pro thinking mode:
     "name": "gemini_ask",
     "arguments": {
         "query": "Analyze the algorithmic complexity of merge sort vs. quick sort",
-        "model": "gemini-3-pro-preview",
+        "model": "gemini-3.1-pro-preview",
         "enable_thinking": true,
         "thinking_level": "high"
     }
@@ -452,7 +452,7 @@ Examples:
   "name": "gemini_ask",
   "arguments": {
     "query": "Analyze this complex algorithm...",
-    "model": "gemini-3-pro-preview",
+    "model": "gemini-3.1-pro-preview",
     "enable_thinking": true,
     "thinking_level": "high"
   }
@@ -463,7 +463,7 @@ Examples:
   "name": "gemini_search",
   "arguments": {
     "query": "Quick search for recent developments...",
-    "model": "gemini-3-pro-preview",
+    "model": "gemini-3.1-pro-preview",
     "enable_thinking": true,
     "thinking_level": "low"
   }
