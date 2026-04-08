@@ -50,18 +50,18 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			},
 		},
 
-		// Gemini 2.5 Flash Lite - GA model
+		// Gemini Flash Lite (Latest) - hot-swap alias tracking newest Flash Lite model
 		{
 			FamilyID:             "gemini-flash-lite-latest",
-			Name:                 "Gemini 2.5 Flash Lite",
-			Description:          "Optimized for cost efficiency and low latency",
+			Name:                 "Gemini Flash Lite (Latest)",
+			Description:          "Auto-updated alias always pointing to the most recent Flash Lite model",
 			SupportsThinking:     true,
 			ContextWindowSize:    32768,
 			PreferredForThinking: false,
 			PreferredForCaching:  false,
 			PreferredForSearch:   true,
 			Versions: []ModelVersion{
-				{ID: "gemini-flash-lite-latest", SupportsCaching: false},
+				{ID: "gemini-flash-lite-latest", SupportsCaching: false, IsPreferred: true},
 			},
 		},
 	}

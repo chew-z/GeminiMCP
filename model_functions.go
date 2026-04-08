@@ -100,10 +100,19 @@ func ResolveModelID(modelID string) string {
 	return modelID
 }
 
-// IsGemini3Model checks if a model ID represents a Gemini 3 model
+// IsGemini3Model checks if a model ID represents a Gemini 3 (or newer) model.
+// "-latest" aliases are always treated as modern models since Google hot-swaps
+// them to the newest release in their class.
 func IsGemini3Model(modelID string) bool {
+	lower := strings.ToLower(modelID)
+
 	// Check if the model ID contains "gemini-3"
-	if strings.Contains(strings.ToLower(modelID), "gemini-3") {
+	if strings.Contains(lower, "gemini-3") {
+		return true
+	}
+
+	// "-latest" aliases track the most current model — treat as modern (Gemini 3+)
+	if strings.HasSuffix(lower, "-latest") {
 		return true
 	}
 
