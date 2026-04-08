@@ -57,10 +57,7 @@ func main() {
 	// This ensures we have the latest models before validation
 	if config.GeminiAPIKey != "" {
 		logger.Info("Attempting to fetch available Gemini models...")
-		if err := FetchGeminiModels(ctx, config.GeminiAPIKey); err != nil {
-			// Just log the error but continue with fallback models
-			logger.Warn("Could not fetch Gemini models: %v. Using fallback model list.", err)
-		}
+		FetchGeminiModels(ctx, config.GeminiAPIKey)
 	} else {
 		logger.Warn("No Gemini API key available, using fallback model list")
 	}

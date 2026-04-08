@@ -61,15 +61,15 @@ func computeBackoff(cfg *Config, attempt int) time.Duration {
 	if base <= 0 {
 		base = 500 * time.Millisecond
 	}
-	max := cfg.MaxBackoff
-	if max <= 0 {
-		max = 10 * time.Second
+	maxBackoff := cfg.MaxBackoff
+	if maxBackoff <= 0 {
+		maxBackoff = 10 * time.Second
 	}
 	// Growth
 	mult := math.Pow(2, float64(attempt))
 	d := time.Duration(float64(base) * mult)
-	if d > max {
-		d = max
+	if d > maxBackoff {
+		d = maxBackoff
 	}
 	// Full jitter in [0.5, 1.5]x
 	jitter := 0.5 + rand.Float64()

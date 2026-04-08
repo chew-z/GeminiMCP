@@ -26,9 +26,9 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 
 	// Extract optional model parameter - use search-specific model as default
 	modelName := extractArgumentString(req, "model", s.config.GeminiSearchModel)
-	if err := ValidateModelID(modelName); err != nil {
-		logger.Error("Invalid model requested: %v", err)
-		return createErrorResult(fmt.Sprintf("Invalid model specified: %v", err)), nil
+	if validateErr := ValidateModelID(modelName); validateErr != nil {
+		logger.Error("Invalid model requested: %v", validateErr)
+		return createErrorResult(fmt.Sprintf("Invalid model specified: %v", validateErr)), nil
 	}
 
 	// Resolve model ID to ensure we use a valid API-addressable version

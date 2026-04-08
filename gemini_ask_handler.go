@@ -216,9 +216,9 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 		}
 
 		if fileInfo.Mode()&os.ModeSymlink != 0 {
-			linkDest, err := os.Readlink(fullPath)
-			if err != nil {
-				logger.Error("Failed to read symlink %s: %v", filePath, err)
+			linkDest, linkErr := os.Readlink(fullPath)
+			if linkErr != nil {
+				logger.Error("Failed to read symlink %s: %v", filePath, linkErr)
 				continue
 			}
 			if filepath.IsAbs(linkDest) || strings.HasPrefix(filepath.Clean(linkDest), "..") {
