@@ -53,8 +53,9 @@ If the search results don't contain enough information to fully answer the query
 	defaultDefaultCacheTTL = 1 * time.Hour
 
 	// Thinking settings
-	defaultEnableThinking = true
-	defaultThinkingLevel  = "high" // Default thinking level (minimal, low, medium, high)
+	defaultEnableThinking      = true
+	defaultThinkingLevel       = "high" // Default thinking level for gemini_ask
+	defaultSearchThinkingLevel = "low"  // Default thinking level for gemini_search
 
 	// Service tier settings
 	defaultServiceTier = "standard" // Default service tier (flex, standard, priority)
@@ -241,6 +242,18 @@ func NewConfig(logger Logger) (*Config, error) {
 		}
 	}
 
+	// Search thinking level (separate default, typically lower)
+	searchThinkingLevel := defaultSearchThinkingLevel
+	if levelStr := os.Getenv("GEMINI_SEARCH_THINKING_LEVEL"); levelStr != "" {
+		level := strings.ToLower(levelStr)
+		if validateThinkingLevel(level) {
+			searchThinkingLevel = level
+		} else {
+			logger.Warnf("Invalid GEMINI_SEARCH_THINKING_LEVEL value: %q (valid: minimal, low, medium, high). Using default: %q",
+				levelStr, defaultSearchThinkingLevel)
+		}
+	}
+
 	// Service tier
 	serviceTier := defaultServiceTier
 	if tierStr := os.Getenv("GEMINI_SERVICE_TIER"); tierStr != "" {
@@ -371,6 +384,7 @@ func NewConfig(logger Logger) (*Config, error) {
 			DefaultCacheTTL:         defaultCacheTTL,
 			EnableThinking:          enableThinking,
 			ThinkingLevel:           thinkingLevel,
+			SearchThinkingLevel:     searchThinkingLevel,
 			ServiceTier:             serviceTier,
 			ProjectLanguage:         projectLanguage,
 			PromptDefaultAudience:   promptDefaultAudience,

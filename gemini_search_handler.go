@@ -81,7 +81,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	// Configure thinking if supported
 	enableThinking := extractArgumentBool(req, "enable_thinking", s.config.EnableThinking)
 	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
-		thinkingLevel := s.config.ThinkingLevel
+		thinkingLevel := s.config.SearchThinkingLevel
 
 		// Check for thinking_level parameter in request
 		if levelStr, ok := req.GetArguments()["thinking_level"].(string); ok && levelStr != "" {
@@ -89,7 +89,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 				thinkingLevel = strings.ToLower(levelStr)
 				logger.Info("Setting thinking level to: %s", thinkingLevel)
 			} else {
-				logger.Warn("Invalid thinking_level '%s' (valid: minimal, low, medium, high). Using default: %s", levelStr, s.config.ThinkingLevel)
+				logger.Warn("Invalid thinking_level '%s' (valid: minimal, low, medium, high). Using default: %s", levelStr, s.config.SearchThinkingLevel)
 			}
 		}
 

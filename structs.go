@@ -126,8 +126,9 @@ type Config struct {
 	DefaultCacheTTL time.Duration // Default TTL if not specified
 
 	// Thinking settings
-	EnableThinking bool   // Enable/disable thinking mode for supported models
-	ThinkingLevel  string // Thinking level: minimal, low, medium, high
+	EnableThinking      bool   // Enable/disable thinking mode for supported models
+	ThinkingLevel       string // Thinking level for gemini_ask: minimal, low, medium, high
+	SearchThinkingLevel string // Thinking level for gemini_search: minimal, low, medium, high
 
 	// Service tier settings
 	ServiceTier string // Service tier: flex, standard, priority (default: standard)

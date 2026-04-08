@@ -33,7 +33,7 @@ var GeminiSearchTool = mcp.NewTool(
 	mcp.WithString("query", mcp.Required(), mcp.Description("The question to ask Gemini using Google Search for grounding")),
 	mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
 	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (when supported)")),
-	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (minimal, low, medium, high). Default is 'high'")),
+	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (minimal, low, medium, high). Default is 'low' for search")),
 	mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
 	mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
 	mcp.WithString("start_time", mcp.Description(
