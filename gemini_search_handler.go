@@ -76,6 +76,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 			},
 		},
 	}
+	config.ServiceTier = serviceTierFromString(s.config.ServiceTier)
 
 	// Configure thinking if supported
 	// Gemini 3 uses thinking_level, Gemini 2.5 uses thinking_budget

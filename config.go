@@ -56,6 +56,9 @@ If the search results don't contain enough information to fully answer the query
 	defaultEnableThinking = true
 	defaultThinkingLevel  = "high" // Default thinking level for Gemini 3 (low, medium [coming soon], high [default])
 
+	// Service tier settings
+	defaultServiceTier = "standard" // Default service tier (flex, standard, priority)
+
 	// Legacy thinking settings for Gemini 2.5 models
 	defaultThinkingBudgetLevel = "low" // Default thinking budget level for Gemini 2.5
 	thinkingBudgetNone         = 0     // None: Thinking disabled
@@ -65,6 +68,15 @@ If the search results don't contain enough information to fully answer the query
 )
 
 // Config struct definition moved to structs.go
+
+// validateServiceTier validates the service tier string
+func validateServiceTier(tier string) bool {
+	switch tier {
+	case "flex", "standard", "priority":
+		return true
+	}
+	return false
+}
 
 // validateThinkingLevel validates the thinking level string for Gemini 3
 func validateThinkingLevel(level string) bool {
@@ -265,6 +277,16 @@ func NewConfig(logger Logger) (*Config, error) {
 		}
 	}
 
+	// Service tier
+	serviceTier := defaultServiceTier
+	if tierStr := os.Getenv("GEMINI_SERVICE_TIER"); tierStr != "" {
+		if validateServiceTier(strings.ToLower(tierStr)) {
+			serviceTier = strings.ToLower(tierStr)
+		} else {
+			logger.Warnf("Invalid GEMINI_SERVICE_TIER '%s' (valid: flex, standard, priority). Using default: %s", tierStr, defaultServiceTier)
+		}
+	}
+
 	// Legacy Gemini 2.5 thinking budget (token count)
 	thinkingBudget := getThinkingBudgetFromLevel(thinkingBudgetLevel)
 	// If GEMINI_THINKING_BUDGET is set, it overrides the level-derived value
@@ -392,6 +414,7 @@ func NewConfig(logger Logger) (*Config, error) {
 			ThinkingLevel:           thinkingLevel,
 			ThinkingBudget:          thinkingBudget,
 			ThinkingBudgetLevel:     thinkingBudgetLevel,
+			ServiceTier:             serviceTier,
 			ProjectLanguage:         projectLanguage,
 			PromptDefaultAudience:   promptDefaultAudience,
 			PromptDefaultFocus:      promptDefaultFocus,

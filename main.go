@@ -19,6 +19,7 @@ func main() {
 	geminiTemperatureFlag := flag.Float64("gemini-temperature", -1, "Temperature setting (0.0-1.0, overrides env var)")
 	enableCachingFlag := flag.Bool("enable-caching", true, "Enable caching feature (overrides env var)")
 	enableThinkingFlag := flag.Bool("enable-thinking", true, "Enable thinking mode for supported models (overrides env var)")
+	serviceTierFlag := flag.String("service-tier", "", "Service tier: flex, standard, priority (overrides env var)")
 	transportFlag := flag.String("transport", "stdio", "Transport mode: 'stdio' (default) or 'http'")
 
 	// Authentication flags
@@ -100,6 +101,13 @@ func main() {
 	// Override enable thinking if flag is provided
 	config.EnableThinking = *enableThinkingFlag
 	logger.Info("Thinking feature is %s", getCachingStatusStr(config.EnableThinking))
+
+	// Override service tier if flag is provided
+	if *serviceTierFlag != "" {
+		config.ServiceTier = *serviceTierFlag
+		logger.Info("Service tier overridden to: %s", config.ServiceTier)
+	}
+	logger.Info("Service tier: %s", config.ServiceTier)
 
 	// Override authentication if flag is provided
 	if *authEnabledFlag {

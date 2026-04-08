@@ -125,6 +125,9 @@ type Config struct {
 	ThinkingBudget      int    // Maximum number of tokens to allocate for thinking (Gemini 2.5)
 	ThinkingBudgetLevel string // Thinking budget level (none, low, medium, high) for Gemini 2.5
 
+	// Service tier settings
+	ServiceTier string // Service tier: flex, standard, priority (default: standard)
+
 	// Prompt defaults
 	ProjectLanguage         string // Default language for code analysis (e.g., "go", "python")
 	PromptDefaultAudience   string // Default audience level for code explanations (beginner, intermediate, expert)

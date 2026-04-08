@@ -43,6 +43,18 @@ func extractArgumentStringArray(req mcp.CallToolRequest, name string) []string {
 	return result
 }
 
+// serviceTierFromString converts a string to a genai.ServiceTier
+func serviceTierFromString(tier string) genai.ServiceTier {
+	switch tier {
+	case "flex":
+		return genai.ServiceTierFlex
+	case "priority":
+		return genai.ServiceTierPriority
+	default: // "standard" or anything else
+		return genai.ServiceTierStandard
+	}
+}
+
 // createModelConfig creates a GenerateContentConfig for Gemini API based on request parameters
 func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Config, defaultModel string) (*genai.GenerateContentConfig, string, error) {
 	logger := getLoggerFromContext(ctx)
@@ -80,6 +92,7 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
 		Temperature:       genai.Ptr(float32(config.GeminiTemperature)),
 	}
+	contentConfig.ServiceTier = serviceTierFromString(config.ServiceTier)
 
 	// Configure thinking if supported
 	// Gemini 3 uses thinking_level, Gemini 2.5 uses thinking_budget
