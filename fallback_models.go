@@ -1,14 +1,15 @@
 package main
 
-// fallbackGeminiModels provides the Gemini models supported by this server
+// fallbackGeminiModels provides the Gemini models supported by this server.
+// Only Gemini 3+ models are supported — all use the thinkingLevel parameter.
 func fallbackGeminiModels() []GeminiModelInfo {
 	return []GeminiModelInfo{
-		// Gemini 3.1 Pro - Latest model with advanced reasoning
+		// Gemini 3.1 Pro — advanced reasoning and agentic workflows
 		{
 			FamilyID: "gemini-3.1-pro-preview",
 			Name:     "Gemini 3.1 Pro",
-			Description: "Latest model in the Gemini 3 series. Best for complex tasks requiring " +
-				"broad world knowledge and advanced reasoning across modalities",
+			Description: "Advanced intelligence, complex problem-solving, and powerful agentic " +
+				"and vibe coding capabilities",
 			SupportsThinking:     true,
 			ContextWindowSize:    1048576,
 			PreferredForThinking: true,
@@ -19,26 +20,11 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			},
 		},
 
-		// Gemini 2.5 Pro - Previous generation (still supported)
-		{
-			FamilyID:             "gemini-2.5-pro",
-			Name:                 "Gemini 2.5 Pro",
-			Description:          "Previous generation thinking model with maximum response accuracy",
-			SupportsThinking:     true,
-			ContextWindowSize:    1048576,
-			PreferredForThinking: false,
-			PreferredForCaching:  true,
-			PreferredForSearch:   false,
-			Versions: []ModelVersion{
-				{ID: "gemini-2.5-pro", SupportsCaching: true},
-			},
-		},
-
-		// Gemini 3 Flash - Latest Flash model
+		// Gemini 3 Flash — frontier-class performance at a fraction of the cost
 		{
 			FamilyID:             "gemini-3-flash-preview",
 			Name:                 "Gemini 3 Flash",
-			Description:          "Latest Flash model with improved performance and 1M context window",
+			Description:          "Frontier-class performance rivaling larger models at a fraction of the cost",
 			SupportsThinking:     true,
 			ContextWindowSize:    1048576,
 			PreferredForThinking: false,
@@ -50,18 +36,19 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			},
 		},
 
-		// Gemini Flash Lite (Latest) - hot-swap alias tracking newest Flash Lite model
+		// Gemini 3.1 Flash Lite — fastest and most cost-efficient
 		{
-			FamilyID:             "gemini-flash-lite-latest",
-			Name:                 "Gemini Flash Lite (Latest)",
-			Description:          "Auto-updated alias always pointing to the most recent Flash Lite model",
+			FamilyID:             "gemini-3.1-flash-lite-preview",
+			Name:                 "Gemini 3.1 Flash Lite",
+			Description:          "Fastest and most cost-efficient model for high-volume, lightweight tasks",
 			SupportsThinking:     true,
-			ContextWindowSize:    32768,
+			ContextWindowSize:    1048576,
 			PreferredForThinking: false,
-			PreferredForCaching:  false,
+			PreferredForCaching:  true,
 			PreferredForSearch:   true,
 			Versions: []ModelVersion{
-				{ID: "gemini-flash-lite-latest", SupportsCaching: false, IsPreferred: true},
+				{ID: "gemini-3.1-flash-lite-preview", SupportsCaching: true, IsPreferred: true},
+				{ID: "gemini-flash-lite-latest", SupportsCaching: true},
 			},
 		},
 	}

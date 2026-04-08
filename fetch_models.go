@@ -21,7 +21,7 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 		logger = NewLogger(LevelInfo)
 	}
 
-	logger.Info("Setting up Gemini 2.5 model families...")
+	logger.Info("Setting up Gemini 3.x model families...")
 
 	// Log API key status (masked for security)
 	_ = apiKey // Suppress unparam warning - apiKey kept for interface compatibility
@@ -46,7 +46,7 @@ func FetchGeminiModels(ctx context.Context, apiKey string) error {
 	modelStore.models = models
 	modelStore.Unlock()
 
-	logger.Info("Successfully configured %d Gemini 2.5 model families", len(models))
+	logger.Info("Successfully configured %d Gemini model families", len(models))
 
 	// Log the configured models for easier debugging
 	for i, model := range models {

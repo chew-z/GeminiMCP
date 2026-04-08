@@ -15,8 +15,11 @@ var modelStore struct {
 // modelAliases maps deprecated or old model IDs silently to their current replacements.
 // Used by ResolveModelID so callers don't need to know about renamed preview models.
 var modelAliases = map[string]string{
-	"gemini-3-pro-preview": "gemini-3.1-pro-preview",
-	"gemini-pro-latest":    "gemini-3.1-pro-preview",
+	"gemini-3-pro-preview":  "gemini-3.1-pro-preview",
+	"gemini-pro-latest":     "gemini-3.1-pro-preview",
+	"gemini-2.5-pro":        "gemini-3.1-pro-preview",
+	"gemini-2.5-flash":      "gemini-3-flash-preview",
+	"gemini-2.5-flash-lite": "gemini-3.1-flash-lite-preview",
 }
 
 // GetAvailableGeminiModels returns a list of available Gemini models
@@ -98,31 +101,6 @@ func ResolveModelID(modelID string) string {
 
 	// If we get here, it's an unknown ID, return it unchanged
 	return modelID
-}
-
-// IsGemini3Model checks if a model ID represents a Gemini 3 (or newer) model.
-// "-latest" aliases are always treated as modern models since Google hot-swaps
-// them to the newest release in their class.
-func IsGemini3Model(modelID string) bool {
-	lower := strings.ToLower(modelID)
-
-	// Check if the model ID contains "gemini-3"
-	if strings.Contains(lower, "gemini-3") {
-		return true
-	}
-
-	// "-latest" aliases track the most current model — treat as modern (Gemini 3+)
-	if strings.HasSuffix(lower, "-latest") {
-		return true
-	}
-
-	// Also check the model info if available
-	modelInfo := GetModelByID(modelID)
-	if modelInfo != nil && strings.HasPrefix(strings.ToLower(modelInfo.FamilyID), "gemini-3") {
-		return true
-	}
-
-	return false
 }
 
 // ValidateModelID checks if a model ID is in the list of available models

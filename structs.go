@@ -117,13 +117,9 @@ type Config struct {
 	EnableCaching   bool          // Enable/disable caching
 	DefaultCacheTTL time.Duration // Default TTL if not specified
 
-	// Thinking settings for Gemini 3
+	// Thinking settings
 	EnableThinking bool   // Enable/disable thinking mode for supported models
-	ThinkingLevel  string // Thinking level for Gemini 3 (low, high; medium coming soon)
-
-	// Legacy thinking settings for Gemini 2.5 models
-	ThinkingBudget      int    // Maximum number of tokens to allocate for thinking (Gemini 2.5)
-	ThinkingBudgetLevel string // Thinking budget level (none, low, medium, high) for Gemini 2.5
+	ThinkingLevel  string // Thinking level: minimal, low, medium, high
 
 	// Service tier settings
 	ServiceTier string // Service tier: flex, standard, priority (default: standard)

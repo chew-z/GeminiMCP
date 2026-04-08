@@ -18,51 +18,39 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	// Write the header
 	writer.Write("# Available Gemini Models\n\n")
 
-	writer.Write("This server supports Gemini 3.1 Pro (latest) and Gemini 2.5 models, providing 2 main tools:\n")
+	writer.Write("This server supports Gemini 3.x models, providing 2 main tools:\n")
 	writer.Write("- `gemini_ask`: For general queries, coding problems (default: code review system prompt)\n")
 	writer.Write("- `gemini_search`: For search-grounded queries (default: search assistant system prompt)\n\n")
 
-	// Gemini 3.1 Pro - Latest model
-	writer.Write("## Gemini 3.1 Pro (Latest)\n")
-	writer.Write("- **Model ID**: `gemini-3.1-pro-preview` (default)\n")
-	writer.Write("- **Description**: Latest model in the Gemini 3 series. Best for complex tasks requiring " +
-		"broad world knowledge and advanced reasoning across modalities\n")
+	// Gemini 3.1 Pro
+	writer.Write("## Gemini 3.1 Pro\n")
+	writer.Write("- **Model ID**: `gemini-3.1-pro-preview` (default for gemini_ask)\n")
+	writer.Write("- **Description**: Advanced intelligence, complex problem-solving, and powerful agentic capabilities\n")
 	writer.Write("- **Context Window**: 1M tokens\n")
 	writer.Write("- **Best for**: Complex reasoning, detailed analysis, comprehensive code review, advanced problem-solving\n")
-	writer.Write("- **Thinking Mode**: Yes (uses `thinking_level` parameter: low, high [default]; medium coming soon)\n")
-	writer.Write("- **Implicit Caching**: Yes (automatic optimization)\n")
-	writer.Write("- **Explicit Caching**: Yes (user-controlled via `use_cache`)\n")
-	writer.Write("- **Temperature**: Default 1.0 (recommended to avoid looping issues on complex tasks)\n\n")
-
-	// Gemini 2.5 Pro
-	writer.Write("## Gemini 2.5 Pro (Previous Generation)\n")
-	writer.Write("- **Model ID**: `gemini-2.5-pro`\n")
-	writer.Write("- **Description**: Previous generation model with strong performance\n")
-	writer.Write("- **Context Window**: 1M tokens\n")
-	writer.Write("- **Best for**: Complex reasoning, detailed analysis, code review\n")
-	writer.Write("- **Thinking Mode**: Yes (legacy thinking_budget parameter)\n")
-	writer.Write("- **Implicit Caching**: Yes (automatic optimization, 2048+ token minimum)\n")
-	writer.Write("- **Explicit Caching**: Yes (user-controlled via `use_cache`)\n\n")
+	writer.Write("- **Thinking Mode**: Yes (uses `thinking_level`: minimal, low, medium, high [default])\n")
+	writer.Write("- **Caching**: Yes (implicit and explicit via `use_cache`)\n")
+	writer.Write("- **Temperature**: Default 1.0\n\n")
 
 	// Gemini 3 Flash
-	writer.Write("## Gemini 3 Flash (Latest Flash)\n")
-	writer.Write("- **Model ID**: `gemini-3-flash-preview` (default Flash)\n")
-	writer.Write("- **Description**: Latest Flash model with improved performance and 1M context window\n")
+	writer.Write("## Gemini 3 Flash\n")
+	writer.Write("- **Model ID**: `gemini-3-flash-preview`\n")
+	writer.Write("- **Alias**: `gemini-flash-latest`\n")
+	writer.Write("- **Description**: Frontier-class performance rivaling larger models at a fraction of the cost\n")
 	writer.Write("- **Context Window**: 1M tokens\n")
 	writer.Write("- **Best for**: General programming tasks, standard code review, balanced price-performance\n")
 	writer.Write("- **Thinking Mode**: Yes\n")
-	writer.Write("- **Implicit Caching**: Yes (automatic optimization)\n")
-	writer.Write("- **Explicit Caching**: Yes (user-controlled via `use_cache`)\n\n")
+	writer.Write("- **Caching**: Yes (implicit and explicit via `use_cache`)\n\n")
 
-	// Gemini 2.5 Flash Lite
-	writer.Write("## Gemini 2.5 Flash Lite\n")
-	writer.Write("- **Model ID**: `gemini-flash-lite-latest`\n")
-	writer.Write("- **Description**: Optimized for cost efficiency and low latency\n")
-	writer.Write("- **Context Window**: 32K tokens\n")
-	writer.Write("- **Best for**: Search queries, lightweight tasks, quick responses\n")
-	writer.Write("- **Thinking Mode**: Yes (off by default for speed/cost, can be enabled)\n")
-	writer.Write("- **Implicit Caching**: No\n")
-	writer.Write("- **Explicit Caching**: No (preview limitation)\n\n")
+	// Gemini 3.1 Flash Lite
+	writer.Write("## Gemini 3.1 Flash Lite\n")
+	writer.Write("- **Model ID**: `gemini-3.1-flash-lite-preview` (default for gemini_search)\n")
+	writer.Write("- **Alias**: `gemini-flash-lite-latest`\n")
+	writer.Write("- **Description**: Fastest and most cost-efficient model for high-volume, lightweight tasks\n")
+	writer.Write("- **Context Window**: 1M tokens\n")
+	writer.Write("- **Best for**: Search queries, classification, data extraction, lightweight agentic tasks\n")
+	writer.Write("- **Thinking Mode**: Yes (minimal by default for speed/cost, can be increased)\n")
+	writer.Write("- **Caching**: Yes\n\n")
 
 	// Tool Usage Examples
 	writer.Write("## Tool Usage Examples\n\n")
@@ -226,12 +214,12 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 
 	// Thinking Mode
 	writer.Write("## Thinking Mode (both tools)\n\n")
-	writer.Write("Gemini 3 Pro uses the new `thinking_level` parameter for controlling reasoning depth:\n\n")
-	writer.Write("**Gemini 3 Pro Thinking Levels:**\n")
+	writer.Write("All supported models use the `thinking_level` parameter for controlling reasoning depth:\n\n")
+	writer.Write("**Thinking Levels:**\n")
+	writer.Write("- `minimal`: Matches 'no thinking' for most queries. The model may still think minimally for complex coding tasks\n")
 	writer.Write("- `low`: Minimizes latency and cost. Best for simple instruction following, chat, or high-throughput applications\n")
-	writer.Write("- `high` (default): Maximizes reasoning depth. The model may take longer for first token, but output will be more carefully reasoned\n")
-	writer.Write("- `medium`: Coming soon, not supported at launch\n\n")
-	writer.Write("**Important:** Cannot use both `thinking_level` and legacy `thinking_budget` parameter in the same request (returns 400 error).\n\n")
+	writer.Write("- `medium`: Balanced thinking for most tasks\n")
+	writer.Write("- `high` (default): Maximizes reasoning depth. The model may take longer but output will be more carefully reasoned\n\n")
 
 	// Thinking mode JSON examples using strings.Builder
 	{

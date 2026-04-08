@@ -26,7 +26,7 @@ func TestParseAskRequest(t *testing.T) {
 				},
 			},
 			wantQuery:     "test query",
-			wantModelName: "gemini-2.5-pro", // Assuming default
+			wantModelName: "gemini-3.1-pro-preview", // Assuming default
 			wantErr:       false,
 		},
 		{
@@ -46,7 +46,7 @@ func TestParseAskRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &GeminiServer{
-				config: &Config{GeminiModel: "gemini-2.5-pro"},
+				config: &Config{GeminiModel: "gemini-3.1-pro-preview"},
 			}
 			query, _, modelName, err := s.parseAskRequest(context.Background(), tt.req)
 

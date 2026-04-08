@@ -60,8 +60,7 @@ func TestNewConfig(t *testing.T) {
 				assert.Equal(t, 90*time.Second, cfg.HTTPTimeout)
 				assert.Equal(t, 2, cfg.MaxRetries)
 				assert.True(t, cfg.EnableCaching)
-				assert.Equal(t, defaultThinkingBudgetLevel, cfg.ThinkingBudgetLevel)
-				assert.Equal(t, getThinkingBudgetFromLevel(defaultThinkingBudgetLevel), cfg.ThinkingBudget)
+				assert.Equal(t, defaultThinkingLevel, cfg.ThinkingLevel)
 			},
 		},
 		{
@@ -119,13 +118,11 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "custom thinking settings",
 			env: map[string]string{
-				"GEMINI_API_KEY":               "key",
-				"GEMINI_THINKING_BUDGET_LEVEL": "high",
-				"GEMINI_THINKING_BUDGET":       "9999", // Explicit budget overrides level
+				"GEMINI_API_KEY":        "key",
+				"GEMINI_THINKING_LEVEL": "low",
 			},
 			check: func(t *testing.T, cfg *Config) {
-				assert.Equal(t, "high", cfg.ThinkingBudgetLevel)
-				assert.Equal(t, 9999, cfg.ThinkingBudget)
+				assert.Equal(t, "low", cfg.ThinkingLevel)
 			},
 		},
 	}

@@ -13,8 +13,8 @@ import (
 const (
 	// Note: if this value changes, make sure to update the models.go list
 	defaultGeminiModel        = "gemini-3.1-pro-preview"
-	defaultGeminiSearchModel  = "gemini-flash-lite-latest" // Default model specifically for search
-	defaultGeminiTemperature  = 1.0                        // Gemini 3 default temperature
+	defaultGeminiSearchModel  = "gemini-3.1-flash-lite-preview" // Default model specifically for search
+	defaultGeminiTemperature  = 1.0                             // Gemini 3 default temperature
 	defaultGeminiSystemPrompt = `
 You are a senior developer. Your job is to do a thorough code review of this code.
 You should write it up and output markdown.
@@ -52,19 +52,12 @@ If the search results don't contain enough information to fully answer the query
 	defaultEnableCaching   = true
 	defaultDefaultCacheTTL = 1 * time.Hour
 
-	// Thinking settings for Gemini 3
+	// Thinking settings
 	defaultEnableThinking = true
-	defaultThinkingLevel  = "high" // Default thinking level for Gemini 3 (low, medium [coming soon], high [default])
+	defaultThinkingLevel  = "high" // Default thinking level (minimal, low, medium, high)
 
 	// Service tier settings
 	defaultServiceTier = "standard" // Default service tier (flex, standard, priority)
-
-	// Legacy thinking settings for Gemini 2.5 models
-	defaultThinkingBudgetLevel = "low" // Default thinking budget level for Gemini 2.5
-	thinkingBudgetNone         = 0     // None: Thinking disabled
-	thinkingBudgetLow          = 4096  // Low: 4096 tokens
-	thinkingBudgetMedium       = 16384 // Medium: 16384 tokens
-	thinkingBudgetHigh         = 24576 // High: Maximum allowed by Gemini (24576 tokens)
 )
 
 // Config struct definition moved to structs.go
@@ -78,30 +71,13 @@ func validateServiceTier(tier string) bool {
 	return false
 }
 
-// validateThinkingLevel validates the thinking level string for Gemini 3
+// validateThinkingLevel validates the thinking level string
 func validateThinkingLevel(level string) bool {
 	switch strings.ToLower(level) {
-	case "low", "high":
+	case "minimal", "low", "medium", "high":
 		return true
 	default:
 		return false
-	}
-	// Note: "medium" is coming soon and not supported at launch
-}
-
-// getThinkingBudgetFromLevel converts a thinking budget level string to a token count (for Gemini 2.5 models)
-func getThinkingBudgetFromLevel(level string) int {
-	switch strings.ToLower(level) {
-	case "none":
-		return thinkingBudgetNone
-	case "low":
-		return thinkingBudgetLow
-	case "medium":
-		return thinkingBudgetMedium
-	case "high":
-		return thinkingBudgetHigh
-	default:
-		return thinkingBudgetLow // Default to low if invalid level
 	}
 }
 
@@ -253,27 +229,15 @@ func NewConfig(logger Logger) (*Config, error) {
 	// Thinking settings
 	enableThinking := parseEnvVarBool("GEMINI_ENABLE_THINKING", defaultEnableThinking, logger)
 
-	// Gemini 3 thinking level
+	// Thinking level
 	thinkingLevel := defaultThinkingLevel
 	if levelStr := os.Getenv("GEMINI_THINKING_LEVEL"); levelStr != "" {
 		level := strings.ToLower(levelStr)
 		if validateThinkingLevel(level) {
 			thinkingLevel = level
 		} else {
-			logger.Warnf("Invalid GEMINI_THINKING_LEVEL value: %q (valid values: 'low', 'high'). Using default: %q",
+			logger.Warnf("Invalid GEMINI_THINKING_LEVEL value: %q (valid: minimal, low, medium, high). Using default: %q",
 				levelStr, defaultThinkingLevel)
-		}
-	}
-
-	// Legacy Gemini 2.5 thinking budget level
-	thinkingBudgetLevel := defaultThinkingBudgetLevel
-	if levelStr := os.Getenv("GEMINI_THINKING_BUDGET_LEVEL"); levelStr != "" {
-		level := strings.ToLower(levelStr)
-		if level == "none" || level == "low" || level == "medium" || level == "high" {
-			thinkingBudgetLevel = level
-		} else {
-			logger.Warnf("Invalid GEMINI_THINKING_BUDGET_LEVEL value: %q. Using default: %q",
-				levelStr, defaultThinkingBudgetLevel)
 		}
 	}
 
@@ -286,11 +250,6 @@ func NewConfig(logger Logger) (*Config, error) {
 			logger.Warnf("Invalid GEMINI_SERVICE_TIER '%s' (valid: flex, standard, priority). Using default: %s", tierStr, defaultServiceTier)
 		}
 	}
-
-	// Legacy Gemini 2.5 thinking budget (token count)
-	thinkingBudget := getThinkingBudgetFromLevel(thinkingBudgetLevel)
-	// If GEMINI_THINKING_BUDGET is set, it overrides the level-derived value
-	thinkingBudget = parseEnvVarInt("GEMINI_THINKING_BUDGET", thinkingBudget, logger)
 
 	// HTTP transport settings
 	enableHTTP := parseEnvVarBool("GEMINI_ENABLE_HTTP", defaultEnableHTTP, logger)
@@ -412,8 +371,6 @@ func NewConfig(logger Logger) (*Config, error) {
 			DefaultCacheTTL:         defaultCacheTTL,
 			EnableThinking:          enableThinking,
 			ThinkingLevel:           thinkingLevel,
-			ThinkingBudget:          thinkingBudget,
-			ThinkingBudgetLevel:     thinkingBudgetLevel,
 			ServiceTier:             serviceTier,
 			ProjectLanguage:         projectLanguage,
 			PromptDefaultAudience:   promptDefaultAudience,

@@ -22,12 +22,7 @@ var GeminiAskTool = mcp.NewTool(
 	mcp.WithBoolean("use_cache", mcp.Description("Optional: Whether to try using a cache for this request (only works with compatible models)")),
 	mcp.WithString("cache_ttl", mcp.Description("Optional: TTL for cache if created (e.g., '10m', '1h'). Default is 10 minutes")),
 	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process")),
-	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level for Gemini 3 (low, high). Default is 'high'")),
-	mcp.WithNumber("thinking_budget", mcp.Description("Optional (Legacy): Maximum number of tokens for thinking process on Gemini 2.5 models (0-24576)")),
-	mcp.WithString("thinking_budget_level", mcp.Description(
-		"Optional (Legacy): Predefined thinking budget level for Gemini 2.5 models "+
-			"(none, low, medium, high)",
-	)),
+	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (minimal, low, medium, high). Default is 'high'")),
 	mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
 )
 
@@ -38,12 +33,7 @@ var GeminiSearchTool = mcp.NewTool(
 	mcp.WithString("query", mcp.Required(), mcp.Description("The question to ask Gemini using Google Search for grounding")),
 	mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
 	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (when supported)")),
-	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level for Gemini 3 (low, high). Default is 'high'")),
-	mcp.WithNumber("thinking_budget", mcp.Description("Optional (Legacy): Maximum number of tokens for thinking process on Gemini 2.5 models (0-24576)")),
-	mcp.WithString("thinking_budget_level", mcp.Description(
-		"Optional (Legacy): Predefined thinking budget level for Gemini 2.5 models "+
-			"(none, low, medium, high)",
-	)),
+	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (minimal, low, medium, high). Default is 'high'")),
 	mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
 	mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
 	mcp.WithString("start_time", mcp.Description(
