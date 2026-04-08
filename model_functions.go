@@ -14,13 +14,17 @@ var modelStore struct {
 
 // modelAliases maps deprecated or old model IDs silently to their current replacements.
 // Used by ResolveModelID so callers don't need to know about renamed preview models.
-var modelAliases = map[string]string{
-	"gemini-3-pro-preview":  "gemini-3.1-pro-preview",
-	"gemini-pro-latest":     "gemini-3.1-pro-preview",
-	"gemini-2.5-pro":        "gemini-3.1-pro-preview",
-	"gemini-2.5-flash":      "gemini-3-flash-preview",
-	"gemini-2.5-flash-lite": "gemini-3.1-flash-lite-preview",
-}
+// Protected by modelAliasesMu for concurrent read/write access.
+var (
+	modelAliasesMu sync.RWMutex
+	modelAliases   = map[string]string{
+		"gemini-3-pro-preview":  "gemini-3.1-pro-preview",
+		"gemini-pro-latest":     "gemini-3.1-pro-preview",
+		"gemini-2.5-pro":        "gemini-3.1-pro-preview",
+		"gemini-2.5-flash":      "gemini-3-flash-preview",
+		"gemini-2.5-flash-lite": "gemini-3.1-flash-lite-preview",
+	}
+)
 
 // GetAvailableGeminiModels returns a list of available Gemini models
 func GetAvailableGeminiModels() []GeminiModelInfo {
@@ -74,7 +78,10 @@ func GetModelVersion(modelID string) *ModelVersion {
 // If it's a family ID, it returns the ID of the preferred or first version
 func ResolveModelID(modelID string) string {
 	// Silently redirect deprecated/renamed model IDs to their current equivalents
-	if canonical, ok := modelAliases[modelID]; ok {
+	modelAliasesMu.RLock()
+	canonical, ok := modelAliases[modelID]
+	modelAliasesMu.RUnlock()
+	if ok {
 		modelID = canonical
 	}
 
@@ -133,4 +140,38 @@ func ValidateModelID(modelID string) error {
 	sb.WriteString("\n\nHowever, we will attempt to use this model anyway. It may be a new or preview model.")
 
 	return fmt.Errorf("%s", sb.String())
+}
+
+// AddDynamicAlias registers a runtime alias so that future calls using
+// deprecatedID are silently redirected to replacementID via ResolveModelID.
+func AddDynamicAlias(deprecatedID, replacementID string) {
+	modelAliasesMu.Lock()
+	defer modelAliasesMu.Unlock()
+	modelAliases[deprecatedID] = replacementID
+}
+
+// FindFamilyReplacement looks for a non-deprecated replacement within the same
+// model family. Returns the preferred version's ID if it differs from modelID,
+// or an empty string when no suitable replacement is found.
+func FindFamilyReplacement(modelID string) string {
+	model := GetModelByID(modelID)
+	if model == nil {
+		return ""
+	}
+
+	// Try the preferred version first
+	for _, v := range model.Versions {
+		if v.IsPreferred && v.ID != modelID {
+			return v.ID
+		}
+	}
+
+	// Fall back to any other version in the family
+	for _, v := range model.Versions {
+		if v.ID != modelID {
+			return v.ID
+		}
+	}
+
+	return ""
 }

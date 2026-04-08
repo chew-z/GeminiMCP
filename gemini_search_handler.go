@@ -136,6 +136,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 		return createErrorResult(fmt.Sprintf("Error from Gemini Search API: %v", err)), nil
 	}
 
+	checkModelStatus(ctx, resp, modelName)
 	responseText := processSearchResponse(resp, &sources, &searchQueries, seenURLs)
 
 	// Build and return the search response

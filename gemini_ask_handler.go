@@ -334,7 +334,7 @@ func (s *GeminiServer) handleQueryWithCacheDirect(ctx context.Context, cacheID, 
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 
-	// Convert to MCP result
+	checkModelStatus(ctx, response, cacheInfo.Model)
 	return convertGenaiResponseToMCPResult(response), nil
 }
 
@@ -384,13 +384,12 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, uploa
 	if err != nil {
 		logger.Error("Gemini API error: %v", err)
 		if cacheErr != nil {
-			// If there was also a cache error, include it in the response
 			return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
 		}
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 
-	// Convert to MCP result
+	checkModelStatus(ctx, response, modelName)
 	return convertGenaiResponseToMCPResult(response), nil
 }
 
@@ -412,12 +411,11 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
 	if err != nil {
 		logger.Error("Gemini API error: %v", err)
 		if cacheErr != nil {
-			// If there was also a cache error, include it in the response
 			return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
 		}
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 
-	// Convert to MCP result
+	checkModelStatus(ctx, response, modelName)
 	return convertGenaiResponseToMCPResult(response), nil
 }
