@@ -41,6 +41,14 @@ func NewPromptDefinition(name, description string, systemPrompt string) *PromptD
 					Description: "A clear and concise description of the programming problem or task.",
 					Required:    true,
 				},
+				{
+					Name:        "model",
+					Description: "Optional: Specific Gemini model to use (supports auto-completion).",
+				},
+				{
+					Name:        "thinking_level",
+					Description: "Optional: Thinking level — minimal, low, medium, or high (supports auto-completion).",
+				},
 			},
 		},
 		SystemPrompt: StaticSystemPrompt(systemPrompt),

@@ -126,6 +126,8 @@ func main() {
 	mcpServer := server.NewMCPServer(
 		"gemini",
 		"1.0.0",
+		server.WithCompletions(),
+		server.WithPromptCompletionProvider(&GeminiCompletionProvider{}),
 	)
 
 	// Create and register the Gemini server tools

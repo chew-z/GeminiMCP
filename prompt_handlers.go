@@ -97,12 +97,27 @@ func (s *GeminiServer) promptHandler(p *PromptDefinition) server.PromptHandlerFu
 			return nil, fmt.Errorf("missing required argument: problem_statement")
 		}
 
+		// Extract optional model and thinking_level overrides
+		model := req.Params.Arguments["model"]
+		thinkingLevel := req.Params.Arguments["thinking_level"]
+
 		var instructions string
 		if p.Name == "research_question" {
 			instructions = createSearchInstructions(problemStatement)
 		} else {
 			systemPrompt := p.SystemPrompt.GetSystemPrompt()
 			instructions = createTaskInstructions(problemStatement, systemPrompt)
+		}
+
+		// Append model/thinking overrides for the tool call
+		if model != "" || thinkingLevel != "" {
+			instructions += "\n\nAdditional tool parameters:"
+			if model != "" {
+				instructions += fmt.Sprintf("\n- Set `model` to `%s`", html.EscapeString(model))
+			}
+			if thinkingLevel != "" {
+				instructions += fmt.Sprintf("\n- Set `thinking_level` to `%s`", html.EscapeString(thinkingLevel))
+			}
 		}
 
 		return mcp.NewGetPromptResult(
