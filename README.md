@@ -8,7 +8,7 @@ MCP (Model Control Protocol) server integrating with Google's Gemini API.
 
 - **Single Self-Contained Binary**: Written in Go, the project compiles to a single binary with no dependencies, eliminating package manager issues and preventing unexpected changes without user knowledge
 - **Dynamic Model Access**: Automatically fetches the latest available Gemini models at startup
-- **Advanced Context Handling**: Efficient caching system with TTL control for repeated queries
+- **Implicit Caching**: Optimized prompt structure for automatic Gemini implicit caching (~90% token discount)
 - **Enhanced File Handling**: Seamless file integration with intelligent MIME detection
 - **Production Reliability**: Robust error handling, automatic retries, and graceful degradation
 - **Comprehensive Capabilities**: Full support for code analysis, general queries, and search with grounding
@@ -36,7 +36,7 @@ export GEMINI_MODEL=gemini-3.1-pro-preview
 ./bin/mcp-gemini --transport=http
 
 ## Or override settings via command line
-./bin/mcp-gemini --transport=http --gemini-model=gemini-3-flash-preview --enable-caching=true
+./bin/mcp-gemini --transport=http --gemini-model=gemini-3-flash-preview
 ```
 
 ### Client Configuration
@@ -80,7 +80,6 @@ Options:
   --gemini-model string          Gemini model name (overrides GEMINI_MODEL)
   --gemini-system-prompt string  System prompt (overrides GEMINI_SYSTEM_PROMPT)  
   --gemini-temperature float     Temperature 0.0-1.0 (overrides GEMINI_TEMPERATURE)
-  --enable-caching              Enable caching (overrides GEMINI_ENABLE_CACHING)
   --enable-thinking             Enable thinking mode (overrides GEMINI_ENABLE_THINKING)
   --transport string            Transport: 'stdio' (default) or 'http'
   --auth-enabled                Enable JWT authentication for HTTP transport
@@ -184,51 +183,19 @@ Say to your LLM:
 
 This will show both the final answer and the model's comprehensive reasoning process with maximum detail.
 
-### Simple Project Analysis with Caching
+### Project Analysis with File Context
 
 Say to your LLM:
 
-> _Please use a caching-enabled **Gemini model** to analyze our project files. Include the main.go, config.go and models.go files and ask Gemini a series of questions about our project architecture and how it could be improved. Use appropriate system prompts for each question._
+> _Please use **Gemini** to analyze our project files. Include the main.go, config.go and models.go files from the GitHub repo and ask Gemini about our project architecture and how it could be improved._
 
-With this simple prompt, the LLM will:
+The server automatically optimizes for Gemini's implicit caching by placing files before the query, so repeated queries over the same files benefit from ~90% token discount automatically.
 
-- Select a caching-compatible model (with -001 suffix)
-- Include the specified project files
-- Enable caching automatically
-- Ask multiple questions while maintaining context
-- Customize system prompts for each question type
-
-This approach makes it easy to have an extended conversation about your codebase without complex configuration.
-
-### Combined File Attachments with Caching
-
-For programming tasks, you can directly use the file attachments feature with caching to create a more efficient workflow:
-
-> _Use gemini_ask with model gemini-2.0-flash-001 to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
-> _Use gemini_ask with model `gemini-3-flash-preview` to analyze these Go files. Please add both structs.go and models.go to the context, enable caching with a 30-minute TTL, and ask about how the model management system works in this application._
-
-The server has special optimizations for this use case, particularly useful when:
+This is particularly useful when:
 - Working with complex codebases requiring multiple files for context
 - Planning to ask follow-up questions about the same code
 - Debugging issues that require file context
 - Code review scenarios discussing implementation details
-
-When combining file attachments with caching, files are analyzed once and stored in the cache, making subsequent queries much faster and more cost-effective.
-
-### Managing Multiple Caches and Reducing Costs
-
-During a conversation, you can create and use multiple caches for different sets of files or contexts:
-
-> _Please create a new **cache** for our frontend code (App.js, components/_.js) and analyze it separately from our backend code cache we created earlier.*
-
-The LLM can intelligently manage these different caches, switching between them as needed based on your queries. This capability is particularly valuable for projects with distinct components that require different analysis approaches.
-
-**Cost Savings**: Using caching significantly reduces API costs, especially when working with large codebases or having extended conversations. By caching the context:
-
-- Files are processed and tokenized only once instead of with every query
-- Follow-up questions reuse the existing context instead of creating new API requests
-- Complex analyses can be performed incrementally without re-uploading files
-- Multi-session analysis becomes more economical, with some users reporting 40-60% cost reductions for extended code reviews
 
 ### Customizing System Prompts
 
@@ -258,9 +225,7 @@ For code analysis, general queries, and creative tasks with optional file contex
         "query": "Review this Go code for concurrency issues...",
         "model": "gemini-3-flash-preview",
         "systemPrompt": "You are a senior Go developer. Focus on concurrency patterns, potential race conditions, and performance implications.",
-        "github_files": ["main.go", "config.go"],
-        "use_cache": true,
-        "cache_ttl": "1h"
+        "github_files": ["main.go", "config.go"]
     }
 }
 ```
@@ -278,7 +243,7 @@ Simple code analysis with file attachments:
 }
 ```
 
-Combining file attachments with caching for repeated queries:
+File attachments with GitHub integration:
 
 ```json
 {
@@ -288,9 +253,7 @@ Combining file attachments with caching for repeated queries:
         "model": "gemini-3-flash-preview",
         "github_repo": "owner/repo",
         "github_ref": "main",
-        "github_files": ["models.go", "structs.go"],
-        "use_cache": true,
-        "cache_ttl": "30m"
+        "github_files": ["models.go", "structs.go"]
     }
 }
 ```
@@ -334,7 +297,7 @@ Returns structured responses with sources and optional thinking process:
 
 #### 3. **`gemini_models`**
 
-Lists all available Gemini models with capabilities and caching support.
+Lists all available Gemini models with capabilities.
 
 ```json
 {
@@ -347,7 +310,6 @@ Returns comprehensive model information including:
 
 - Detailed descriptions of the supported Gemini 2.5 models (Pro, Flash, Flash Lite).
 - Model IDs, context window sizes, and descriptions.
-- Caching capabilities (implicit and explicit).
 - Usage examples
 - Thinking mode support.
 
@@ -357,45 +319,30 @@ This server is optimized for and exclusively supports the **Gemini 2.5 family of
 
 Key supported models (as detailed by the `gemini_models` tool):
 
--   **`gemini-2.5-pro`** (production):
+-   **`gemini-3.1-pro-preview`** (latest Pro):
     *   Most powerful model, 1M token context window.
     *   Best for: Complex reasoning, detailed analysis, comprehensive code review.
-    *   Capabilities: Advanced thinking mode, implicit caching (2048+ token minimum), explicit caching.
+    *   Capabilities: Advanced thinking mode, automatic implicit caching.
 -   **`gemini-3-flash-preview`** (latest Flash):
     *   Latest Flash model with improved performance, 1M token context window.
     *   Best for: General programming tasks, standard code review, balanced price-performance.
-    *   Capabilities: Thinking mode, implicit caching, explicit caching.
--   **`gemini-flash-lite-latest`** (production):
-    *   Optimized for cost efficiency and low latency, 32K token context window.
+    *   Capabilities: Thinking mode, automatic implicit caching.
+-   **`gemini-3.1-flash-lite-preview`** (latest Flash Lite):
+    *   Fastest and most cost-efficient, 1M token context window.
     *   Best for: Search queries, lightweight tasks, quick responses.
-    *   Capabilities: Thinking mode (off by default), no implicit or explicit caching.
+    *   Capabilities: Thinking mode, automatic implicit caching.
 
 **Always use the `gemini_models` tool to get the most current details, capabilities, and example usage for each model as presented by the server.**
 
-### Caching System
+### Implicit Caching
 
-The server offers sophisticated context caching:
+The server leverages Gemini's automatic implicit caching for cost savings:
 
-- **Model Compatibility**:
-    - **Gemini 2.5 Pro & Flash**: Support both implicit caching (automatic optimization by Google for repeated prefixes if content is long enough – 2048+ tokens for Pro, 1024+ for Flash) and explicit caching (user-controlled via `use_cache: true`).
-    - **Gemini 2.5 Flash Lite (Preview)**: Preview versions typically do not support implicit or explicit caching.
-- **Cache Control**: Set `use_cache: true` and specify `cache_ttl` (e.g., "10m", "2h")
-- **File Association**: Automatically stores files and associates with cache context
-- **Performance Optimization**: Local metadata caching for quick lookups
-
-Example with caching:
-
-```json
-{
-    "name": "gemini_ask",
-    "arguments": {
-        "query": "Follow up on our previous discussion...",
-        "model": "gemini-2.5-pro",
-        "use_cache": true,
-        "cache_ttl": "1h"
-    }
-}
-```
+- **Automatic**: No configuration needed — Gemini automatically caches and reuses shared request prefixes
+- **Optimized Ordering**: File content is placed before the query to maximize cache hits across repeated requests
+- **Deterministic Prefix**: GitHub files are sorted by filename to ensure consistent ordering
+- **Token Thresholds**: Pro models require 4096+ tokens, Flash models require 1024+ tokens for cache eligibility
+- **~90% Discount**: Cached tokens are billed at approximately 10% of standard input price
 
 ### File Handling
 
@@ -404,8 +351,7 @@ Robust file processing with:
 - **GitHub Integration**: Fetch files directly from a GitHub repository using the `github_repo`, `github_ref`, and `github_files` arguments. `github_repo` is required when `github_files` is provided.
 - **Local File Access (stdio only)**: The `file_paths` argument can be used to access local files, but only when the server is running in `stdio` mode. This method is deprecated for `http` transport due to security concerns.
 - **Automatic Validation**: Size checking, MIME type detection, and content validation
-- **Wide Format Support**: Handles common code, text, and document formats
-- **Metadata Caching**: Stores file information for quick future reference
+- **Wide Format Support**: Handles 60+ code, text, config, and document formats
 
 ### Advanced Features
 
@@ -535,8 +481,6 @@ export GEMINI_MAX_BACKOFF=15s
 | `GEMINI_INITIAL_BACKOFF`       | Initial retry backoff (duration)                     | `1s`    | 
 | `GEMINI_MAX_BACKOFF`           | Maximum retry backoff cap (duration)                 | `10s`   | 
 | `GEMINI_TEMPERATURE`           | Model temperature (0.0-1.0)                          | `0.4`   | 
-| `GEMINI_ENABLE_CACHING`        | Enable context caching                               | `true`  | 
-| `GEMINI_DEFAULT_CACHE_TTL`     | Default cache time-to-live                           | `1h`    | 
 | `GEMINI_ENABLE_THINKING`       | Enable thinking mode capability                      | `true`  | 
 | `GEMINI_THINKING_BUDGET_LEVEL` | Default thinking budget level (none/low/medium/high) | `low`   | 
 | `GEMINI_THINKING_BUDGET`       | Explicit thinking token budget (0-24576)             | `4096`  | 
@@ -570,9 +514,10 @@ go test -v
 
 ## Recent Changes
 
-- **Exclusive Gemini 2.5 Support**: Server now exclusively supports the Gemini 2.5 family of models (Pro, Flash, Flash Lite) for optimal performance and access to the latest features.
-- **Streamlined Model Information**: The `gemini_models` tool provides detailed, up-to-date information on supported Gemini 2.5 models, their context windows, and specific capabilities like caching and thinking mode.
-- **Enhanced Caching for Gemini 2.5**: Leverages implicit caching (automatic for Pro/Flash with sufficient context) and provides robust explicit caching for Gemini 2.5 Pro and Flash models.
+- **Gemini 3+ Support**: Server supports the latest Gemini 3.1 Pro, Gemini 3 Flash, and Gemini 3.1 Flash Lite models.
+- **Implicit Caching Only**: Removed explicit caching in favor of Gemini's automatic implicit caching. Files are placed before queries to maximize cache prefix hits.
+- **Expanded MIME Types**: 60+ file extensions and special filenames recognized for inline text injection.
+- **Partial Failure Warnings**: Model is informed about files that couldn't be loaded via [System Note].
 - **Time Range Filtering**: Added `start_time` and `end_time` to `gemini_search` for filtering results by publication date.
 
 ## License

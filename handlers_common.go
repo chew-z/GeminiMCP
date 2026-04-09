@@ -63,8 +63,10 @@ func extractArgumentBool(req mcp.CallToolRequest, name string, defaultValue bool
 }
 
 // extractArgumentStringArray extracts a string array argument from the request parameters.
-// It handles both []interface{} (JSON array) and plain string (single value) inputs,
-// so callers like github_files="config.py" don't silently return an empty slice.
+// It handles three input forms:
+//   - []interface{} (JSON array from proper MCP clients)
+//   - string containing a JSON array (e.g., '["file1.go", "file2.go"]' from some clients)
+//   - plain string (single value, e.g., "config.py")
 func extractArgumentStringArray(req mcp.CallToolRequest, name string) []string {
 	var result []string
 	args := req.GetArguments()
@@ -76,9 +78,17 @@ func extractArgumentStringArray(req mcp.CallToolRequest, name string) []string {
 			}
 		}
 	case string:
-		if v != "" {
-			result = append(result, v)
+		if v == "" {
+			return result
 		}
+		// Some MCP clients pass arrays as JSON strings — try to parse
+		if strings.HasPrefix(v, "[") {
+			var parsed []string
+			if err := json.Unmarshal([]byte(v), &parsed); err == nil {
+				return parsed
+			}
+		}
+		result = append(result, v)
 	}
 	return result
 }

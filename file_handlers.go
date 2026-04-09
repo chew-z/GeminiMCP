@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -112,6 +113,13 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 	for upload := range uploadsChan {
 		uploads = append(uploads, upload)
 	}
+
+	// Sort uploads by filename to ensure deterministic ordering.
+	// Concurrent fetches return in completion order, but implicit caching
+	// requires a stable prefix across identical requests.
+	sort.Slice(uploads, func(i, j int) bool {
+		return uploads[i].FileName < uploads[j].FileName
+	})
 
 	logger.Info("GitHub file fetch operation completed")
 	logger.Info("Successfully fetched files: %d", len(uploads))

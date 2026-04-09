@@ -141,9 +141,18 @@ func (s *GeminiServer) gatherGitHubFiles(
 	fetchedUploads, fileErrs := fetchFromGitHub(ctx, s, githubRepo, githubRef, githubFiles)
 	var warnings []string
 	if len(fileErrs) > 0 {
+		// Build a set of successfully fetched filenames to identify which ones failed
+		fetched := make(map[string]bool, len(fetchedUploads))
+		for _, u := range fetchedUploads {
+			fetched[u.FileName] = true
+		}
+		for _, file := range githubFiles {
+			if !fetched[file] {
+				warnings = append(warnings, fmt.Sprintf("%s: could not be fetched from GitHub", file))
+			}
+		}
 		for _, err := range fileErrs {
 			logger.Error("Error processing github file: %v", err)
-			warnings = append(warnings, err.Error())
 		}
 		if len(fetchedUploads) == 0 {
 			return nil, nil, createErrorResult(fmt.Sprintf("Error processing github files: %v", fileErrs))
