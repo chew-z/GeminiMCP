@@ -2,14 +2,20 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genai"
 )
 
 func toolResultText(t *testing.T, result *mcp.CallToolResult) string {
@@ -151,6 +157,318 @@ func TestGeminiAskHandlerFileSourceBehavior(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGeminiAskHandlerGitHubWarningTruncationInOutboundQuery(t *testing.T) {
+	seedModelStateForTest(t, testModelCatalog())
+	ctx := context.Background()
+
+	githubServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/owner/repo/contents/path/ok.txt":
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = w.Write([]byte("ok"))
+		default:
+			http.Error(w, "Not Found", http.StatusNotFound)
+		}
+	}))
+	defer githubServer.Close()
+
+	requestPathCh := make(chan string, 1)
+	requestBodyCh := make(chan []byte, 1)
+	genaiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+
+		select {
+		case requestPathCh <- r.URL.String():
+		default:
+		}
+		select {
+		case requestBodyCh <- body:
+		default:
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"mock ok"}]}}]}`))
+	}))
+	defer genaiServer.Close()
+
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey: "test-api-key",
+		HTTPOptions: genai.HTTPOptions{
+			BaseURL: genaiServer.URL,
+		},
+		HTTPClient: genaiServer.Client(),
+	})
+	require.NoError(t, err)
+
+	s := &GeminiServer{
+		config: &Config{
+			GeminiModel:        "gemini-pro",
+			GeminiSystemPrompt: "system prompt",
+			GeminiTemperature:  0.3,
+			EnableThinking:     true,
+			ThinkingLevel:      "high",
+			ServiceTier:        "standard",
+			MaxRetries:         0,
+			HTTPTimeout:        100 * time.Millisecond,
+			GitHubAPIBaseURL:   githubServer.URL,
+			MaxGitHubFiles:     20,
+			MaxGitHubFileSize:  1024,
+		},
+		client: client,
+	}
+
+	githubFiles := []any{"path/ok.txt"}
+	for i := 1; i <= maxReportedWarnings+2; i++ {
+		githubFiles = append(githubFiles, fmt.Sprintf("path/missing-%02d.txt", i))
+	}
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "gemini_ask",
+			Arguments: map[string]interface{}{
+				"query":        "analyze this repository",
+				"github_repo":  "owner/repo",
+				"github_files": githubFiles,
+			},
+		},
+	}
+
+	result, err := s.GeminiAskHandler(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.IsError, toolResultText(t, result))
+	assert.Contains(t, toolResultText(t, result), "mock ok")
+
+	var requestPath string
+	select {
+	case requestPath = <-requestPathCh:
+	default:
+		t.Fatal("expected outbound GenerateContent request path to be captured")
+	}
+	assert.True(t, strings.Contains(requestPath, ":generateContent"), "request path must target generateContent endpoint: %s", requestPath)
+
+	var requestBody []byte
+	select {
+	case requestBody = <-requestBodyCh:
+	default:
+		t.Fatal("expected outbound GenerateContent request body to be captured")
+	}
+
+	var payload struct {
+		Contents []struct {
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"contents"`
+	}
+	require.NoError(t, json.Unmarshal(requestBody, &payload))
+	require.NotEmpty(t, payload.Contents)
+	require.NotEmpty(t, payload.Contents[0].Parts)
+
+	querySent := payload.Contents[0].Parts[len(payload.Contents[0].Parts)-1].Text
+	assert.Contains(t, querySent, "analyze this repository")
+	assert.Contains(t, querySent, "The following requested files could not be loaded")
+	assert.Contains(t, querySent, "... and 2 other file(s)")
+
+	for i := 1; i <= maxReportedWarnings; i++ {
+		assert.Contains(t, querySent, fmt.Sprintf("path/missing-%02d.txt: could not be fetched from GitHub", i))
+	}
+	assert.NotContains(t, querySent, "path/missing-11.txt: could not be fetched from GitHub")
+	assert.NotContains(t, querySent, "path/missing-12.txt: could not be fetched from GitHub")
+}
+
+func TestGeminiAskHandlerLocalWarningTruncationInOutboundQuery(t *testing.T) {
+	seedModelStateForTest(t, testModelCatalog())
+	ctx := context.Background()
+
+	baseDir := t.TempDir()
+	require.NoError(t, os.WriteFile(baseDir+"/ok.txt", []byte("ok"), 0644))
+
+	requestPathCh := make(chan string, 1)
+	requestBodyCh := make(chan []byte, 1)
+	genaiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+
+		select {
+		case requestPathCh <- r.URL.String():
+		default:
+		}
+		select {
+		case requestBodyCh <- body:
+		default:
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"mock ok"}]}}]}`))
+	}))
+	defer genaiServer.Close()
+
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey: "test-api-key",
+		HTTPOptions: genai.HTTPOptions{
+			BaseURL: genaiServer.URL,
+		},
+		HTTPClient: genaiServer.Client(),
+	})
+	require.NoError(t, err)
+
+	s := &GeminiServer{
+		config: &Config{
+			GeminiModel:        "gemini-pro",
+			GeminiSystemPrompt: "system prompt",
+			GeminiTemperature:  0.3,
+			EnableThinking:     true,
+			ThinkingLevel:      "high",
+			ServiceTier:        "standard",
+			MaxRetries:         0,
+			HTTPTimeout:        100 * time.Millisecond,
+			FileReadBaseDir:    baseDir,
+			MaxFileSize:        1024,
+		},
+		client: client,
+	}
+
+	filePaths := []any{"ok.txt"}
+	for i := 1; i <= maxReportedWarnings+2; i++ {
+		filePaths = append(filePaths, fmt.Sprintf("missing-%02d.txt", i))
+	}
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "gemini_ask",
+			Arguments: map[string]interface{}{
+				"query":      "analyze these files",
+				"file_paths": filePaths,
+			},
+		},
+	}
+
+	result, err := s.GeminiAskHandler(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.IsError, toolResultText(t, result))
+	assert.Contains(t, toolResultText(t, result), "mock ok")
+
+	var requestPath string
+	select {
+	case requestPath = <-requestPathCh:
+	default:
+		t.Fatal("expected outbound GenerateContent request path to be captured")
+	}
+	assert.True(t, strings.Contains(requestPath, ":generateContent"), "request path must target generateContent endpoint: %s", requestPath)
+
+	var requestBody []byte
+	select {
+	case requestBody = <-requestBodyCh:
+	default:
+		t.Fatal("expected outbound GenerateContent request body to be captured")
+	}
+
+	var payload struct {
+		Contents []struct {
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"contents"`
+	}
+	require.NoError(t, json.Unmarshal(requestBody, &payload))
+	require.NotEmpty(t, payload.Contents)
+	require.NotEmpty(t, payload.Contents[0].Parts)
+
+	querySent := payload.Contents[0].Parts[len(payload.Contents[0].Parts)-1].Text
+	assert.Contains(t, querySent, "analyze these files")
+	assert.Contains(t, querySent, "The following requested files could not be loaded")
+	assert.Contains(t, querySent, "... and 2 other file(s)")
+
+	for i := 1; i <= maxReportedWarnings; i++ {
+		assert.Contains(t, querySent, fmt.Sprintf("missing-%02d.txt: file not found or inaccessible", i))
+	}
+	assert.NotContains(t, querySent, "missing-11.txt: file not found or inaccessible")
+	assert.NotContains(t, querySent, "missing-12.txt: file not found or inaccessible")
+}
+
+func TestGatherGitHubFiles(t *testing.T) {
+	logger := NewLogger(LevelDebug)
+	ctx := context.WithValue(context.Background(), loggerKey, logger)
+
+	makeServer := func() *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/repos/owner/repo/contents/path/ok.txt":
+				w.Header().Set("Content-Type", "text/plain")
+				_, _ = w.Write([]byte("ok"))
+			default:
+				http.Error(w, "Not Found", http.StatusNotFound)
+			}
+		}))
+	}
+
+	t.Run("partial success returns exact warning list for missing files", func(t *testing.T) {
+		server := makeServer()
+		defer server.Close()
+
+		s := &GeminiServer{
+			config: &Config{
+				GitHubAPIBaseURL:  server.URL,
+				MaxGitHubFiles:    10,
+				MaxGitHubFileSize: 1024,
+				HTTPTimeout:       100 * time.Millisecond,
+			},
+		}
+
+		req := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name: "gemini_ask",
+				Arguments: map[string]interface{}{
+					"github_repo": "owner/repo",
+				},
+			},
+		}
+		files := []string{"path/missing-a.txt", "path/ok.txt", "path/missing-b.txt"}
+
+		uploads, warnings, errResult := s.gatherGitHubFiles(ctx, req, files)
+		require.Nil(t, errResult)
+		require.Len(t, uploads, 1)
+		assert.Equal(t, "path/ok.txt", uploads[0].FileName)
+		assert.Equal(t, []string{
+			"path/missing-a.txt: could not be fetched from GitHub",
+			"path/missing-b.txt: could not be fetched from GitHub",
+		}, warnings)
+	})
+
+	t.Run("all files failing returns tool error result", func(t *testing.T) {
+		server := makeServer()
+		defer server.Close()
+
+		s := &GeminiServer{
+			config: &Config{
+				GitHubAPIBaseURL:  server.URL,
+				MaxGitHubFiles:    10,
+				MaxGitHubFileSize: 1024,
+				HTTPTimeout:       100 * time.Millisecond,
+			},
+		}
+
+		req := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name: "gemini_ask",
+				Arguments: map[string]interface{}{
+					"github_repo": "owner/repo",
+				},
+			},
+		}
+
+		uploads, warnings, errResult := s.gatherGitHubFiles(ctx, req, []string{"path/missing.txt"})
+		assert.Nil(t, uploads)
+		assert.Nil(t, warnings)
+		require.NotNil(t, errResult)
+		assert.True(t, errResult.IsError)
+		assert.Contains(t, toolResultText(t, errResult), "Error processing github files")
+	})
 }
 
 func TestParseAskRequest(t *testing.T) {
