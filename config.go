@@ -181,7 +181,6 @@ func NewConfig(logger Logger) (*Config, error) {
 
 	fileReadBaseDir := os.Getenv("GEMINI_FILE_READ_BASE_DIR")
 
-
 	// GitHub settings
 	githubToken := os.Getenv("GEMINI_GITHUB_TOKEN")
 	githubAPIBaseURL := os.Getenv("GEMINI_GITHUB_API_BASE_URL")
@@ -341,8 +340,8 @@ func NewConfig(logger Logger) (*Config, error) {
 			MaxRetries:               maxRetries,
 			InitialBackoff:           initialBackoff,
 			MaxBackoff:               maxBackoff,
-			MaxFileSize:     maxFileSize,
-			FileReadBaseDir: fileReadBaseDir,
+			MaxFileSize:              maxFileSize,
+			FileReadBaseDir:          fileReadBaseDir,
 
 			// GitHub settings
 			GitHubToken:       githubToken,
