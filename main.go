@@ -52,16 +52,7 @@ func main() {
 	ctx := context.WithValue(context.Background(), loggerKey, logger)
 	ctx = context.WithValue(ctx, configKey, config)
 
-	// Override with command-line flags if provided
-	if *geminiModelFlag != "" {
-		validatedID, redirected := ValidateModelID(*geminiModelFlag)
-		if redirected {
-			logger.Warn("Custom model '%s' redirected to '%s'", *geminiModelFlag, validatedID)
-		} else {
-			logger.Info("Using known model: %s", validatedID)
-		}
-		config.GeminiModel = validatedID
-	}
+	// Override non-model flags before catalog fetch
 	if *geminiSystemPromptFlag != "" {
 		logger.Info("Overriding Gemini system prompt with flag value")
 		config.GeminiSystemPrompt = *geminiSystemPromptFlag
@@ -104,8 +95,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Store config in context for error handler to access (already done earlier)
-
 	// Create MCP server
 	mcpServer := server.NewMCPServer(
 		"gemini",
@@ -114,10 +103,26 @@ func main() {
 		server.WithPromptCompletionProvider(&GeminiCompletionProvider{}),
 	)
 
-	// Create and register the Gemini server tools
+	// Create and register the Gemini server tools (populates model catalog)
 	if err := setupGeminiServer(ctx, mcpServer, config); err != nil {
 		handleStartupError(ctx, err)
 		return
+	}
+
+	// Resolve default model names against the now-populated catalog.
+	// Tier-level defaults like "gemini-pro" get mapped to actual model IDs.
+	config.GeminiModel = resolveAndValidateModel(ctx, config.GeminiModel)
+	config.GeminiSearchModel = resolveAndValidateModel(ctx, config.GeminiSearchModel)
+
+	// Override model AFTER catalog is populated so ValidateModelID works correctly
+	if *geminiModelFlag != "" {
+		validatedID, redirected := ValidateModelID(*geminiModelFlag)
+		if redirected {
+			logger.Warn("Custom model '%s' redirected to '%s'", *geminiModelFlag, validatedID)
+		} else {
+			logger.Info("Using known model: %s", validatedID)
+		}
+		config.GeminiModel = validatedID
 	}
 
 	// Validate transport flag

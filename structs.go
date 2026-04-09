@@ -135,7 +135,8 @@ type GeminiModelInfo struct {
 	Name              string         `json:"name"`                // Human-readable family name
 	Description       string         `json:"description"`         // Description of the model family
 	SupportsThinking  bool           `json:"supports_thinking"`   // Whether this model family supports thinking mode
-	ContextWindowSize int            `json:"context_window_size"` // Maximum context window size in tokens
+	ContextWindowSize int            `json:"context_window_size"` // Maximum context window size in tokens (input)
+	MaxOutputTokens   int            `json:"max_output_tokens"`   // Maximum output tokens the model can generate
 	Versions          []ModelVersion `json:"versions"`            // Available versions of this model family
 }
 

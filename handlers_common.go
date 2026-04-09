@@ -221,11 +221,17 @@ func configureMaxTokensOutput(
 		config.MaxOutputTokens = int32(maxTokens)
 		logger.Info("Setting max output tokens to %d", maxTokens)
 	} else if modelInfo != nil {
-		// Set a safe default if not specified using the provided ratio
-		safeTokenLimit := int32(float64(modelInfo.ContextWindowSize) * defaultRatio)
-		config.MaxOutputTokens = safeTokenLimit
-		logger.Debug("Using default max output tokens: %d (%.0f%% of context window)",
-			safeTokenLimit, defaultRatio*100)
+		// Prefer the model's actual output token limit from the API
+		if modelInfo.MaxOutputTokens > 0 {
+			config.MaxOutputTokens = int32(modelInfo.MaxOutputTokens)
+			logger.Debug("Using model's max output tokens: %d", modelInfo.MaxOutputTokens)
+		} else {
+			// Fallback: ratio of context window if output limit unknown
+			safeTokenLimit := int32(float64(modelInfo.ContextWindowSize) * defaultRatio)
+			config.MaxOutputTokens = safeTokenLimit
+			logger.Debug("Using default max output tokens: %d (%.0f%% of context window)",
+				safeTokenLimit, defaultRatio*100)
+		}
 	}
 }
 

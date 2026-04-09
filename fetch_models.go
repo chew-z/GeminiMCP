@@ -120,6 +120,7 @@ func toModelInfo(c *modelCandidate) GeminiModelInfo {
 		Description:       c.model.Description,
 		SupportsThinking:  c.model.Thinking,
 		ContextWindowSize: int(c.model.InputTokenLimit),
+		MaxOutputTokens:   int(c.model.OutputTokenLimit),
 		Versions: []ModelVersion{
 			{ID: c.name, IsPreferred: true},
 		},

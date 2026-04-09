@@ -15,13 +15,7 @@ var modelStore struct {
 // Protected by modelAliasesMu for concurrent read/write access.
 var (
 	modelAliasesMu sync.RWMutex
-	modelAliases   = map[string]string{
-		"gemini-3-pro-preview":  "gemini-3.1-pro-preview",
-		"gemini-pro-latest":     "gemini-3.1-pro-preview",
-		"gemini-2.5-pro":        "gemini-3.1-pro-preview",
-		"gemini-2.5-flash":      "gemini-3-flash-preview",
-		"gemini-2.5-flash-lite": "gemini-3.1-flash-lite-preview",
-	}
+	modelAliases   = map[string]string{}
 )
 
 // SetModels replaces the model catalog (called at startup after API fetch).
@@ -108,7 +102,8 @@ func ResolveModelID(modelID string) string {
 }
 
 // bestModelForTier returns the FamilyID of the best available model in the same
-// tier as the given model name. Falls back to the first model in the catalog.
+// tier as the given model name. Returns the original name unchanged if no match
+// is found, letting the Gemini API decide what to do with it.
 func bestModelForTier(modelName string) string {
 	tier, ok := classifyModel(modelName)
 	if ok {
@@ -118,11 +113,7 @@ func bestModelForTier(modelName string) string {
 			}
 		}
 	}
-	// Fallback: first model in catalog (pro, the best)
-	if models := GetAvailableGeminiModels(); len(models) > 0 {
-		return models[0].FamilyID
-	}
-	return modelName // catalog empty, pass through
+	return modelName // no match found, pass through unchanged
 }
 
 // addDynamicAlias registers a runtime alias so future requests for

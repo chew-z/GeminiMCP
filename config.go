@@ -11,9 +11,9 @@ import (
 
 // Default configuration values
 const (
-	defaultGeminiModel        = "gemini-3.1-pro-preview"
-	defaultGeminiSearchModel  = "gemini-3.1-flash-lite-preview" // Default model specifically for search
-	defaultGeminiTemperature  = 1.0                             // Gemini 3 default temperature
+	defaultGeminiModel        = "gemini-pro"        // Tier-level name; triggers bestModelForTier() at runtime
+	defaultGeminiSearchModel  = "gemini-flash-lite" // Tier-level name; triggers bestModelForTier() at runtime
+	defaultGeminiTemperature  = 1.0                 // Gemini 3 default temperature
 	defaultGeminiSystemPrompt = `
 You are a senior developer. Your job is to do a thorough code review of this code.
 You should write it up and output markdown.
