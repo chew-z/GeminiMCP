@@ -60,13 +60,6 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 			strings.Join(reported, "\n- ") + suffix + "]"
 	}
 
-	// Handle caching if enabled
-	cacheID, uploadedFiles, cacheErr := s.maybeCreateCache(ctx, req, query, modelName, uploads)
-	if cacheID != "" {
-		logger.Info("Using cache with ID: %s", cacheID)
-		return s.handleQueryWithCacheDirect(ctx, cacheID, query)
-	}
-
 	// Validate client and models before proceeding
 	if s.client == nil || s.client.Models == nil {
 		logger.Error("Gemini client or Models service not properly initialized")
@@ -75,10 +68,9 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 
 	// Process with files if provided
 	if len(uploads) > 0 {
-		return s.processWithFiles(ctx, query, uploads, uploadedFiles, modelName, config, cacheErr)
-	} else {
-		return s.processWithoutFiles(ctx, query, modelName, config, cacheErr)
+		return s.processWithFiles(ctx, query, uploads, modelName, config)
 	}
+	return s.processWithoutFiles(ctx, query, modelName, config)
 }
 
 // gatherFileUploads handles the logic of selecting, validating, and fetching files
@@ -178,50 +170,6 @@ func (s *GeminiServer) gatherLocalFiles(ctx context.Context, filePaths []string)
 	return localUploads, warnings, nil
 }
 
-// maybeCreateCache handles the logic for checking caching eligibility and creating a cache.
-func (s *GeminiServer) maybeCreateCache(
-	ctx context.Context,
-	req mcp.CallToolRequest,
-	query, modelName string,
-	uploads []*FileUploadRequest,
-) (string, []*FileInfo, error) {
-	logger := getLoggerFromContext(ctx)
-
-	useCache := extractArgumentBool(req, "use_cache", false)
-	cacheTTL := extractArgumentString(req, "cache_ttl", "")
-	enableThinking := extractArgumentBool(req, "enable_thinking", s.config.EnableThinking)
-
-	if useCache && enableThinking {
-		logger.Warn("Both caching and thinking mode were requested - prioritizing thinking mode")
-		useCache = false
-	}
-
-	if !useCache || !s.config.EnableCaching {
-		return "", nil, nil
-	}
-
-	modelVersion := GetModelVersion(modelName)
-	if modelVersion == nil || !modelVersion.SupportsCaching {
-		logger.Warn("Model %s does not support caching, falling back to regular request", modelName)
-		return "", nil, nil
-	}
-
-	if len(uploads) == 0 {
-		return "", nil, nil // Caching with no files is not implemented in this flow
-	}
-
-	cacheID, uploadedFiles, cacheErr := s.createCacheFromFiles(ctx, query, modelName, uploads, cacheTTL,
-		extractArgumentString(req, "systemPrompt", s.config.GeminiSystemPrompt))
-
-	if cacheErr != nil {
-		logger.Warn("Failed to create cache, falling back to regular request: %v", cacheErr)
-		// Return the error but also the uploaded files so they can be reused
-		return "", uploadedFiles, cacheErr
-	}
-
-	return cacheID, uploadedFiles, nil
-}
-
 // readLocalFiles reads files from the local filesystem and returns them as FileUploadRequest objects.
 // Returns uploads, warning messages for skipped files, and an error for fatal issues.
 func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]*FileUploadRequest, []string, error) {
@@ -250,7 +198,7 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 		fileInfo, err := os.Lstat(fullPath)
 		if err != nil {
 			logger.Error("Failed to stat file %s: %v", filePath, err)
-			warnings = append(warnings, fmt.Sprintf("%s: %v", filePath, err))
+			warnings = append(warnings, fmt.Sprintf("%s: file not found or inaccessible", filePath))
 			continue
 		}
 
@@ -278,17 +226,25 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 			return nil, nil, fmt.Errorf("path traversal attempt detected: %s", filePath)
 		}
 
-		// Check file size before reading to prevent OOM on huge files
-		if fileInfo.Size() > config.MaxFileSize {
-			logger.Warn("Skipping file %s because it is too large: %d bytes, limit is %d", filePath, fileInfo.Size(), config.MaxFileSize)
-			warnings = append(warnings, fmt.Sprintf("%s: file too large (%d bytes, limit %d)", filePath, fileInfo.Size(), config.MaxFileSize))
+		// Check file size before reading to prevent OOM on huge files.
+		// Use os.Stat (follows symlinks) so we get the target's real size,
+		// not the symlink entry size from Lstat above.
+		realInfo, statErr := os.Stat(fullPath)
+		if statErr != nil {
+			logger.Error("Failed to stat target of %s: %v", filePath, statErr)
+			warnings = append(warnings, fmt.Sprintf("%s: could not determine file size", filePath))
+			continue
+		}
+		if realInfo.Size() > config.MaxFileSize {
+			logger.Warn("Skipping file %s because it is too large: %d bytes, limit is %d", filePath, realInfo.Size(), config.MaxFileSize)
+			warnings = append(warnings, fmt.Sprintf("%s: file too large (%d bytes, limit %d)", filePath, realInfo.Size(), config.MaxFileSize))
 			continue
 		}
 
 		content, err := os.ReadFile(fullPath)
 		if err != nil {
 			logger.Error("Failed to read file %s: %v", filePath, err)
-			warnings = append(warnings, fmt.Sprintf("%s: %v", filePath, err))
+			warnings = append(warnings, fmt.Sprintf("%s: could not read file", filePath))
 			continue
 		}
 
@@ -306,138 +262,56 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 	return uploads, warnings, nil
 }
 
-// createCacheFromFiles creates a cache from the provided files and returns the cache ID and file info
-func (s *GeminiServer) createCacheFromFiles(ctx context.Context, query, modelName string,
-	uploads []*FileUploadRequest, cacheTTL, systemPrompt string) (string, []*FileInfo, error) {
-
-	logger := getLoggerFromContext(ctx)
-
-	// Check if file store is properly initialized
-	if s.fileStore == nil {
-		return "", nil, fmt.Errorf("FileStore not properly initialized")
-	}
-
-	// Upload files and collect their info
-	var fileInfos []*FileInfo
-	var fileIDs []string
-	for _, uploadReq := range uploads {
-		fileInfo, err := s.fileStore.UploadFile(ctx, uploadReq)
-		if err != nil {
-			logger.Error("Failed to upload file %s for caching: %v", uploadReq.FileName, err)
-			// Fail fast on any upload failure — the caller will fall back to inline injection
-			return "", fileInfos, fmt.Errorf("failed to upload file %s for caching: %w", uploadReq.FileName, err)
-		}
-		logger.Info("Successfully uploaded file %s with ID: %s for caching", uploadReq.FileName, fileInfo.ID)
-		fileInfos = append(fileInfos, fileInfo)
-		fileIDs = append(fileIDs, fileInfo.ID)
-	}
-
-	// Create cache request
-	cacheReq := &CacheRequest{
-		Model:        modelName,
-		SystemPrompt: systemPrompt,
-		FileIDs:      fileIDs,
-		TTL:          cacheTTL,
-		Content:      query,
-	}
-
-	// Create the cache
-	cacheInfo, err := s.cacheStore.CreateCache(ctx, cacheReq)
-	if err != nil {
-		return "", fileInfos, fmt.Errorf("failed to create cache: %w", err)
-	}
-
-	return cacheInfo.ID, fileInfos, nil
-}
-
-// handleQueryWithCacheDirect handles a query with a previously created cache
-func (s *GeminiServer) handleQueryWithCacheDirect(ctx context.Context, cacheID, query string) (*mcp.CallToolResult, error) {
-	logger := getLoggerFromContext(ctx)
-
-	// Get the cache
-	cacheInfo, err := s.cacheStore.GetCache(ctx, cacheID)
-	if err != nil {
-		logger.Error("Failed to get cache with ID %s: %v", cacheID, err)
-		return createErrorResult(fmt.Sprintf("Failed to get cache: %v", err)), nil
-	}
-
-	// Use the cached content for the query
-	contents := []*genai.Content{
-		genai.NewContentFromText(query, genai.RoleUser),
-	}
-
-	// Create the configuration
-	config := &genai.GenerateContentConfig{
-		CachedContent: cacheInfo.Name,
-	}
-
-	// Make the request to the API
-	response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
-		return s.client.Models.GenerateContent(ctx, cacheInfo.Model, contents, config)
-	})
-	if err != nil {
-		logger.Error("Failed to generate content with cached content: %v", err)
-		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
-	}
-
-	checkModelStatus(ctx, response, cacheInfo.Model)
-	return convertGenaiResponseToMCPResult(response), nil
-}
-
-// processWithFiles handles a Gemini API request with file attachments, reusing existing uploads if available
+// processWithFiles handles a Gemini API request with file attachments.
+// Files are placed BEFORE the query to maximize implicit caching — Gemini caches
+// the shared prefix of repeated requests, so stable file content at the front
+// gets cached automatically across calls.
 func (s *GeminiServer) processWithFiles(ctx context.Context, query string, uploads []*FileUploadRequest,
-	uploadedFiles []*FileInfo, modelName string, config *genai.GenerateContentConfig, cacheErr error) (*mcp.CallToolResult, error) {
+	modelName string, config *genai.GenerateContentConfig) (*mcp.CallToolResult, error) {
 
 	logger := getLoggerFromContext(ctx)
 
-	// Build all parts for a single user Content: query text first, then file parts.
-	// Files must be in the same Content as the query — separate Content objects with the
+	// Build parts: files first (cacheable prefix), then query last (variable suffix).
+	// All parts must be in a single Content object — separate Content objects with the
 	// same role are treated as distinct conversation turns and file context is dropped.
-	parts := []*genai.Part{genai.NewPartFromText(query)}
+	var parts []*genai.Part
 
-	// Use pre-uploaded file URIs only when cache creation succeeded (cacheErr == nil).
-	// When cache failed, the uploaded URIs may be stale or inaccessible — always
-	// fall through to fresh inline injection from uploads instead.
-	if len(uploadedFiles) > 0 && cacheErr == nil {
-		logger.Info("Reusing %d pre-uploaded files (cache succeeded)", len(uploadedFiles))
-		for _, fileInfo := range uploadedFiles {
-			parts = append(parts, genai.NewPartFromURI(fileInfo.URI, fileInfo.MimeType))
+	logger.Info("Processing %d file(s) for inline injection", len(uploads))
+	for _, upload := range uploads {
+		// Inject text files directly as inline content — avoids Files API upload latency,
+		// URI propagation delays, and silent empty-URI failures. Text content is well
+		// within Gemini's 1M token context window and doesn't need Files API storage.
+		if isTextMimeType(upload.MimeType) {
+			logger.Info("Injecting %s (%d bytes) as inline text", upload.FileName, len(upload.Content))
+			parts = append(parts, genai.NewPartFromText(fmt.Sprintf("--- File: %s ---\n%s", upload.FileName, string(upload.Content))))
+			continue
 		}
-	} else if len(uploads) > 0 {
-		logger.Info("Processing %d file(s) for inline injection", len(uploads))
-		for _, upload := range uploads {
-			// Inject text files directly as inline content — avoids Files API upload latency,
-			// URI propagation delays, and silent empty-URI failures. Text content is well
-			// within Gemini's 1M token context window and doesn't need Files API storage.
-			if isTextMimeType(upload.MimeType) {
-				logger.Info("Injecting %s (%d bytes) as inline text", upload.FileName, len(upload.Content))
-				parts = append(parts, genai.NewPartFromText(fmt.Sprintf("--- File: %s ---\n%s", upload.FileName, string(upload.Content))))
-				continue
-			}
 
-			// For binary/media files, use the Files API upload path
-			logger.Info("Uploading binary file %s (%s) via Files API", upload.FileName, upload.MimeType)
-			uploadConfig := &genai.UploadFileConfig{
-				MIMEType:    upload.MimeType,
-				DisplayName: upload.FileName,
-			}
-			file, err := withRetry(ctx, s.config, logger, "gemini.files.upload", func(ctx context.Context) (*genai.File, error) {
-				return s.client.Files.Upload(ctx, bytes.NewReader(upload.Content), uploadConfig)
-			})
-			if err != nil || file.URI == "" {
-				if err != nil {
-					logger.Error("Failed to upload file %s: %v - skipping binary file", upload.FileName, err)
-				} else {
-					logger.Error("File %s uploaded but URI is empty - skipping binary file", upload.FileName)
-				}
-				parts = append(parts, genai.NewPartFromText(fmt.Sprintf(
-					"--- File: %s ---\n[Error: This binary file (%s) could not be uploaded and cannot be displayed inline.]",
-					upload.FileName, upload.MimeType)))
-				continue
-			}
-			parts = append(parts, genai.NewPartFromURI(file.URI, upload.MimeType))
+		// For binary/media files, use the Files API upload path
+		logger.Info("Uploading binary file %s (%s) via Files API", upload.FileName, upload.MimeType)
+		uploadConfig := &genai.UploadFileConfig{
+			MIMEType:    upload.MimeType,
+			DisplayName: upload.FileName,
 		}
+		file, err := withRetry(ctx, s.config, logger, "gemini.files.upload", func(ctx context.Context) (*genai.File, error) {
+			return s.client.Files.Upload(ctx, bytes.NewReader(upload.Content), uploadConfig)
+		})
+		if err != nil || file.URI == "" {
+			if err != nil {
+				logger.Error("Failed to upload file %s: %v - skipping binary file", upload.FileName, err)
+			} else {
+				logger.Error("File %s uploaded but URI is empty - skipping binary file", upload.FileName)
+			}
+			parts = append(parts, genai.NewPartFromText(fmt.Sprintf(
+				"--- File: %s ---\n[Error: This binary file (%s) could not be uploaded and cannot be displayed inline.]",
+				upload.FileName, upload.MimeType)))
+			continue
+		}
+		parts = append(parts, genai.NewPartFromURI(file.URI, upload.MimeType))
 	}
+
+	// Query goes last — this is the variable part that changes between requests
+	parts = append(parts, genai.NewPartFromText(query))
 
 	contents := []*genai.Content{
 		genai.NewContentFromParts(parts, genai.RoleUser),
@@ -449,9 +323,6 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, uploa
 	})
 	if err != nil {
 		logger.Error("Gemini API error: %v", err)
-		if cacheErr != nil {
-			return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
-		}
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 
@@ -461,7 +332,7 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, uploa
 
 // processWithoutFiles handles a Gemini API request without file attachments
 func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
-	modelName string, config *genai.GenerateContentConfig, cacheErr error) (*mcp.CallToolResult, error) {
+	modelName string, config *genai.GenerateContentConfig) (*mcp.CallToolResult, error) {
 
 	logger := getLoggerFromContext(ctx)
 
@@ -476,9 +347,6 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
 	})
 	if err != nil {
 		logger.Error("Gemini API error: %v", err)
-		if cacheErr != nil {
-			return createErrorResult(fmt.Sprintf("Error from Gemini API: %v\nCache error: %v", err, cacheErr)), nil
-		}
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 

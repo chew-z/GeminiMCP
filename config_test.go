@@ -59,21 +59,18 @@ func TestNewConfig(t *testing.T) {
 				assert.Equal(t, defaultGeminiModel, cfg.GeminiModel)
 				assert.Equal(t, 90*time.Second, cfg.HTTPTimeout)
 				assert.Equal(t, 2, cfg.MaxRetries)
-				assert.True(t, cfg.EnableCaching)
 				assert.Equal(t, defaultThinkingLevel, cfg.ThinkingLevel)
 			},
 		},
 		{
 			name: "custom values override defaults",
 			env: map[string]string{
-				"GEMINI_API_KEY":           "custom-key",
-				"GEMINI_MODEL":             "gemini-1.5-pro",
-				"GEMINI_TIMEOUT":           "120s",
-				"GEMINI_MAX_RETRIES":       "5",
-				"GEMINI_INITIAL_BACKOFF":   "2s",
-				"GEMINI_MAX_BACKOFF":       "20s",
-				"GEMINI_ENABLE_CACHING":    "false",
-				"GEMINI_DEFAULT_CACHE_TTL": "1h",
+				"GEMINI_API_KEY":         "custom-key",
+				"GEMINI_MODEL":           "gemini-1.5-pro",
+				"GEMINI_TIMEOUT":         "120s",
+				"GEMINI_MAX_RETRIES":     "5",
+				"GEMINI_INITIAL_BACKOFF": "2s",
+				"GEMINI_MAX_BACKOFF":     "20s",
 			},
 			check: func(t *testing.T, cfg *Config) {
 				assert.Equal(t, "custom-key", cfg.GeminiAPIKey)
@@ -82,8 +79,6 @@ func TestNewConfig(t *testing.T) {
 				assert.Equal(t, 5, cfg.MaxRetries)
 				assert.Equal(t, 2*time.Second, cfg.InitialBackoff)
 				assert.Equal(t, 20*time.Second, cfg.MaxBackoff)
-				assert.False(t, cfg.EnableCaching)
-				assert.Equal(t, 1*time.Hour, cfg.DefaultCacheTTL)
 			},
 		},
 		{

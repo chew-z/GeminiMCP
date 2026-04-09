@@ -27,14 +27,8 @@ func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error)
 		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 	}
 
-	// Create the file and cache stores
-	fileStore := NewFileStore(client, config)
-	cacheStore := NewCacheStore(client, config, fileStore)
-
 	return &GeminiServer{
-		config:     config,
-		client:     client,
-		fileStore:  fileStore,
-		cacheStore: cacheStore,
+		config: config,
+		client: client,
 	}, nil
 }

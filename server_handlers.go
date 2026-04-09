@@ -54,11 +54,6 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 		humanReadableSize(config.MaxFileSize),
 		config.AllowedFileTypes)
 
-	// Log cache configuration if enabled
-	if config.EnableCaching {
-		logger.Info("Cache settings: default TTL %v", config.DefaultCacheTTL)
-	}
-
 	// Log thinking configuration if enabled
 	model := GetModelByID(config.GeminiModel)
 	if config.EnableThinking && model != nil && model.SupportsThinking {
@@ -97,10 +92,9 @@ func handleStartupError(ctx context.Context, err error) {
 
 	logger.Error("Initialization error: %v", err)
 
-	// Get config for EnableCaching status (if available)
+	// Get config if available
 	var config *Config
-	configValue := ctx.Value(configKey)
-	if configValue != nil {
+	if configValue := ctx.Value(configKey); configValue != nil {
 		if cfg, ok := configValue.(*Config); ok {
 			config = cfg
 		}

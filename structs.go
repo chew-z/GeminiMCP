@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -57,10 +56,8 @@ func NewPromptDefinition(name, description string, systemPrompt string) *PromptD
 
 // GeminiServer implements the ToolHandler interface for Gemini API interactions
 type GeminiServer struct {
-	config     *Config
-	client     *genai.Client
-	fileStore  *FileStore
-	cacheStore *CacheStore
+	config *Config
+	client *genai.Client
 }
 
 // SearchResponse is the JSON response format for the gemini_search tool
@@ -121,10 +118,6 @@ type Config struct {
 	MaxGitHubFiles    int    // Max number of files per call
 	MaxGitHubFileSize int64  // Max size per file in bytes
 
-	// Cache settings
-	EnableCaching   bool          // Enable/disable caching
-	DefaultCacheTTL time.Duration // Default TTL if not specified
-
 	// Thinking settings
 	EnableThinking      bool   // Enable/disable thinking mode for supported models
 	ThinkingLevel       string // Thinking level for gemini_ask: minimal, low, medium, high
@@ -144,42 +137,11 @@ type Config struct {
 	PromptDefaultCompliance string // Default compliance standards (OWASP, NIST, etc.)
 }
 
-// CacheRequest represents a request to create a cached context
-type CacheRequest struct {
-	Model        string   `json:"model"`
-	SystemPrompt string   `json:"system_prompt,omitempty"`
-	FileIDs      []string `json:"file_ids,omitempty"`
-	Content      string   `json:"content,omitempty"`
-	TTL          string   `json:"ttl,omitempty"` // Duration like "1h", "24h", etc.
-	DisplayName  string   `json:"display_name,omitempty"`
-}
-
-// CacheInfo represents information about a cached context
-type CacheInfo struct {
-	ID          string    `json:"id"`   // The unique ID (last part of the Name)
-	Name        string    `json:"name"` // The full resource name
-	DisplayName string    `json:"display_name"`
-	Model       string    `json:"model"`
-	CreatedAt   time.Time `json:"created_at"`
-	ExpiresAt   time.Time `json:"expires_at"`
-	FileIDs     []string  `json:"file_ids,omitempty"`
-}
-
-// CacheStore manages cache metadata
-type CacheStore struct {
-	client    *genai.Client
-	config    *Config
-	fileStore *FileStore
-	mu        sync.RWMutex
-	cacheInfo map[string]*CacheInfo // Map of ID -> CacheInfo
-}
-
 // ModelVersion represents an actual API-addressable Gemini model
 type ModelVersion struct {
-	ID              string `json:"id"`               // The version ID used by the API (e.g., "gemini-2.5-pro-exp-03-25")
-	Name            string `json:"name"`             // Human-readable name
-	SupportsCaching bool   `json:"supports_caching"` // Whether this version supports caching
-	IsPreferred     bool   `json:"is_preferred"`     // Whether this is the preferred version of the model family
+	ID          string `json:"id"`           // The version ID used by the API (e.g., "gemini-2.5-pro-exp-03-25")
+	Name        string `json:"name"`         // Human-readable name
+	IsPreferred bool   `json:"is_preferred"` // Whether this is the preferred version of the model family
 }
 
 // GeminiModelInfo represents a family of related models
@@ -190,7 +152,6 @@ type GeminiModelInfo struct {
 	SupportsThinking     bool           `json:"supports_thinking"`      // Whether this model family supports thinking mode
 	ContextWindowSize    int            `json:"context_window_size"`    // Maximum context window size in tokens
 	PreferredForThinking bool           `json:"preferred_for_thinking"` // Whether this family is preferred for thinking tasks
-	PreferredForCaching  bool           `json:"preferred_for_caching"`  // Whether this family is preferred for caching tasks
 	PreferredForSearch   bool           `json:"preferred_for_search"`   // Whether this family is preferred for search tasks
 	Versions             []ModelVersion `json:"versions"`               // Available versions of this model family
 }
@@ -203,26 +164,6 @@ type FileUploadRequest struct {
 	DisplayName string `json:"display_name,omitempty"`
 }
 
-// FileInfo represents information about a stored file
-type FileInfo struct {
-	ID          string    `json:"id"`           // The unique ID (last part of the Name)
-	Name        string    `json:"name"`         // The full resource name (e.g., "files/abc123")
-	URI         string    `json:"uri"`          // The URI to use in requests
-	DisplayName string    `json:"display_name"` // Human-readable name
-	MimeType    string    `json:"mime_type"`
-	Size        int64     `json:"size"`
-	UploadedAt  time.Time `json:"uploaded_at"`
-	ExpiresAt   time.Time `json:"expires_at"`
-}
-
-// FileStore manages file metadata
-type FileStore struct {
-	client   *genai.Client
-	config   *Config
-	mu       sync.RWMutex
-	fileInfo map[string]*FileInfo // Map of ID -> FileInfo
-}
-
 // GeminiServer implements the ToolHandler interface to provide research capabilities
 // through Google's Gemini API.
 // Defined in gemini.go
@@ -231,7 +172,7 @@ type FileStore struct {
 // for all calls. Used when the Gemini server is in degraded mode due to initialization errors.
 type ErrorGeminiServer struct {
 	errorMessage string
-	config       *Config // Added to check EnableCaching
+	config       *Config
 }
 
 // handleErrorResponse is a handler function that can be used with mark3labs/mcp-go's AddTool

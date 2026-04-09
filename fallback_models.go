@@ -13,10 +13,9 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			SupportsThinking:     true,
 			ContextWindowSize:    1048576,
 			PreferredForThinking: true,
-			PreferredForCaching:  true,
 			PreferredForSearch:   false,
 			Versions: []ModelVersion{
-				{ID: "gemini-3.1-pro-preview", SupportsCaching: true, IsPreferred: true},
+				{ID: "gemini-3.1-pro-preview", IsPreferred: true},
 			},
 		},
 
@@ -28,11 +27,10 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			SupportsThinking:     true,
 			ContextWindowSize:    1048576,
 			PreferredForThinking: false,
-			PreferredForCaching:  true,
 			PreferredForSearch:   false,
 			Versions: []ModelVersion{
-				{ID: "gemini-3-flash-preview", SupportsCaching: true, IsPreferred: true},
-				{ID: "gemini-flash-latest", SupportsCaching: true},
+				{ID: "gemini-3-flash-preview", IsPreferred: true},
+				{ID: "gemini-flash-latest"},
 			},
 		},
 
@@ -44,11 +42,10 @@ func fallbackGeminiModels() []GeminiModelInfo {
 			SupportsThinking:     true,
 			ContextWindowSize:    1048576,
 			PreferredForThinking: false,
-			PreferredForCaching:  true,
 			PreferredForSearch:   true,
 			Versions: []ModelVersion{
-				{ID: "gemini-3.1-flash-lite-preview", SupportsCaching: true, IsPreferred: true},
-				{ID: "gemini-flash-lite-latest", SupportsCaching: true},
+				{ID: "gemini-3.1-flash-lite-preview", IsPreferred: true},
+				{ID: "gemini-flash-lite-latest"},
 			},
 		},
 	}

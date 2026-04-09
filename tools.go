@@ -19,8 +19,6 @@ var GeminiAskTool = mcp.NewTool(
 		"An array of local file paths. This should only be used when specifically instructed, "+
 			"as it's only supported in 'stdio' transport mode.",
 	), mcp.WithStringItems()),
-	mcp.WithBoolean("use_cache", mcp.Description("Optional: Whether to try using a cache for this request (only works with compatible models)")),
-	mcp.WithString("cache_ttl", mcp.Description("Optional: TTL for cache if created (e.g., '10m', '1h'). Default is 10 minutes")),
 	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process")),
 	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (minimal, low, medium, high). Default is 'high'")),
 	mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),

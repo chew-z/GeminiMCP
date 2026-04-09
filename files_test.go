@@ -177,11 +177,8 @@ func TestFetchFromGitHub(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Override the githubBaseURL to point to our mock server
-	originalURL := githubBaseURL
-	githubBaseURL = server.URL
+	// Override the API base URL to point to our mock server
 	s.config.GitHubAPIBaseURL = server.URL
-	defer func() { githubBaseURL = originalURL }()
 
 	t.Run("happy path - fetch single file", func(t *testing.T) {
 		files, errs := fetchFromGitHub(ctx, s, "owner/repo", "", []string{"path/to/file.go"})

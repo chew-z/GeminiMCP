@@ -29,7 +29,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	writer.Write("- **Context Window**: 1M tokens\n")
 	writer.Write("- **Best for**: Complex reasoning, detailed analysis, comprehensive code review, advanced problem-solving\n")
 	writer.Write("- **Thinking Mode**: Yes (uses `thinking_level`: minimal, low, medium, high [default])\n")
-	writer.Write("- **Caching**: Yes (implicit and explicit via `use_cache`)\n")
+	writer.Write("- **Caching**: Automatic implicit caching (no configuration needed)\n")
 	writer.Write("- **Temperature**: Default 1.0\n\n")
 
 	// Gemini 3 Flash
@@ -40,7 +40,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	writer.Write("- **Context Window**: 1M tokens\n")
 	writer.Write("- **Best for**: General programming tasks, standard code review, balanced price-performance\n")
 	writer.Write("- **Thinking Mode**: Yes\n")
-	writer.Write("- **Caching**: Yes (implicit and explicit via `use_cache`)\n\n")
+	writer.Write("- **Caching**: Automatic implicit caching (no configuration needed)\n\n")
 
 	// Gemini 3.1 Flash Lite
 	writer.Write("## Gemini 3.1 Flash Lite\n")
@@ -50,7 +50,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	writer.Write("- **Context Window**: 1M tokens\n")
 	writer.Write("- **Best for**: Search queries, classification, data extraction, lightweight agentic tasks\n")
 	writer.Write("- **Thinking Mode**: Yes (minimal by default for speed/cost, can be increased)\n")
-	writer.Write("- **Caching**: Yes\n\n")
+	writer.Write("- **Caching**: Automatic implicit caching (no configuration needed)\n\n")
 
 	// Tool Usage Examples
 	writer.Write("## Tool Usage Examples\n\n")
@@ -67,7 +67,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	writer.Write("}\n")
 	writer.Write("```\n\n")
 
-	writer.Write("**Coding Problem with Files and Cache (Gemini 3 Pro):**\n")
+	writer.Write("**Coding Problem with Files (Gemini 3 Pro):**\n")
 	writer.Write("```json\n")
 	writer.Write("{\n")
 	writer.Write("  \"query\": \"Review this code for security vulnerabilities and performance issues\",\n")
@@ -75,8 +75,6 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	writer.Write("  \"github_files\": [\"gemini_ask_handler.go\", \"gemini_server.go\"],\n")
 	writer.Write("  \"github_repo\": \"chew-z/GeminiMCP\",\n")
 	writer.Write("  \"github_ref\": \"main\",\n")
-	writer.Write("  \"use_cache\": true,\n")
-	writer.Write("  \"cache_ttl\": \"30m\",\n")
 	writer.Write("  \"enable_thinking\": true,\n")
 	writer.Write("  \"thinking_level\": \"high\"\n")
 	writer.Write("}\n")
@@ -184,33 +182,11 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 	// Caching
 	writer.Write("## Caching (gemini_ask only)\n\n")
 	writer.Write("**Implicit Caching (Automatic):**\n")
-	writer.Write("- 75%% token discount for requests with common prefixes\n")
-	writer.Write("- Pro: 2048+ tokens minimum\n")
+	writer.Write("- ~90%% token discount for requests with common prefixes\n")
+	writer.Write("- Pro: 4096+ tokens minimum\n")
 	writer.Write("- Flash: 1024+ tokens minimum\n")
-	writer.Write("- Keep content at the beginning of requests the same, add variable content at the end\n\n")
-
-	writer.Write("**Explicit Caching (Manual):**\n")
-	writer.Write("- Available for Pro and Flash only\n")
-	writer.Write("- Use `use_cache: true` parameter\n")
-	writer.Write("- Custom TTL with `cache_ttl` (default: 10 minutes)\n\n")
-
-	// Caching JSON example using strings.Builder
-	{
-		var b strings.Builder
-		b.WriteString("```json\n")
-		b.WriteString("// Enable explicit caching\n")
-		b.WriteString("{\n")
-		b.WriteString("  \"query\": \"Analyze this codebase structure\",\n")
-		b.WriteString("  \"model\": \"gemini-3-flash-preview\",\n")
-		b.WriteString("  \"github_files\": [\".\"],\n")
-		b.WriteString("  \"github_repo\": \"chew-z/GeminiMCP\",\n")
-		b.WriteString("  \"github_ref\": \"main\",\n")
-		b.WriteString("  \"use_cache\": true,\n")
-		b.WriteString("  \"cache_ttl\": \"30m\"\n")
-		b.WriteString("}\n")
-		b.WriteString("```\n\n")
-		writer.Write("%s", b.String())
-	}
+	writer.Write("- Files are placed at the beginning of requests automatically to maximize cache hits\n")
+	writer.Write("- No configuration needed — savings are applied automatically\n\n")
 
 	// Thinking Mode
 	writer.Write("## Thinking Mode (both tools)\n\n")
@@ -257,7 +233,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		b.Grow(1000) // Pre-allocate reasonable size
 
 		// First JSON example
-		b.WriteString("```json\n// Comprehensive code review with thinking and caching (gemini_ask with Gemini 3 Pro)\n")
+		b.WriteString("```json\n// Comprehensive code review with thinking (gemini_ask with Gemini 3 Pro)\n")
 		b.WriteString("{\n")
 		b.WriteString("  \"query\": \"Perform a thorough security and performance review of this codebase\",\n")
 		b.WriteString("  \"model\": \"gemini-3.1-pro-preview\",\n")
@@ -269,9 +245,7 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 		b.WriteString("  \"github_repo\": \"chew-z/GeminiMCP\",\n")
 		b.WriteString("  \"github_ref\": \"main\",\n")
 		b.WriteString("  \"enable_thinking\": true,\n")
-		b.WriteString("  \"thinking_level\": \"high\",\n")
-		b.WriteString("  \"use_cache\": true,\n")
-		b.WriteString("  \"cache_ttl\": \"1h\"\n")
+		b.WriteString("  \"thinking_level\": \"high\"\n")
 		b.WriteString("}\n\n")
 
 		// Second JSON example

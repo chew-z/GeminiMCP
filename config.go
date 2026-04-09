@@ -48,10 +48,6 @@ If the search results don't contain enough information to fully answer the query
 	// Authentication defaults
 	defaultAuthEnabled = false // Authentication disabled by default
 
-	// Cache settings defaults
-	defaultEnableCaching   = true
-	defaultDefaultCacheTTL = 1 * time.Hour
-
 	// Thinking settings
 	defaultEnableThinking      = true
 	defaultThinkingLevel       = "high" // Default thinking level for gemini_ask
@@ -219,14 +215,6 @@ func NewConfig(logger Logger) (*Config, error) {
 		maxGitHubFileSize = defaultMaxGitHubFileSize
 	}
 
-	// Cache settings
-	enableCaching := parseEnvVarBool("GEMINI_ENABLE_CACHING", defaultEnableCaching, logger)
-	defaultCacheTTL := parseEnvVarDuration("GEMINI_DEFAULT_CACHE_TTL", defaultDefaultCacheTTL, logger)
-	if defaultCacheTTL <= 0 {
-		logger.Warnf("GEMINI_DEFAULT_CACHE_TTL must be positive. Using default: %s", defaultDefaultCacheTTL.String())
-		defaultCacheTTL = defaultDefaultCacheTTL
-	}
-
 	// Thinking settings
 	enableThinking := parseEnvVarBool("GEMINI_ENABLE_THINKING", defaultEnableThinking, logger)
 
@@ -379,9 +367,6 @@ func NewConfig(logger Logger) (*Config, error) {
 			MaxGitHubFiles:    maxGitHubFiles,
 			MaxGitHubFileSize: maxGitHubFileSize,
 
-			// Cache settings
-			EnableCaching:           enableCaching,
-			DefaultCacheTTL:         defaultCacheTTL,
 			EnableThinking:          enableThinking,
 			ThinkingLevel:           thinkingLevel,
 			SearchThinkingLevel:     searchThinkingLevel,
