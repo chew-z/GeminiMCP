@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -132,4 +133,91 @@ func TestValidateTimeRange(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid start_time format")
 	})
+}
+
+func TestBuildSearchResponse(t *testing.T) {
+	t.Run("builds valid search response JSON", func(t *testing.T) {
+		result, err := buildSearchResponse(
+			"answer text",
+			[]SourceInfo{{Title: "Source A", Type: "web"}},
+			[]string{"query a"},
+		)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		var payload SearchResponse
+		require.NoError(t, json.Unmarshal([]byte(toolResultText(t, result)), &payload))
+		assert.Equal(t, "answer text", payload.Answer)
+		assert.Equal(t, []SourceInfo{{Title: "Source A", Type: "web"}}, payload.Sources)
+		assert.Equal(t, []string{"query a"}, payload.SearchQueries)
+	})
+
+	t.Run("empty answer gets fallback message", func(t *testing.T) {
+		result, err := buildSearchResponse("", nil, nil)
+		require.NoError(t, err)
+
+		var payload SearchResponse
+		require.NoError(t, json.Unmarshal([]byte(toolResultText(t, result)), &payload))
+		assert.Contains(t, payload.Answer, "returned an empty response")
+	})
+}
+
+func TestProcessSearchResponse(t *testing.T) {
+	t.Run("extracts answer, deduplicates sources, and captures search queries", func(t *testing.T) {
+		resp := &genai.GenerateContentResponse{
+			Candidates: []*genai.Candidate{
+				{
+					Content: genai.NewContentFromText("grounded answer", genai.RoleModel),
+					GroundingMetadata: &genai.GroundingMetadata{
+						WebSearchQueries: []string{"go release notes"},
+						GroundingChunks: []*genai.GroundingChunk{
+							{Web: &genai.GroundingChunkWeb{Title: "Go Blog", URI: "https://go.dev/blog"}},
+							{Web: &genai.GroundingChunkWeb{Title: "Go Blog duplicate", URI: "https://go.dev/blog"}},
+							{RetrievedContext: &genai.GroundingChunkRetrievedContext{Title: "Internal Docs", URI: "https://docs.example/internal"}},
+						},
+					},
+				},
+			},
+		}
+
+		var sources []SourceInfo
+		var queries []string
+		seenURLs := map[string]bool{}
+
+		text := processSearchResponse(resp, &sources, &queries, seenURLs)
+
+		assert.Equal(t, "grounded answer", text)
+		assert.Equal(t, []string{"go release notes"}, queries)
+		assert.Equal(t, []SourceInfo{
+			{Title: "Go Blog", Type: "web"},
+			{Title: "Internal Docs", Type: "retrieved_context"},
+		}, sources)
+	})
+
+	t.Run("does not overwrite existing search queries", func(t *testing.T) {
+		resp := &genai.GenerateContentResponse{
+			Candidates: []*genai.Candidate{
+				{
+					Content: genai.NewContentFromText("answer", genai.RoleModel),
+					GroundingMetadata: &genai.GroundingMetadata{
+						WebSearchQueries: []string{"new query"},
+					},
+				},
+			},
+		}
+
+		var sources []SourceInfo
+		queries := []string{"existing query"}
+		seenURLs := map[string]bool{}
+
+		_ = processSearchResponse(resp, &sources, &queries, seenURLs)
+		assert.Equal(t, []string{"existing query"}, queries)
+	})
+}
+
+func TestSafeWriter(t *testing.T) {
+	writer := NewSafeWriter(NewLogger(LevelError))
+	writer.Write("hello %s", "world")
+	assert.False(t, writer.Failed())
+	assert.Equal(t, "hello world", writer.String())
 }

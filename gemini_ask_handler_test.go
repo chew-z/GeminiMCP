@@ -391,6 +391,96 @@ func TestGeminiAskHandlerLocalWarningTruncationInOutboundQuery(t *testing.T) {
 	assert.NotContains(t, querySent, "missing-12.txt: file not found or inaccessible")
 }
 
+func TestGeminiAskHandlerWithoutFilesUsesProcessWithoutFiles(t *testing.T) {
+	seedModelStateForTest(t, testModelCatalog())
+	ctx := context.Background()
+
+	requestPathCh := make(chan string, 1)
+	requestBodyCh := make(chan []byte, 1)
+	genaiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+
+		select {
+		case requestPathCh <- r.URL.String():
+		default:
+		}
+		select {
+		case requestBodyCh <- body:
+		default:
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"no-file ok"}]}}]}`))
+	}))
+	defer genaiServer.Close()
+
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey: "test-api-key",
+		HTTPOptions: genai.HTTPOptions{
+			BaseURL: genaiServer.URL,
+		},
+		HTTPClient: genaiServer.Client(),
+	})
+	require.NoError(t, err)
+
+	s := &GeminiServer{
+		config: &Config{
+			GeminiModel:        "gemini-pro",
+			GeminiSystemPrompt: "system prompt",
+			GeminiTemperature:  0.3,
+			EnableThinking:     true,
+			ThinkingLevel:      "high",
+			ServiceTier:        "standard",
+			MaxRetries:         0,
+			HTTPTimeout:        100 * time.Millisecond,
+		},
+		client: client,
+	}
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "gemini_ask",
+			Arguments: map[string]interface{}{
+				"query": "answer this directly",
+			},
+		},
+	}
+
+	result, err := s.GeminiAskHandler(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.IsError, toolResultText(t, result))
+	assert.Contains(t, toolResultText(t, result), "no-file ok")
+
+	var requestPath string
+	select {
+	case requestPath = <-requestPathCh:
+	default:
+		t.Fatal("expected outbound GenerateContent request path to be captured")
+	}
+	assert.True(t, strings.Contains(requestPath, ":generateContent"), "request path must target generateContent endpoint: %s", requestPath)
+
+	var requestBody []byte
+	select {
+	case requestBody = <-requestBodyCh:
+	default:
+		t.Fatal("expected outbound GenerateContent request body to be captured")
+	}
+
+	var payload struct {
+		Contents []struct {
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"contents"`
+	}
+	require.NoError(t, json.Unmarshal(requestBody, &payload))
+	require.NotEmpty(t, payload.Contents)
+	require.Len(t, payload.Contents[0].Parts, 1)
+	assert.Equal(t, "answer this directly", payload.Contents[0].Parts[0].Text)
+}
+
 func TestGatherGitHubFiles(t *testing.T) {
 	logger := NewLogger(LevelDebug)
 	ctx := context.WithValue(context.Background(), loggerKey, logger)
