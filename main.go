@@ -111,12 +111,26 @@ func main() {
 
 	// Resolve default model names against the now-populated catalog.
 	// Tier-level defaults like "gemini-pro" get mapped to actual model IDs.
-	config.GeminiModel = resolveAndValidateModel(ctx, config.GeminiModel)
-	config.GeminiSearchModel = resolveAndValidateModel(ctx, config.GeminiSearchModel)
+	var resolveErr error
+	config.GeminiModel, resolveErr = resolveAndValidateModel(ctx, config.GeminiModel)
+	if resolveErr != nil {
+		handleStartupError(ctx, resolveErr)
+		return
+	}
+	config.GeminiSearchModel, resolveErr = resolveAndValidateModel(ctx, config.GeminiSearchModel)
+	if resolveErr != nil {
+		handleStartupError(ctx, resolveErr)
+		return
+	}
 
 	// Override model AFTER catalog is populated so ValidateModelID works correctly
 	if *geminiModelFlag != "" {
-		validatedID, redirected := ValidateModelID(*geminiModelFlag)
+		validatedID, redirected, flagErr := ValidateModelID(*geminiModelFlag)
+		if flagErr != nil {
+			logger.Error("Invalid --gemini-model: %v", flagErr)
+			handleStartupError(ctx, flagErr)
+			return
+		}
 		if redirected {
 			logger.Warn("Custom model '%s' redirected to '%s'", *geminiModelFlag, validatedID)
 		} else {

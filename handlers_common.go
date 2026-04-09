@@ -102,27 +102,26 @@ func serviceTierFromString(tier string) genai.ServiceTier {
 }
 
 // resolveAndValidateModel resolves aliases and validates the model ID.
-// Returns the resolved model name. Never errors — unknown models are quietly
-// redirected to the best available replacement in the same tier.
-func resolveAndValidateModel(ctx context.Context, modelName string) string {
+// Returns an error for non-Gemini model names; old Gemini model names are
+// redirected to the current best model in the same tier.
+func resolveAndValidateModel(ctx context.Context, modelName string) (string, error) {
 	logger := getLoggerFromContext(ctx)
 
-	// Resolve first so aliases (e.g. "gemini-pro-latest") are translated
-	// before validation rejects them as unknown.
 	resolvedModelID := ResolveModelID(modelName)
 	if resolvedModelID != modelName {
 		logger.Info("Resolved model ID from '%s' to '%s'", modelName, resolvedModelID)
 		modelName = resolvedModelID
 	}
 
-	// Validate the resolved model — redirects unknown models instead of erroring
-	validatedID, redirected := ValidateModelID(modelName)
+	validatedID, redirected, err := ValidateModelID(modelName)
+	if err != nil {
+		return "", err
+	}
 	if redirected {
-		logger.Warn("Unknown model '%s' quietly redirected to '%s'", modelName, validatedID)
+		logger.Warn("Unknown Gemini model '%s' redirected to '%s'", modelName, validatedID)
 		modelName = validatedID
 	}
-
-	return modelName
+	return modelName, nil
 }
 
 // configureThinking sets up thinking configuration on a GenerateContentConfig
@@ -165,7 +164,10 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 	// Extract model parameter - use defaultModel if not specified
 	modelName := extractArgumentString(req, "model", defaultModel)
 
-	modelName = resolveAndValidateModel(ctx, modelName)
+	modelName, err := resolveAndValidateModel(ctx, modelName)
+	if err != nil {
+		return nil, "", err
+	}
 
 	// Extract system prompt
 	systemPrompt := config.GeminiSystemPrompt

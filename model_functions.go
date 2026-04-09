@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -102,8 +103,8 @@ func ResolveModelID(modelID string) string {
 }
 
 // bestModelForTier returns the FamilyID of the best available model in the same
-// tier as the given model name. Returns the original name unchanged if no match
-// is found, letting the Gemini API decide what to do with it.
+// tier as the given model name. Returns "" if the model name is not a
+// recognizable Gemini model — callers should treat this as a rejection signal.
 func bestModelForTier(modelName string) string {
 	tier, ok := classifyModel(modelName)
 	if ok {
@@ -113,7 +114,7 @@ func bestModelForTier(modelName string) string {
 			}
 		}
 	}
-	return modelName // no match found, pass through unchanged
+	return "" // unclassifiable or catalog empty — signal rejection
 }
 
 // addDynamicAlias registers a runtime alias so future requests for
@@ -124,15 +125,17 @@ func addDynamicAlias(deprecatedID, replacementID string) {
 	modelAliases[deprecatedID] = replacementID
 }
 
-// ValidateModelID checks if a model ID is in the list of available models.
-// If unknown, it returns the best available replacement (quiet redirect).
-// The returned string is the validated (or replaced) model ID.
-// The boolean indicates whether a redirect occurred.
-func ValidateModelID(modelID string) (string, bool) {
+// ValidateModelID checks if a model ID is known. Returns:
+//   - (modelID, false, nil)        — exact catalog match
+//   - (redirectedID, true, nil)    — unknown Gemini model, redirected to same tier
+//   - ("", false, error)           — non-Gemini model, rejected
+func ValidateModelID(modelID string) (string, bool, error) {
 	if GetModelVersion(modelID) != nil || GetModelByID(modelID) != nil {
-		return modelID, false
+		return modelID, false, nil
 	}
-	// Unknown model — redirect to best in same tier
 	replacement := bestModelForTier(modelID)
-	return replacement, true
+	if replacement == "" {
+		return "", false, fmt.Errorf("unknown model %q: not a recognized Gemini model", modelID)
+	}
+	return replacement, true, nil
 }
