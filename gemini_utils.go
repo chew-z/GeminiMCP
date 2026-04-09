@@ -23,25 +23,94 @@ func getLoggerFromContext(ctx context.Context) Logger {
 // This function has been removed after refactoring to use formatMCPResponse and direct MCP types
 
 var mimeTypes = map[string]string{
-	".txt":  "text/plain",
-	".html": "text/plain",
-	".htm":  "text/plain",
-	".css":  "text/plain",
-	".js":   "text/plain",
-	".json": "text/plain",
-	".xml":  "text/plain",
-	".csv":  "text/plain",
-	".sql":  "text/plain",
-	".php":  "text/plain",
-	".rb":   "text/plain",
-	".go":   "text/plain",
-	".py":   "text/plain",
-	".java": "text/plain",
-	".c":    "text/plain",
-	".cpp":  "text/plain",
-	".h":    "text/plain",
-	".hpp":  "text/plain",
-	".md":   "text/plain",
+	// Text / markup
+	".txt":   "text/plain",
+	".html":  "text/plain",
+	".htm":   "text/plain",
+	".css":   "text/plain",
+	".xml":   "text/plain",
+	".csv":   "text/plain",
+	".md":    "text/plain",
+	".json":  "text/plain",
+	".log":   "text/plain",
+	".diff":  "text/plain",
+	".patch": "text/plain",
+
+	// Shell
+	".sh":   "text/plain",
+	".bash": "text/plain",
+	".zsh":  "text/plain",
+	".fish": "text/plain",
+
+	// JavaScript / TypeScript
+	".js":  "text/plain",
+	".jsx": "text/plain",
+	".mjs": "text/plain",
+	".cjs": "text/plain",
+	".ts":  "text/plain",
+	".tsx": "text/plain",
+
+	// Systems languages
+	".go":    "text/plain",
+	".c":     "text/plain",
+	".cpp":   "text/plain",
+	".h":     "text/plain",
+	".hpp":   "text/plain",
+	".rs":    "text/plain",
+	".swift": "text/plain",
+
+	// JVM
+	".java":   "text/plain",
+	".kt":     "text/plain",
+	".kts":    "text/plain",
+	".scala":  "text/plain",
+	".gradle": "text/plain",
+
+	// Scripting
+	".py":  "text/plain",
+	".rb":  "text/plain",
+	".php": "text/plain",
+	".pl":  "text/plain",
+	".pm":  "text/plain",
+	".lua": "text/plain",
+	".r":   "text/plain",
+	".R":   "text/plain",
+
+	// Functional / other
+	".ex":   "text/plain",
+	".exs":  "text/plain",
+	".hs":   "text/plain",
+	".clj":  "text/plain",
+	".dart": "text/plain",
+
+	// Frontend frameworks
+	".vue":    "text/plain",
+	".svelte": "text/plain",
+
+	// SQL
+	".sql": "text/plain",
+
+	// Config
+	".yaml": "text/plain",
+	".yml":  "text/plain",
+	".toml": "text/plain",
+	".cfg":  "text/plain",
+	".ini":  "text/plain",
+	".env":  "text/plain",
+
+	// Infrastructure
+	".tf":  "text/plain",
+	".hcl": "text/plain",
+
+	// Schema / IDL
+	".proto":   "text/plain",
+	".graphql": "text/plain",
+	".gql":     "text/plain",
+
+	// Build
+	".cmake": "text/plain",
+
+	// Binary / media
 	".pdf":  "application/pdf",
 	".png":  "image/png",
 	".jpg":  "image/jpeg",
@@ -72,7 +141,12 @@ func getMimeTypeFromPath(path string) string {
 	// First, check for specific filenames that don't have extensions
 	// but should be treated as text.
 	switch filepath.Base(path) {
-	case "go.mod", "go.sum", "Makefile", "Dockerfile", ".gitignore":
+	case "go.mod", "go.sum",
+		"Makefile", "Dockerfile", "Rakefile", "Gemfile", "Brewfile",
+		"Procfile", "Vagrantfile", "Justfile", "Taskfile", "Caddyfile",
+		".gitignore", ".dockerignore", ".editorconfig",
+		".prettierrc", ".eslintrc", ".eslintignore", ".prettierignore",
+		"CMakeLists.txt", "OWNERS", "CODEOWNERS":
 		return "text/plain"
 	}
 

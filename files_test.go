@@ -98,7 +98,7 @@ func TestReadLocalFiles(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			files, err := readLocalFiles(ctx, tc.paths, tc.config)
+			files, _, err := readLocalFiles(ctx, tc.paths, tc.config)
 
 			if tc.expectError {
 				require.Error(t, err)

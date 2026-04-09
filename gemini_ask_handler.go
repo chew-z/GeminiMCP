@@ -12,6 +12,9 @@ import (
 	"google.golang.org/genai"
 )
 
+// maxReportedWarnings is the cap for file failure warnings surfaced to the model.
+const maxReportedWarnings = 10
+
 func (s *GeminiServer) parseAskRequest(ctx context.Context, req mcp.CallToolRequest) (string, *genai.GenerateContentConfig, string, error) {
 	// Extract and validate query parameter (required)
 	query, err := validateRequiredString(req, "query")
@@ -40,9 +43,21 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 
 	// --- File Handling Logic ---
 	logger.Info("Starting file handling logic")
-	uploads, errResult := s.gatherFileUploads(ctx, req)
+	uploads, warnings, errResult := s.gatherFileUploads(ctx, req)
 	if errResult != nil {
 		return errResult, nil
+	}
+
+	// Surface partial file failures to the model so it doesn't hallucinate about missing files
+	if len(warnings) > 0 {
+		reported := warnings
+		suffix := ""
+		if len(reported) > maxReportedWarnings {
+			suffix = fmt.Sprintf("\n- ... and %d other file(s)", len(reported)-maxReportedWarnings)
+			reported = reported[:maxReportedWarnings]
+		}
+		query += "\n\n[System Note: The following requested files could not be loaded:\n- " +
+			strings.Join(reported, "\n- ") + suffix + "]"
 	}
 
 	// Handle caching if enabled
@@ -68,7 +83,8 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 
 // gatherFileUploads handles the logic of selecting, validating, and fetching files
 // from either local paths or a GitHub repository.
-func (s *GeminiServer) gatherFileUploads(ctx context.Context, req mcp.CallToolRequest) ([]*FileUploadRequest, *mcp.CallToolResult) {
+// Returns uploads, warning messages for files that failed, and an optional error result.
+func (s *GeminiServer) gatherFileUploads(ctx context.Context, req mcp.CallToolRequest) ([]*FileUploadRequest, []string, *mcp.CallToolResult) {
 	logger := getLoggerFromContext(ctx)
 
 	filePaths := extractArgumentStringArray(req, "file_paths")
@@ -79,43 +95,47 @@ func (s *GeminiServer) gatherFileUploads(ctx context.Context, req mcp.CallToolRe
 	// Validation: Cannot use both file_paths and github_files
 	if len(filePaths) > 0 && len(githubFiles) > 0 {
 		logger.Error("Invalid request: both local and GitHub files specified")
-		return nil, createErrorResult("Cannot use both 'file_paths' and 'github_files' in the same request.")
+		return nil, nil, createErrorResult("Cannot use both 'file_paths' and 'github_files' in the same request.")
 	}
 
 	filesRequested := len(filePaths) > 0 || len(githubFiles) > 0
 
 	// Handle file sources
 	var uploads []*FileUploadRequest
+	var warnings []string
 	var errResult *mcp.CallToolResult
 	if len(githubFiles) > 0 {
-		uploads, errResult = s.gatherGitHubFiles(ctx, req, githubFiles)
+		uploads, warnings, errResult = s.gatherGitHubFiles(ctx, req, githubFiles)
 	} else if len(filePaths) > 0 {
-		uploads, errResult = s.gatherLocalFiles(ctx, filePaths)
+		uploads, warnings, errResult = s.gatherLocalFiles(ctx, filePaths)
 	}
 
 	if errResult != nil {
-		return nil, errResult
+		return nil, nil, errResult
 	}
 
 	// Guard: if files were explicitly requested but none were gathered,
 	// return an error instead of silently falling through to processWithoutFiles.
 	if filesRequested && len(uploads) == 0 {
 		logger.Error("Files were requested but none could be gathered")
-		return nil, createErrorResult("Failed to retrieve any of the requested files. Cannot proceed without file context.")
+		return nil, nil, createErrorResult("Failed to retrieve any of the requested files. Cannot proceed without file context.")
 	}
 
-	return uploads, nil
+	return uploads, warnings, nil
 }
 
 // gatherGitHubFiles fetches files from a GitHub repository.
-func (s *GeminiServer) gatherGitHubFiles(ctx context.Context, req mcp.CallToolRequest, githubFiles []string) ([]*FileUploadRequest, *mcp.CallToolResult) {
+// Returns uploads, warning messages for failed files, and an optional error result.
+func (s *GeminiServer) gatherGitHubFiles(
+	ctx context.Context, req mcp.CallToolRequest, githubFiles []string,
+) ([]*FileUploadRequest, []string, *mcp.CallToolResult) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Processing GitHub files request")
 
 	githubRepo := extractArgumentString(req, "github_repo", "")
 	if githubRepo == "" {
 		logger.Error("GitHub repository parameter missing")
-		return nil, createErrorResult("'github_repo' is required when using 'github_files'.")
+		return nil, nil, createErrorResult("'github_repo' is required when using 'github_files'.")
 	}
 
 	githubRef := extractArgumentString(req, "github_ref", "")
@@ -123,36 +143,39 @@ func (s *GeminiServer) gatherGitHubFiles(ctx context.Context, req mcp.CallToolRe
 	// Validate and fetch
 	if err := validateFilePathArray(githubFiles, true); err != nil {
 		logger.Error("GitHub file path validation failed: %v", err)
-		return nil, createErrorResult(err.Error())
+		return nil, nil, createErrorResult(err.Error())
 	}
 
 	fetchedUploads, fileErrs := fetchFromGitHub(ctx, s, githubRepo, githubRef, githubFiles)
+	var warnings []string
 	if len(fileErrs) > 0 {
 		for _, err := range fileErrs {
 			logger.Error("Error processing github file: %v", err)
+			warnings = append(warnings, err.Error())
 		}
 		if len(fetchedUploads) == 0 {
-			return nil, createErrorResult(fmt.Sprintf("Error processing github files: %v", fileErrs))
+			return nil, nil, createErrorResult(fmt.Sprintf("Error processing github files: %v", fileErrs))
 		}
 		// Partial failure: some files succeeded, some failed
 		logger.Warn("Partial GitHub fetch: %d/%d files succeeded, %d failed",
 			len(fetchedUploads), len(githubFiles), len(fileErrs))
 	}
-	return fetchedUploads, nil
+	return fetchedUploads, warnings, nil
 }
 
 // gatherLocalFiles fetches files from the local filesystem.
-func (s *GeminiServer) gatherLocalFiles(ctx context.Context, filePaths []string) ([]*FileUploadRequest, *mcp.CallToolResult) {
+// Returns uploads, warning messages for skipped files, and an optional error result.
+func (s *GeminiServer) gatherLocalFiles(ctx context.Context, filePaths []string) ([]*FileUploadRequest, []string, *mcp.CallToolResult) {
 	if isHTTPTransport(ctx) {
-		return nil, createErrorResult("'file_paths' is not supported in HTTP transport mode. Use 'github_files' instead.")
+		return nil, nil, createErrorResult("'file_paths' is not supported in HTTP transport mode. Use 'github_files' instead.")
 	}
 
-	localUploads, err := readLocalFiles(ctx, filePaths, s.config)
+	localUploads, warnings, err := readLocalFiles(ctx, filePaths, s.config)
 	if err != nil {
 		getLoggerFromContext(ctx).Error("Error processing local files: %v", err)
-		return nil, createErrorResult(fmt.Sprintf("Error processing local files: %v", err))
+		return nil, nil, createErrorResult(fmt.Sprintf("Error processing local files: %v", err))
 	}
-	return localUploads, nil
+	return localUploads, warnings, nil
 }
 
 // maybeCreateCache handles the logic for checking caching eligibility and creating a cache.
@@ -200,15 +223,17 @@ func (s *GeminiServer) maybeCreateCache(
 }
 
 // readLocalFiles reads files from the local filesystem and returns them as FileUploadRequest objects.
-func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]*FileUploadRequest, error) {
+// Returns uploads, warning messages for skipped files, and an error for fatal issues.
+func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]*FileUploadRequest, []string, error) {
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Reading files from local filesystem (source: 'file_paths')")
 
 	if config.FileReadBaseDir == "" {
-		return nil, fmt.Errorf("local file reading is disabled: no base directory configured")
+		return nil, nil, fmt.Errorf("local file reading is disabled: no base directory configured")
 	}
 
 	var uploads []*FileUploadRequest
+	var warnings []string
 
 	for _, filePath := range filePaths {
 		// Clean the path to resolve ".." etc. and prevent shenanigans.
@@ -216,7 +241,7 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 
 		// Prevent absolute paths and path traversal attempts.
 		if filepath.IsAbs(cleanedPath) || strings.HasPrefix(cleanedPath, "..") {
-			return nil, fmt.Errorf("invalid path: %s. Only relative paths within the allowed directory are permitted", filePath)
+			return nil, nil, fmt.Errorf("invalid path: %s. Only relative paths within the allowed directory are permitted", filePath)
 		}
 
 		fullPath := filepath.Join(config.FileReadBaseDir, cleanedPath)
@@ -225,11 +250,13 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 		fileInfo, err := os.Lstat(fullPath)
 		if err != nil {
 			logger.Error("Failed to stat file %s: %v", filePath, err)
+			warnings = append(warnings, fmt.Sprintf("%s: %v", filePath, err))
 			continue
 		}
 
 		if fileInfo.IsDir() {
 			logger.Warn("Skipping directory: %s", filePath)
+			warnings = append(warnings, fmt.Sprintf("%s: is a directory", filePath))
 			continue
 		}
 
@@ -237,26 +264,31 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 			linkDest, linkErr := os.Readlink(fullPath)
 			if linkErr != nil {
 				logger.Error("Failed to read symlink %s: %v", filePath, linkErr)
+				warnings = append(warnings, fmt.Sprintf("%s: failed to read symlink", filePath))
 				continue
 			}
 			if filepath.IsAbs(linkDest) || strings.HasPrefix(filepath.Clean(linkDest), "..") {
 				logger.Error("Skipping unsafe symlink: %s -> %s", filePath, linkDest)
+				warnings = append(warnings, fmt.Sprintf("%s: unsafe symlink", filePath))
 				continue
 			}
 		}
 
 		if !strings.HasPrefix(fullPath, config.FileReadBaseDir) {
-			return nil, fmt.Errorf("path traversal attempt detected: %s", filePath)
+			return nil, nil, fmt.Errorf("path traversal attempt detected: %s", filePath)
+		}
+
+		// Check file size before reading to prevent OOM on huge files
+		if fileInfo.Size() > config.MaxFileSize {
+			logger.Warn("Skipping file %s because it is too large: %d bytes, limit is %d", filePath, fileInfo.Size(), config.MaxFileSize)
+			warnings = append(warnings, fmt.Sprintf("%s: file too large (%d bytes, limit %d)", filePath, fileInfo.Size(), config.MaxFileSize))
+			continue
 		}
 
 		content, err := os.ReadFile(fullPath)
 		if err != nil {
 			logger.Error("Failed to read file %s: %v", filePath, err)
-			continue // Or return error immediately
-		}
-
-		if int64(len(content)) > config.MaxFileSize {
-			logger.Warn("Skipping file %s because it is too large: %d bytes, limit is %d", filePath, len(content), config.MaxFileSize)
+			warnings = append(warnings, fmt.Sprintf("%s: %v", filePath, err))
 			continue
 		}
 
@@ -271,7 +303,7 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 			DisplayName: fileName,
 		})
 	}
-	return uploads, nil
+	return uploads, warnings, nil
 }
 
 // createCacheFromFiles creates a cache from the provided files and returns the cache ID and file info
@@ -291,17 +323,13 @@ func (s *GeminiServer) createCacheFromFiles(ctx context.Context, query, modelNam
 	for _, uploadReq := range uploads {
 		fileInfo, err := s.fileStore.UploadFile(ctx, uploadReq)
 		if err != nil {
-			logger.Error("Failed to upload file %s: %v", uploadReq.FileName, err)
-			continue // Continue with other files
+			logger.Error("Failed to upload file %s for caching: %v", uploadReq.FileName, err)
+			// Fail fast on any upload failure — the caller will fall back to inline injection
+			return "", fileInfos, fmt.Errorf("failed to upload file %s for caching: %w", uploadReq.FileName, err)
 		}
 		logger.Info("Successfully uploaded file %s with ID: %s for caching", uploadReq.FileName, fileInfo.ID)
 		fileInfos = append(fileInfos, fileInfo)
 		fileIDs = append(fileIDs, fileInfo.ID)
-	}
-
-	// If no files were uploaded successfully, return error
-	if len(fileIDs) == 0 && len(uploads) > 0 {
-		return "", fileInfos, fmt.Errorf("failed to upload any files for caching")
 	}
 
 	// Create cache request
@@ -398,11 +426,13 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, uploa
 			})
 			if err != nil || file.URI == "" {
 				if err != nil {
-					logger.Error("Failed to upload file %s: %v - falling back to inline content", upload.FileName, err)
+					logger.Error("Failed to upload file %s: %v - skipping binary file", upload.FileName, err)
 				} else {
-					logger.Error("File %s uploaded but URI is empty - falling back to inline content", upload.FileName)
+					logger.Error("File %s uploaded but URI is empty - skipping binary file", upload.FileName)
 				}
-				parts = append(parts, genai.NewPartFromText(fmt.Sprintf("--- File: %s ---\n%s", upload.FileName, string(upload.Content))))
+				parts = append(parts, genai.NewPartFromText(fmt.Sprintf(
+					"--- File: %s ---\n[Error: This binary file (%s) could not be uploaded and cannot be displayed inline.]",
+					upload.FileName, upload.MimeType)))
 				continue
 			}
 			parts = append(parts, genai.NewPartFromURI(file.URI, upload.MimeType))
