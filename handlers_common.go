@@ -11,10 +11,8 @@ import (
 	"google.golang.org/genai"
 )
 
-// checkModelStatus inspects the ModelStatus returned by the Gemini API.
-// If the model is DEPRECATED or RETIRED it logs a warning and registers a
-// dynamic alias so that subsequent requests automatically redirect to the
-// family's preferred (latest) version.
+// checkModelStatus inspects the ModelStatus returned by the Gemini API
+// and logs warnings for deprecated, retired, or legacy models.
 func checkModelStatus(ctx context.Context, resp *genai.GenerateContentResponse, modelName string) {
 	if resp == nil || resp.ModelStatus == nil {
 		return
@@ -29,15 +27,8 @@ func checkModelStatus(ctx context.Context, resp *genai.GenerateContentResponse, 
 		if !status.RetirementTime.IsZero() {
 			retireInfo = fmt.Sprintf(" (retirement: %s)", status.RetirementTime.Format(time.RFC3339))
 		}
-		logger.Warn("Model %s is %s%s: %s", modelName, status.ModelStage, retireInfo, status.Message)
-
-		// Try to find a replacement within the same family
-		if replacement := FindFamilyReplacement(modelName); replacement != "" {
-			AddDynamicAlias(modelName, replacement)
-			logger.Warn("Auto-redirecting future requests from %s to %s", modelName, replacement)
-		} else {
-			logger.Warn("No replacement found for deprecated model %s — please update your configuration", modelName)
-		}
+		logger.Warn("Model %s is %s%s: %s — models are refreshed at next restart",
+			modelName, status.ModelStage, retireInfo, status.Message)
 
 	case genai.ModelStageLegacy:
 		logger.Warn("Model %s has LEGACY status: %s — consider switching to a newer model", modelName, status.Message)

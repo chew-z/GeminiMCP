@@ -109,34 +109,18 @@ func ResolveModelID(modelID string) string {
 	return modelID
 }
 
-// ValidateModelID checks if a model ID is in the list of available models
-// Returns nil if valid, error otherwise
+// ValidateModelID checks if a model ID is in the list of available models.
+// Returns nil if valid, error if the model is unknown and should be rejected.
 func ValidateModelID(modelID string) error {
-	// First check if it's a known version ID or family ID
 	if GetModelVersion(modelID) != nil || GetModelByID(modelID) != nil {
 		return nil
 	}
 
-	// Special handling for preview models or other special cases
-	// Preview models often have date suffixes like "preview-04-17"
-	if strings.Contains(modelID, "preview") ||
-		strings.Contains(modelID, "exp") ||
-		strings.HasSuffix(modelID, "-dev") {
-		// Allow preview/experimental models even if not in our list
-		return nil
-	}
-
-	// Model is neither in our list nor a recognized preview format
-	// Return a warning, but don't block the model from being used
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Unknown model ID: %s. Known models are:", modelID))
+	fmt.Fprintf(&sb, "unknown model: %s. Available models:", modelID)
 	for _, model := range GetAvailableGeminiModels() {
-		sb.WriteString(fmt.Sprintf("\n- %s: %s", model.FamilyID, model.Name))
-		for _, version := range model.Versions {
-			sb.WriteString(fmt.Sprintf("\n  - %s", version.ID))
-		}
+		fmt.Fprintf(&sb, "\n- %s (%s)", model.FamilyID, model.Name)
 	}
-	sb.WriteString("\n\nHowever, we will attempt to use this model anyway. It may be a new or preview model.")
 
 	return fmt.Errorf("%s", sb.String())
 }
@@ -147,35 +131,4 @@ func AddDynamicAlias(deprecatedID, replacementID string) {
 	modelAliasesMu.Lock()
 	defer modelAliasesMu.Unlock()
 	modelAliases[deprecatedID] = replacementID
-}
-
-// FindFamilyReplacement looks for a non-deprecated replacement within the same
-// model family. Returns the preferred version's ID if it differs from modelID,
-// or an empty string when no suitable replacement is found.
-//
-// Note: With the current 1-version-per-family architecture (from dynamic API
-// fetching), this function is defensive — it won't find a replacement because
-// the deprecated model IS the only version. It remains as a safety net for
-// future multi-version families or manually registered aliases.
-func FindFamilyReplacement(modelID string) string {
-	model := GetModelByID(modelID)
-	if model == nil {
-		return ""
-	}
-
-	// Try the preferred version first
-	for _, v := range model.Versions {
-		if v.IsPreferred && v.ID != modelID {
-			return v.ID
-		}
-	}
-
-	// Fall back to any other version in the family
-	for _, v := range model.Versions {
-		if v.ID != modelID {
-			return v.ID
-		}
-	}
-
-	return ""
 }
