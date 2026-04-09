@@ -6,6 +6,12 @@ import (
 	"sync"
 )
 
+// modelStore holds the active model catalog, populated at startup from the API.
+var modelStore struct {
+	sync.RWMutex
+	models []GeminiModelInfo
+}
+
 // modelAliases maps deprecated or old model IDs silently to their current replacements.
 // Used by ResolveModelID so callers don't need to know about renamed preview models.
 // Protected by modelAliasesMu for concurrent read/write access.
@@ -20,9 +26,18 @@ var (
 	}
 )
 
-// GetAvailableGeminiModels returns the list of supported Gemini model families.
+// SetModels replaces the model catalog (called at startup after API fetch).
+func SetModels(models []GeminiModelInfo) {
+	modelStore.Lock()
+	modelStore.models = models
+	modelStore.Unlock()
+}
+
+// GetAvailableGeminiModels returns the active model catalog.
 func GetAvailableGeminiModels() []GeminiModelInfo {
-	return fallbackGeminiModels()
+	modelStore.RLock()
+	defer modelStore.RUnlock()
+	return modelStore.models
 }
 
 // GetModelByID returns model info for either a family ID or a version ID

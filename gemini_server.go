@@ -27,6 +27,11 @@ func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error)
 		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 	}
 
+	// Fetch available models from the API and populate the model store.
+	if err := FetchGeminiModels(ctx, client); err != nil {
+		return nil, fmt.Errorf("failed to fetch models from API: %w", err)
+	}
+
 	return &GeminiServer{
 		config: config,
 		client: client,

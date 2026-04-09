@@ -52,10 +52,6 @@ func main() {
 	ctx := context.WithValue(context.Background(), loggerKey, logger)
 	ctx = context.WithValue(ctx, configKey, config)
 
-	// Log available models
-	models := GetAvailableGeminiModels()
-	logger.Info("Configured %d Gemini model families", len(models))
-
 	// Override with command-line flags if provided
 	if *geminiModelFlag != "" {
 		// We'll use the model specified, even if it's not in our known list
