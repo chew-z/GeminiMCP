@@ -60,6 +60,13 @@ var mimeTypes = map[string]string{
 	".zip":  "application/zip",
 }
 
+// isTextMimeType returns true for MIME types whose content can be safely injected
+// as inline text rather than uploaded via the Files API.
+func isTextMimeType(mimeType string) bool {
+	return strings.HasPrefix(mimeType, "text/") ||
+		mimeType == "application/json"
+}
+
 // Helper function to get MIME type from file path
 func getMimeTypeFromPath(path string) string {
 	// First, check for specific filenames that don't have extensions

@@ -82,14 +82,29 @@ func (s *GeminiServer) gatherFileUploads(ctx context.Context, req mcp.CallToolRe
 		return nil, createErrorResult("Cannot use both 'file_paths' and 'github_files' in the same request.")
 	}
 
+	filesRequested := len(filePaths) > 0 || len(githubFiles) > 0
+
 	// Handle file sources
+	var uploads []*FileUploadRequest
+	var errResult *mcp.CallToolResult
 	if len(githubFiles) > 0 {
-		return s.gatherGitHubFiles(ctx, req, githubFiles)
+		uploads, errResult = s.gatherGitHubFiles(ctx, req, githubFiles)
 	} else if len(filePaths) > 0 {
-		return s.gatherLocalFiles(ctx, filePaths)
+		uploads, errResult = s.gatherLocalFiles(ctx, filePaths)
 	}
 
-	return nil, nil // No files requested
+	if errResult != nil {
+		return nil, errResult
+	}
+
+	// Guard: if files were explicitly requested but none were gathered,
+	// return an error instead of silently falling through to processWithoutFiles.
+	if filesRequested && len(uploads) == 0 {
+		logger.Error("Files were requested but none could be gathered")
+		return nil, createErrorResult("Failed to retrieve any of the requested files. Cannot proceed without file context.")
+	}
+
+	return uploads, nil
 }
 
 // gatherGitHubFiles fetches files from a GitHub repository.
@@ -119,6 +134,9 @@ func (s *GeminiServer) gatherGitHubFiles(ctx context.Context, req mcp.CallToolRe
 		if len(fetchedUploads) == 0 {
 			return nil, createErrorResult(fmt.Sprintf("Error processing github files: %v", fileErrs))
 		}
+		// Partial failure: some files succeeded, some failed
+		logger.Warn("Partial GitHub fetch: %d/%d files succeeded, %d failed",
+			len(fetchedUploads), len(githubFiles), len(fileErrs))
 	}
 	return fetchedUploads, nil
 }
@@ -349,27 +367,41 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, uploa
 	// same role are treated as distinct conversation turns and file context is dropped.
 	parts := []*genai.Part{genai.NewPartFromText(query)}
 
-	// Use pre-uploaded files if available
-	if len(uploadedFiles) > 0 {
-		logger.Info("Reusing %d pre-uploaded files", len(uploadedFiles))
+	// Use pre-uploaded file URIs only when cache creation succeeded (cacheErr == nil).
+	// When cache failed, the uploaded URIs may be stale or inaccessible — always
+	// fall through to fresh inline injection from uploads instead.
+	if len(uploadedFiles) > 0 && cacheErr == nil {
+		logger.Info("Reusing %d pre-uploaded files (cache succeeded)", len(uploadedFiles))
 		for _, fileInfo := range uploadedFiles {
 			parts = append(parts, genai.NewPartFromURI(fileInfo.URI, fileInfo.MimeType))
 		}
 	} else if len(uploads) > 0 {
-		logger.Info("No pre-uploaded files found, proceeding with manual upload")
-		// Process each file by uploading it now
+		logger.Info("Processing %d file(s) for inline injection", len(uploads))
 		for _, upload := range uploads {
-			logger.Info("Uploading file %s with mime type %s", upload.FileName, upload.MimeType)
+			// Inject text files directly as inline content — avoids Files API upload latency,
+			// URI propagation delays, and silent empty-URI failures. Text content is well
+			// within Gemini's 1M token context window and doesn't need Files API storage.
+			if isTextMimeType(upload.MimeType) {
+				logger.Info("Injecting %s (%d bytes) as inline text", upload.FileName, len(upload.Content))
+				parts = append(parts, genai.NewPartFromText(fmt.Sprintf("--- File: %s ---\n%s", upload.FileName, string(upload.Content))))
+				continue
+			}
+
+			// For binary/media files, use the Files API upload path
+			logger.Info("Uploading binary file %s (%s) via Files API", upload.FileName, upload.MimeType)
 			uploadConfig := &genai.UploadFileConfig{
 				MIMEType:    upload.MimeType,
 				DisplayName: upload.FileName,
 			}
-
 			file, err := withRetry(ctx, s.config, logger, "gemini.files.upload", func(ctx context.Context) (*genai.File, error) {
 				return s.client.Files.Upload(ctx, bytes.NewReader(upload.Content), uploadConfig)
 			})
-			if err != nil {
-				logger.Error("Failed to upload file %s: %v - falling back to inline content", upload.FileName, err)
+			if err != nil || file.URI == "" {
+				if err != nil {
+					logger.Error("Failed to upload file %s: %v - falling back to inline content", upload.FileName, err)
+				} else {
+					logger.Error("File %s uploaded but URI is empty - falling back to inline content", upload.FileName)
+				}
 				parts = append(parts, genai.NewPartFromText(fmt.Sprintf("--- File: %s ---\n%s", upload.FileName, string(upload.Content))))
 				continue
 			}

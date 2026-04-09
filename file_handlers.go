@@ -282,6 +282,10 @@ func fetchSingleFile(ctx context.Context, s *GeminiServer, client *http.Client, 
 			return nil, fmt.Errorf("file %s is too large (read %d bytes), limit is %d", filePath, len(content), s.config.MaxGitHubFileSize)
 		}
 
+		if len(content) == 0 {
+			logger.Warn("[%s] File fetched successfully but content is empty (0 bytes)", filePath)
+		}
+
 		totalTime := time.Since(startTime)
 		logger.Info("[%s] Successfully fetched file (%d bytes) in %v", filePath, len(content), totalTime)
 
