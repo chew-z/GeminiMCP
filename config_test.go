@@ -101,13 +101,11 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "custom file settings",
 			env: map[string]string{
-				"GEMINI_API_KEY":            "key",
-				"GEMINI_MAX_FILE_SIZE":      "1048576", // 1 MB
-				"GEMINI_ALLOWED_FILE_TYPES": "text/plain,application/pdf",
+				"GEMINI_API_KEY":       "key",
+				"GEMINI_MAX_FILE_SIZE": "1048576", // 1 MB
 			},
 			check: func(t *testing.T, cfg *Config) {
 				assert.Equal(t, int64(1048576), cfg.MaxFileSize)
-				assert.Equal(t, []string{"text/plain", "application/pdf"}, cfg.AllowedFileTypes)
 			},
 		},
 		{

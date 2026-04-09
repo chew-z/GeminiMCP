@@ -52,14 +52,9 @@ func main() {
 	ctx := context.WithValue(context.Background(), loggerKey, logger)
 	ctx = context.WithValue(ctx, configKey, config)
 
-	// Fetch available Gemini models first if API key is available
-	// This ensures we have the latest models before validation
-	if config.GeminiAPIKey != "" {
-		logger.Info("Attempting to fetch available Gemini models...")
-		FetchGeminiModels(ctx, config.GeminiAPIKey)
-	} else {
-		logger.Warn("No Gemini API key available, using fallback model list")
-	}
+	// Log available models
+	models := GetAvailableGeminiModels()
+	logger.Info("Configured %d Gemini model families", len(models))
 
 	// Override with command-line flags if provided
 	if *geminiModelFlag != "" {

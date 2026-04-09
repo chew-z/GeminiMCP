@@ -470,7 +470,6 @@ export GEMINI_MAX_BACKOFF=15s
 | `GEMINI_MAX_GITHUB_FILES`     | Max number of files per call         | `20`                     |
 | `GEMINI_MAX_GITHUB_FILE_SIZE` | Max size per file in bytes           | `1048576` (1MB)          |
 | `GEMINI_MAX_FILE_SIZE`        | Max upload size (bytes)              | `10485760` (10MB)        |
-| `GEMINI_ALLOWED_FILE_TYPES`   | Comma-separated MIME types           | [Common text/code types] |
 
 #### Optimization Variables
 

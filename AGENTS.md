@@ -2,10 +2,14 @@
 
 ## Project Structure & Module Organization
 - Root package: Go sources in `./` (entrypoint `main.go`).
-- Handlers and core: `server_handlers.go`, `direct_handlers.go`, `prompt_handlers.go`, `handlers_common.go`.
-- HTTP and auth: `http_server.go`, `gemini_server.go`, `auth.go`.
-- Config and utilities: `config.go`, `gemini_utils.go`, `cache.go`, `files.go`, `logger.go`.
-- Tests: `*_test.go` in root (e.g., `config_test.go`, `gemini_test.go`).
+- Handlers: `gemini_ask_handler.go`, `gemini_search_handler.go`, `gemini_models_handler.go`, `prompt_handlers.go`, `handlers_common.go`.
+- Server setup: `server_handlers.go`, `gemini_server.go`.
+- File handling: `file_handlers.go` (GitHub fetching), `gemini_ask_handler.go` (local file reading, inline injection).
+- Model management: `model_functions.go`, `fallback_models.go`, `fetch_models.go`, `completions.go`.
+- HTTP and auth: `http_server.go`, `auth.go`.
+- Config and utilities: `config.go`, `gemini_utils.go`, `logger.go`, `retry.go`, `context.go`.
+- Types: `structs.go` (Config, GeminiServer, ModelVersion, GeminiModelInfo, FileUploadRequest, etc.).
+- Tests: `*_test.go` in root (e.g., `config_test.go`, `files_test.go`, `gemini_ask_handler_test.go`).
 - Binaries: `bin/` (ignored in git; built locally).
 - CI and tooling: `.github/workflows/`, `.gemini/` (release helper), `.vscode/`, `.codex/`.
 

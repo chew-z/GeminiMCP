@@ -181,22 +181,6 @@ func NewConfig(logger Logger) (*Config, error) {
 
 	fileReadBaseDir := os.Getenv("GEMINI_FILE_READ_BASE_DIR")
 
-	var allowedFileTypes []string
-	if typesStr := os.Getenv("GEMINI_ALLOWED_FILE_TYPES"); typesStr != "" {
-		parts := strings.Split(typesStr, ",")
-		for _, p := range parts {
-			if trimmed := strings.TrimSpace(p); trimmed != "" {
-				allowedFileTypes = append(allowedFileTypes, trimmed)
-			}
-		}
-	}
-	if len(allowedFileTypes) == 0 {
-		allowedFileTypes = []string{
-			"text/plain", "text/javascript", "text/typescript",
-			"text/markdown", "text/html", "text/css",
-			"application/json", "text/yaml", "application/octet-stream",
-		}
-	}
 
 	// GitHub settings
 	githubToken := os.Getenv("GEMINI_GITHUB_TOKEN")
@@ -357,9 +341,8 @@ func NewConfig(logger Logger) (*Config, error) {
 			MaxRetries:               maxRetries,
 			InitialBackoff:           initialBackoff,
 			MaxBackoff:               maxBackoff,
-			MaxFileSize:              maxFileSize,
-			AllowedFileTypes:         allowedFileTypes,
-			FileReadBaseDir:          fileReadBaseDir,
+			MaxFileSize:     maxFileSize,
+			FileReadBaseDir: fileReadBaseDir,
 
 			// GitHub settings
 			GitHubToken:       githubToken,

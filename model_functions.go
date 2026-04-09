@@ -6,12 +6,6 @@ import (
 	"sync"
 )
 
-// modelStore handles storing and retrieving models
-var modelStore struct {
-	sync.RWMutex
-	models []GeminiModelInfo
-}
-
 // modelAliases maps deprecated or old model IDs silently to their current replacements.
 // Used by ResolveModelID so callers don't need to know about renamed preview models.
 // Protected by modelAliasesMu for concurrent read/write access.
@@ -26,18 +20,8 @@ var (
 	}
 )
 
-// GetAvailableGeminiModels returns a list of available Gemini models
+// GetAvailableGeminiModels returns the list of supported Gemini model families.
 func GetAvailableGeminiModels() []GeminiModelInfo {
-	// Get models with read lock
-	modelStore.RLock()
-	defer modelStore.RUnlock()
-
-	// Return cached model list if available
-	if len(modelStore.models) > 0 {
-		return modelStore.models
-	}
-
-	// Return fallback models if nothing has been fetched yet
 	return fallbackGeminiModels()
 }
 
