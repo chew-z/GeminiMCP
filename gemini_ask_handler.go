@@ -229,16 +229,17 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 			warnings = append(warnings, fmt.Sprintf("%s: failed to resolve symlink", filePath))
 			continue
 		}
-		if !strings.HasPrefix(resolvedPath, resolvedBase+string(filepath.Separator)) && resolvedPath != resolvedBase {
-			logger.Error("Skipping unsafe symlink: %s resolves to %s (outside %s)", filePath, resolvedPath, resolvedBase)
+		rel, relErr := filepath.Rel(resolvedBase, resolvedPath)
+		if relErr != nil || strings.HasPrefix(rel, "..") {
+			logger.Error("Skipping unsafe path: %s resolves to %s (outside %s)", filePath, resolvedPath, resolvedBase)
 			warnings = append(warnings, fmt.Sprintf("%s: unsafe symlink", filePath))
 			continue
 		}
 
 		// Check file size before reading to prevent OOM on huge files.
-		// Use os.Stat (follows symlinks) so we get the target's real size,
-		// not the symlink entry size from Lstat above.
-		realInfo, statErr := os.Stat(fullPath)
+		// Use resolvedPath (the fully-resolved target) for both stat and read
+		// to avoid TOCTOU races where a symlink is swapped after validation.
+		realInfo, statErr := os.Stat(resolvedPath)
 		if statErr != nil {
 			logger.Error("Failed to stat target of %s: %v", filePath, statErr)
 			warnings = append(warnings, fmt.Sprintf("%s: could not determine file size", filePath))
@@ -250,7 +251,7 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 			continue
 		}
 
-		content, err := os.ReadFile(fullPath)
+		content, err := os.ReadFile(resolvedPath)
 		if err != nil {
 			logger.Error("Failed to read file %s: %v", filePath, err)
 			warnings = append(warnings, fmt.Sprintf("%s: could not read file", filePath))
