@@ -398,4 +398,33 @@ func TestRunMainModelFlagValidation(t *testing.T) {
 		require.Len(t, calls.validateCalls, 1)
 		assert.True(t, calls.serveStdioCalled)
 	})
+
+	t.Run("applies non-model flag overrides and known model branch", func(t *testing.T) {
+		cfg := baseMainTestConfig()
+		cfg.AuthSecretKey = "secret-present"
+		calls := installMainHooksForTest(t, cfg)
+		validateModelIDFn = func(model string) (string, bool, error) {
+			calls.validateCalls = append(calls.validateCalls, model)
+			return "gemini-known", false, nil
+		}
+
+		code := runMain([]string{
+			"-gemini-system-prompt=override",
+			"-gemini-temperature=0.6",
+			"-enable-thinking=false",
+			"-service-tier=priority",
+			"-auth-enabled",
+			"-gemini-model=gemini-known",
+		})
+
+		assert.Equal(t, 0, code)
+		assert.Equal(t, "override", cfg.GeminiSystemPrompt)
+		assert.Equal(t, 0.6, cfg.GeminiTemperature)
+		assert.False(t, cfg.EnableThinking)
+		assert.Equal(t, "priority", cfg.ServiceTier)
+		assert.True(t, cfg.AuthEnabled)
+		assert.Equal(t, "gemini-known", cfg.GeminiModel)
+		require.Len(t, calls.validateCalls, 1)
+		assert.True(t, calls.serveStdioCalled)
+	})
 }
