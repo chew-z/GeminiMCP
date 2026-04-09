@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,25 +15,42 @@ import (
 func setupEnv(t *testing.T, env map[string]string) {
 	t.Helper()
 	originalEnv := make(map[string]string)
+	wasSetMap := make(map[string]bool)
 
 	for key, value := range env {
 		originalValue, wasSet := os.LookupEnv(key)
 		if wasSet {
 			originalEnv[key] = originalValue
-		} else {
-			originalEnv[key] = "" // Mark for unsetting
 		}
-		os.Setenv(key, value)
+		wasSetMap[key] = wasSet
+		require.NoError(t, os.Setenv(key, value))
 	}
 
 	t.Cleanup(func() {
 		for key := range env {
-			originalValue, wasSet := originalEnv[key]
-			if wasSet && originalValue != "" {
-				os.Setenv(key, originalValue)
+			if wasSetMap[key] {
+				require.NoError(t, os.Setenv(key, originalEnv[key]))
 			} else {
-				os.Unsetenv(key)
+				require.NoError(t, os.Unsetenv(key))
 			}
+		}
+	})
+}
+
+func withCleanEnv(t *testing.T) {
+	t.Helper()
+
+	original := append([]string(nil), os.Environ()...)
+	os.Clearenv()
+
+	t.Cleanup(func() {
+		os.Clearenv()
+		for _, kv := range original {
+			parts := strings.SplitN(kv, "=", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			require.NoError(t, os.Setenv(parts[0], parts[1]))
 		}
 	})
 }
@@ -118,12 +136,40 @@ func TestNewConfig(t *testing.T) {
 				assert.Equal(t, "low", cfg.ThinkingLevel)
 			},
 		},
+		{
+			name: "custom service tier",
+			env: map[string]string{
+				"GEMINI_API_KEY":      "key",
+				"GEMINI_SERVICE_TIER": "priority",
+			},
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, "priority", cfg.ServiceTier)
+			},
+		},
+		{
+			name: "invalid service tier falls back to default",
+			env: map[string]string{
+				"GEMINI_API_KEY":      "key",
+				"GEMINI_SERVICE_TIER": "invalid-tier",
+			},
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, defaultServiceTier, cfg.ServiceTier)
+			},
+		},
+		{
+			name: "auth enabled requires secret key",
+			env: map[string]string{
+				"GEMINI_API_KEY":      "key",
+				"GEMINI_AUTH_ENABLED": "true",
+			},
+			expectErr: true,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Use a clean environment for each test case
-			os.Clearenv()
+			// Use a clean environment for each test case and restore process env after it.
+			withCleanEnv(t)
 			setupEnv(t, tc.env)
 
 			config, err := NewConfig(logger)

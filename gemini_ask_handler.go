@@ -15,6 +15,22 @@ import (
 // maxReportedWarnings is the cap for file failure warnings surfaced to the model.
 const maxReportedWarnings = 10
 
+func appendFileWarningNote(query string, warnings []string) string {
+	if len(warnings) == 0 {
+		return query
+	}
+
+	reported := warnings
+	suffix := ""
+	if len(reported) > maxReportedWarnings {
+		suffix = fmt.Sprintf("\n- ... and %d other file(s)", len(reported)-maxReportedWarnings)
+		reported = reported[:maxReportedWarnings]
+	}
+
+	return query + "\n\n[System Note: The following requested files could not be loaded:\n- " +
+		strings.Join(reported, "\n- ") + suffix + "]"
+}
+
 func (s *GeminiServer) parseAskRequest(ctx context.Context, req mcp.CallToolRequest) (string, *genai.GenerateContentConfig, string, error) {
 	// Extract and validate query parameter (required)
 	query, err := validateRequiredString(req, "query")
@@ -49,16 +65,7 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 	}
 
 	// Surface partial file failures to the model so it doesn't hallucinate about missing files
-	if len(warnings) > 0 {
-		reported := warnings
-		suffix := ""
-		if len(reported) > maxReportedWarnings {
-			suffix = fmt.Sprintf("\n- ... and %d other file(s)", len(reported)-maxReportedWarnings)
-			reported = reported[:maxReportedWarnings]
-		}
-		query += "\n\n[System Note: The following requested files could not be loaded:\n- " +
-			strings.Join(reported, "\n- ") + suffix + "]"
-	}
+	query = appendFileWarningNote(query, warnings)
 
 	// Validate client and models before proceeding
 	if s.client == nil || s.client.Models == nil {

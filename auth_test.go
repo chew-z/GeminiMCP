@@ -114,7 +114,7 @@ func TestAuthMiddleware(t *testing.T) {
 		{
 			name:           "mixed case bearer",
 			authMiddleware: auth,
-			authHeader:     "Bearer " + validToken,
+			authHeader:     "bEaReR " + validToken,
 			expectAuth:     true,
 			expectErr:      "",
 			expectUserID:   "123",

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/genai"
 )
 
 func TestClassifyModel(t *testing.T) {
@@ -84,5 +85,43 @@ func TestParseModelVersion(t *testing.T) {
 				assert.Equal(t, tc.wantMinor, v.minor)
 			}
 		})
+	}
+}
+
+func TestTierName(t *testing.T) {
+	assert.Equal(t, "pro", tierName(tierPro))
+	assert.Equal(t, "flash", tierName(tierFlash))
+	assert.Equal(t, "flash-lite", tierName(tierFlashLite))
+	assert.Equal(t, "unknown", tierName(modelTier(99)))
+}
+
+func TestSupportsGenerateContent(t *testing.T) {
+	assert.True(t, supportsGenerateContent([]string{"generateContent", "countTokens"}))
+	assert.False(t, supportsGenerateContent([]string{"embedContent"}))
+	assert.False(t, supportsGenerateContent(nil))
+}
+
+func TestToModelInfo(t *testing.T) {
+	c := &modelCandidate{
+		name: "gemini-3.1-pro-preview",
+		model: &genai.Model{
+			DisplayName:      "Gemini 3.1 Pro",
+			Description:      "Pro model",
+			Thinking:         true,
+			InputTokenLimit:  1048576,
+			OutputTokenLimit: 8192,
+		},
+	}
+
+	info := toModelInfo(c)
+	assert.Equal(t, "gemini-3.1-pro-preview", info.FamilyID)
+	assert.Equal(t, "Gemini 3.1 Pro", info.Name)
+	assert.Equal(t, "Pro model", info.Description)
+	assert.True(t, info.SupportsThinking)
+	assert.Equal(t, 1048576, info.ContextWindowSize)
+	assert.Equal(t, 8192, info.MaxOutputTokens)
+	if assert.Len(t, info.Versions, 1) {
+		assert.Equal(t, "gemini-3.1-pro-preview", info.Versions[0].ID)
+		assert.True(t, info.Versions[0].IsPreferred)
 	}
 }
