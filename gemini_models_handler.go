@@ -66,6 +66,10 @@ func (s *GeminiServer) GeminiModelsHandler(ctx context.Context, req mcp.CallTool
 
 // writeFeatureDocs appends compact feature documentation sections.
 func writeFeatureDocs(w *SafeWriter, models []GeminiModelInfo) {
+	if len(models) == 0 {
+		return
+	}
+
 	// Pick a representative model for examples
 	proModel := models[0].FamilyID
 	flashModel := proModel

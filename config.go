@@ -11,7 +11,6 @@ import (
 
 // Default configuration values
 const (
-	// Note: if this value changes, make sure to update the models.go list
 	defaultGeminiModel        = "gemini-3.1-pro-preview"
 	defaultGeminiSearchModel  = "gemini-3.1-flash-lite-preview" // Default model specifically for search
 	defaultGeminiTemperature  = 1.0                             // Gemini 3 default temperature
@@ -76,6 +75,20 @@ func validateThinkingLevel(level string) bool {
 	default:
 		return false
 	}
+}
+
+// parseThinkingLevelEnv reads a thinking level from an environment variable,
+// validates it, and returns the default if missing or invalid.
+func parseThinkingLevelEnv(envKey, defaultValue string, logger Logger) string {
+	if levelStr := os.Getenv(envKey); levelStr != "" {
+		level := strings.ToLower(levelStr)
+		if validateThinkingLevel(level) {
+			return level
+		}
+		logger.Warnf("Invalid %s value: %q (valid: minimal, low, medium, high). Using default: %q",
+			envKey, levelStr, defaultValue)
+	}
+	return defaultValue
 }
 
 // Helper function to parse an integer environment variable with a default
@@ -201,29 +214,9 @@ func NewConfig(logger Logger) (*Config, error) {
 	// Thinking settings
 	enableThinking := parseEnvVarBool("GEMINI_ENABLE_THINKING", defaultEnableThinking, logger)
 
-	// Thinking level
-	thinkingLevel := defaultThinkingLevel
-	if levelStr := os.Getenv("GEMINI_THINKING_LEVEL"); levelStr != "" {
-		level := strings.ToLower(levelStr)
-		if validateThinkingLevel(level) {
-			thinkingLevel = level
-		} else {
-			logger.Warnf("Invalid GEMINI_THINKING_LEVEL value: %q (valid: minimal, low, medium, high). Using default: %q",
-				levelStr, defaultThinkingLevel)
-		}
-	}
-
-	// Search thinking level (separate default, typically lower)
-	searchThinkingLevel := defaultSearchThinkingLevel
-	if levelStr := os.Getenv("GEMINI_SEARCH_THINKING_LEVEL"); levelStr != "" {
-		level := strings.ToLower(levelStr)
-		if validateThinkingLevel(level) {
-			searchThinkingLevel = level
-		} else {
-			logger.Warnf("Invalid GEMINI_SEARCH_THINKING_LEVEL value: %q (valid: minimal, low, medium, high). Using default: %q",
-				levelStr, defaultSearchThinkingLevel)
-		}
-	}
+	// Thinking levels
+	thinkingLevel := parseThinkingLevelEnv("GEMINI_THINKING_LEVEL", defaultThinkingLevel, logger)
+	searchThinkingLevel := parseThinkingLevelEnv("GEMINI_SEARCH_THINKING_LEVEL", defaultSearchThinkingLevel, logger)
 
 	// Service tier
 	serviceTier := defaultServiceTier

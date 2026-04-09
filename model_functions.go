@@ -124,11 +124,3 @@ func ValidateModelID(modelID string) error {
 
 	return fmt.Errorf("%s", sb.String())
 }
-
-// AddDynamicAlias registers a runtime alias so that future calls using
-// deprecatedID are silently redirected to replacementID via ResolveModelID.
-func AddDynamicAlias(deprecatedID, replacementID string) {
-	modelAliasesMu.Lock()
-	defer modelAliasesMu.Unlock()
-	modelAliases[deprecatedID] = replacementID
-}

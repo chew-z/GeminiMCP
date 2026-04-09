@@ -97,12 +97,10 @@ func serviceTierFromString(tier string) genai.ServiceTier {
 	}
 }
 
-// createModelConfig creates a GenerateContentConfig for Gemini API based on request parameters
-func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Config, defaultModel string) (*genai.GenerateContentConfig, string, error) {
+// resolveAndValidateModel resolves aliases and validates the model ID.
+// Returns the resolved model name or an error if the model is invalid.
+func resolveAndValidateModel(ctx context.Context, modelName string) (string, error) {
 	logger := getLoggerFromContext(ctx)
-
-	// Extract model parameter - use defaultModel if not specified
-	modelName := extractArgumentString(req, "model", defaultModel)
 
 	// Resolve first so aliases (e.g. "gemini-pro-latest") are translated
 	// before validation rejects them as unknown.
@@ -115,7 +113,55 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 	// Validate the resolved model
 	if err := ValidateModelID(modelName); err != nil {
 		logger.Error("Invalid model requested: %v", err)
-		return nil, "", fmt.Errorf("invalid model specified: %v", err)
+		return "", fmt.Errorf("invalid model specified: %v", err)
+	}
+
+	return modelName, nil
+}
+
+// configureThinking sets up thinking configuration on a GenerateContentConfig
+// if the model supports it and thinking is requested.
+func configureThinking(ctx context.Context, req mcp.CallToolRequest, config *genai.GenerateContentConfig,
+	enableByDefault bool, defaultLevel string, modelInfo *GeminiModelInfo, modelName string) {
+
+	logger := getLoggerFromContext(ctx)
+	enableThinking := extractArgumentBool(req, "enable_thinking", enableByDefault)
+
+	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
+		thinkingLevel := defaultLevel
+
+		// Check for thinking_level parameter in request
+		if levelStr, ok := req.GetArguments()["thinking_level"].(string); ok && levelStr != "" {
+			if validateThinkingLevel(levelStr) {
+				thinkingLevel = strings.ToLower(levelStr)
+				logger.Info("Setting thinking level to: %s", thinkingLevel)
+			} else {
+				logger.Warn("Invalid thinking_level '%s' (valid: minimal, low, medium, high). Using default: %s", levelStr, defaultLevel)
+			}
+		}
+
+		config.ThinkingConfig = &genai.ThinkingConfig{
+			IncludeThoughts: true,
+			ThinkingLevel:   genai.ThinkingLevel(thinkingLevel),
+		}
+		logger.Info("Thinking mode enabled with level '%s' for model %s", thinkingLevel, modelName)
+	} else if enableThinking {
+		if modelInfo != nil {
+			logger.Warn("Thinking mode requested but model %s doesn't support it", modelName)
+		} else {
+			logger.Warn("Thinking mode requested but unknown if model supports it")
+		}
+	}
+}
+
+// createModelConfig creates a GenerateContentConfig for Gemini API based on request parameters
+func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Config, defaultModel string) (*genai.GenerateContentConfig, string, error) {
+	// Extract model parameter - use defaultModel if not specified
+	modelName := extractArgumentString(req, "model", defaultModel)
+
+	modelName, err := resolveAndValidateModel(ctx, modelName)
+	if err != nil {
+		return nil, "", err
 	}
 
 	// Extract system prompt
@@ -125,6 +171,7 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 	}
 
 	// Get model information
+	logger := getLoggerFromContext(ctx)
 	modelInfo := GetModelByID(modelName)
 	if modelInfo == nil {
 		logger.Warn("Model information not found for %s, using default parameters", modelName)
@@ -138,28 +185,7 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 	contentConfig.ServiceTier = serviceTierFromString(config.ServiceTier)
 
 	// Configure thinking if supported
-	enableThinking := extractArgumentBool(req, "enable_thinking", config.EnableThinking)
-	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
-		thinkingLevel := config.ThinkingLevel
-
-		// Check for thinking_level parameter in request
-		if levelStr, ok := req.GetArguments()["thinking_level"].(string); ok && levelStr != "" {
-			if validateThinkingLevel(levelStr) {
-				thinkingLevel = strings.ToLower(levelStr)
-				logger.Info("Setting thinking level to: %s", thinkingLevel)
-			} else {
-				logger.Warn("Invalid thinking_level '%s' (valid: minimal, low, medium, high). Using default: %s", levelStr, config.ThinkingLevel)
-			}
-		}
-
-		contentConfig.ThinkingConfig = &genai.ThinkingConfig{
-			IncludeThoughts: true,
-			ThinkingLevel:   genai.ThinkingLevel(thinkingLevel),
-		}
-		logger.Info("Thinking mode enabled with level '%s' for model %s", thinkingLevel, modelName)
-	} else if enableThinking && (modelInfo == nil || !modelInfo.SupportsThinking) {
-		logger.Warn("Thinking mode was requested but model doesn't support it")
-	}
+	configureThinking(ctx, req, contentConfig, config.EnableThinking, config.ThinkingLevel, modelInfo, modelName)
 
 	// Configure max tokens with default ratio of context window
 	configureMaxTokensOutput(ctx, contentConfig, req, modelInfo, 0.75)

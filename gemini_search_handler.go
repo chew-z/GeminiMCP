@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -26,16 +25,9 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 
 	// Extract optional model parameter - use search-specific model as default
 	modelName := extractArgumentString(req, "model", s.config.GeminiSearchModel)
-	if validateErr := ValidateModelID(modelName); validateErr != nil {
-		logger.Error("Invalid model requested: %v", validateErr)
-		return createErrorResult(fmt.Sprintf("Invalid model specified: %v", validateErr)), nil
-	}
-
-	// Resolve model ID to ensure we use a valid API-addressable version
-	resolvedModelID := ResolveModelID(modelName)
-	if resolvedModelID != modelName {
-		logger.Info("Resolved model ID from '%s' to '%s'", modelName, resolvedModelID)
-		modelName = resolvedModelID
+	modelName, err = resolveAndValidateModel(ctx, modelName)
+	if err != nil {
+		return createErrorResult(err.Error()), nil
 	}
 	logger.Info("Using %s model for Google Search integration", modelName)
 
@@ -79,32 +71,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	config.ServiceTier = serviceTierFromString(s.config.ServiceTier)
 
 	// Configure thinking if supported
-	enableThinking := extractArgumentBool(req, "enable_thinking", s.config.EnableThinking)
-	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
-		thinkingLevel := s.config.SearchThinkingLevel
-
-		// Check for thinking_level parameter in request
-		if levelStr, ok := req.GetArguments()["thinking_level"].(string); ok && levelStr != "" {
-			if validateThinkingLevel(levelStr) {
-				thinkingLevel = strings.ToLower(levelStr)
-				logger.Info("Setting thinking level to: %s", thinkingLevel)
-			} else {
-				logger.Warn("Invalid thinking_level '%s' (valid: minimal, low, medium, high). Using default: %s", levelStr, s.config.SearchThinkingLevel)
-			}
-		}
-
-		config.ThinkingConfig = &genai.ThinkingConfig{
-			IncludeThoughts: true,
-			ThinkingLevel:   genai.ThinkingLevel(thinkingLevel),
-		}
-		logger.Info("Thinking mode enabled for search with level '%s' for model %s", thinkingLevel, modelName)
-	} else if enableThinking {
-		if modelInfo != nil {
-			logger.Warn("Thinking mode requested but model %s doesn't support it", modelName)
-		} else {
-			logger.Warn("Thinking mode requested but unknown if model supports it")
-		}
-	}
+	configureThinking(ctx, req, config, s.config.EnableThinking, s.config.SearchThinkingLevel, modelInfo, modelName)
 
 	// Configure max tokens (50% of context window by default for search)
 	configureMaxTokensOutput(ctx, config, req, modelInfo, 0.5)

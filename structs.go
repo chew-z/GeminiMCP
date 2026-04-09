@@ -70,7 +70,6 @@ type SearchResponse struct {
 // SourceInfo represents a source from search results
 type SourceInfo struct {
 	Title string `json:"title"`
-	URL   string `json:"-"` // "web" or "retrieved_context"
 	Type  string `json:"type"`
 }
 
