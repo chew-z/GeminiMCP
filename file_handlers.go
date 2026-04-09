@@ -148,9 +148,16 @@ func fetchSingleFile(ctx context.Context, s *GeminiServer, client *http.Client, 
 	startTime := time.Now()
 	logger.Info("[%s] Starting fetch at %s", filePath, startTime.Format(time.RFC3339))
 
-	apiURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s", s.config.GitHubAPIBaseURL, owner, repo, filePath)
+	// URL-escape individual path segments to handle filenames with spaces or special chars,
+	// while preserving the directory separator slashes.
+	segments := strings.Split(filePath, "/")
+	for i, seg := range segments {
+		segments[i] = url.PathEscape(seg)
+	}
+	encodedPath := strings.Join(segments, "/")
+	apiURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s", s.config.GitHubAPIBaseURL, owner, repo, encodedPath)
 	if ref != "" {
-		apiURL += "?ref=" + ref
+		apiURL += "?ref=" + url.QueryEscape(ref)
 	}
 	logger.Info("[%s] Constructed API URL: %s", filePath, apiURL)
 

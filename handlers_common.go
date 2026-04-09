@@ -82,9 +82,10 @@ func extractArgumentStringArray(req mcp.CallToolRequest, name string) []string {
 			return result
 		}
 		// Some MCP clients pass arrays as JSON strings — try to parse
-		if strings.HasPrefix(v, "[") {
+		trimmed := strings.TrimSpace(v)
+		if strings.HasPrefix(trimmed, "[") {
 			var parsed []string
-			if err := json.Unmarshal([]byte(v), &parsed); err == nil {
+			if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
 				return parsed
 			}
 		}
