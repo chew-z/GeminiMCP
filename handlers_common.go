@@ -12,7 +12,8 @@ import (
 )
 
 // checkModelStatus inspects the ModelStatus returned by the Gemini API
-// and logs warnings for deprecated, retired, or legacy models.
+// and auto-redirects any model that is not PREVIEW or STABLE to the best
+// replacement in the same tier for all future requests.
 func checkModelStatus(ctx context.Context, resp *genai.GenerateContentResponse, modelName string) {
 	if resp == nil || resp.ModelStatus == nil {
 		return
@@ -21,17 +22,20 @@ func checkModelStatus(ctx context.Context, resp *genai.GenerateContentResponse, 
 	logger := getLoggerFromContext(ctx)
 	status := resp.ModelStatus
 
+	// Only PREVIEW and STABLE are acceptable stages; redirect everything else.
 	switch status.ModelStage {
-	case genai.ModelStageDeprecated, genai.ModelStageRetired:
-		retireInfo := ""
-		if !status.RetirementTime.IsZero() {
-			retireInfo = fmt.Sprintf(" (retirement: %s)", status.RetirementTime.Format(time.RFC3339))
-		}
-		logger.Warn("Model %s is %s%s: %s — models are refreshed at next restart",
-			modelName, status.ModelStage, retireInfo, status.Message)
+	case genai.ModelStagePreview, genai.ModelStageStable:
+		return // acceptable, no action needed
+	}
 
-	case genai.ModelStageLegacy:
-		logger.Warn("Model %s has LEGACY status: %s — consider switching to a newer model", modelName, status.Message)
+	replacement := bestModelForTier(modelName)
+	if replacement != modelName {
+		addDynamicAlias(modelName, replacement)
+		logger.Warn("Model %s is %s — auto-redirected to %s for future requests",
+			modelName, status.ModelStage, replacement)
+	} else {
+		logger.Warn("Model %s is %s but no better replacement found in tier",
+			modelName, status.ModelStage)
 	}
 }
 
@@ -98,8 +102,9 @@ func serviceTierFromString(tier string) genai.ServiceTier {
 }
 
 // resolveAndValidateModel resolves aliases and validates the model ID.
-// Returns the resolved model name or an error if the model is invalid.
-func resolveAndValidateModel(ctx context.Context, modelName string) (string, error) {
+// Returns the resolved model name. Never errors — unknown models are quietly
+// redirected to the best available replacement in the same tier.
+func resolveAndValidateModel(ctx context.Context, modelName string) string {
 	logger := getLoggerFromContext(ctx)
 
 	// Resolve first so aliases (e.g. "gemini-pro-latest") are translated
@@ -110,13 +115,14 @@ func resolveAndValidateModel(ctx context.Context, modelName string) (string, err
 		modelName = resolvedModelID
 	}
 
-	// Validate the resolved model
-	if err := ValidateModelID(modelName); err != nil {
-		logger.Error("Invalid model requested: %v", err)
-		return "", fmt.Errorf("invalid model specified: %v", err)
+	// Validate the resolved model — redirects unknown models instead of erroring
+	validatedID, redirected := ValidateModelID(modelName)
+	if redirected {
+		logger.Warn("Unknown model '%s' quietly redirected to '%s'", modelName, validatedID)
+		modelName = validatedID
 	}
 
-	return modelName, nil
+	return modelName
 }
 
 // configureThinking sets up thinking configuration on a GenerateContentConfig
@@ -159,10 +165,7 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 	// Extract model parameter - use defaultModel if not specified
 	modelName := extractArgumentString(req, "model", defaultModel)
 
-	modelName, err := resolveAndValidateModel(ctx, modelName)
-	if err != nil {
-		return nil, "", err
-	}
+	modelName = resolveAndValidateModel(ctx, modelName)
 
 	// Extract system prompt
 	systemPrompt := config.GeminiSystemPrompt

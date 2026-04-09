@@ -54,15 +54,13 @@ func main() {
 
 	// Override with command-line flags if provided
 	if *geminiModelFlag != "" {
-		// We'll use the model specified, even if it's not in our known list
-		// This allows for new models and preview versions
-		if err := ValidateModelID(*geminiModelFlag); err != nil {
-			// Just log a warning, we'll still use the model
-			logger.Info("Using custom model: %s (not in known list, but may be valid)", *geminiModelFlag)
+		validatedID, redirected := ValidateModelID(*geminiModelFlag)
+		if redirected {
+			logger.Warn("Custom model '%s' redirected to '%s'", *geminiModelFlag, validatedID)
 		} else {
-			logger.Info("Using known model: %s", *geminiModelFlag)
+			logger.Info("Using known model: %s", validatedID)
 		}
-		config.GeminiModel = *geminiModelFlag
+		config.GeminiModel = validatedID
 	}
 	if *geminiSystemPromptFlag != "" {
 		logger.Info("Overriding Gemini system prompt with flag value")

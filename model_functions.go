@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"strings"
 	"sync"
 )
 
@@ -109,18 +107,41 @@ func ResolveModelID(modelID string) string {
 	return modelID
 }
 
+// bestModelForTier returns the FamilyID of the best available model in the same
+// tier as the given model name. Falls back to the first model in the catalog.
+func bestModelForTier(modelName string) string {
+	tier, ok := classifyModel(modelName)
+	if ok {
+		for _, m := range GetAvailableGeminiModels() {
+			if t, match := classifyModel(m.FamilyID); match && t == tier {
+				return m.FamilyID
+			}
+		}
+	}
+	// Fallback: first model in catalog (pro, the best)
+	if models := GetAvailableGeminiModels(); len(models) > 0 {
+		return models[0].FamilyID
+	}
+	return modelName // catalog empty, pass through
+}
+
+// addDynamicAlias registers a runtime alias so future requests for
+// deprecatedID are silently redirected to replacementID via ResolveModelID.
+func addDynamicAlias(deprecatedID, replacementID string) {
+	modelAliasesMu.Lock()
+	defer modelAliasesMu.Unlock()
+	modelAliases[deprecatedID] = replacementID
+}
+
 // ValidateModelID checks if a model ID is in the list of available models.
-// Returns nil if valid, error if the model is unknown and should be rejected.
-func ValidateModelID(modelID string) error {
+// If unknown, it returns the best available replacement (quiet redirect).
+// The returned string is the validated (or replaced) model ID.
+// The boolean indicates whether a redirect occurred.
+func ValidateModelID(modelID string) (string, bool) {
 	if GetModelVersion(modelID) != nil || GetModelByID(modelID) != nil {
-		return nil
+		return modelID, false
 	}
-
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "unknown model: %s. Available models:", modelID)
-	for _, model := range GetAvailableGeminiModels() {
-		fmt.Fprintf(&sb, "\n- %s (%s)", model.FamilyID, model.Name)
-	}
-
-	return fmt.Errorf("%s", sb.String())
+	// Unknown model — redirect to best in same tier
+	replacement := bestModelForTier(modelID)
+	return replacement, true
 }

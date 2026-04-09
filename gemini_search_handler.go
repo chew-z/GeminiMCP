@@ -25,10 +25,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 
 	// Extract optional model parameter - use search-specific model as default
 	modelName := extractArgumentString(req, "model", s.config.GeminiSearchModel)
-	modelName, err = resolveAndValidateModel(ctx, modelName)
-	if err != nil {
-		return createErrorResult(err.Error()), nil
-	}
+	modelName = resolveAndValidateModel(ctx, modelName)
 	logger.Info("Using %s model for Google Search integration", modelName)
 
 	// Get model information for context window and thinking capability
