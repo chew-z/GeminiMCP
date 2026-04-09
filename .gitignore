@@ -5,9 +5,6 @@ bin/**
 
 .env
 
-*_test.go
-test_*
-
 AGENTS.md
 GOLANG.md
 GODOC.md
@@ -37,4 +34,4 @@ repomix-output.xml
 run_*.sh
 run_format.sh
 run_lint.sh
-run_tests.sh
+run_test.sh
