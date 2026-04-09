@@ -122,35 +122,22 @@ type Config struct {
 
 	// Service tier settings
 	ServiceTier string // Service tier: flex, standard, priority (default: standard)
-
-	// Prompt defaults
-	ProjectLanguage         string // Default language for code analysis (e.g., "go", "python")
-	PromptDefaultAudience   string // Default audience level for code explanations (beginner, intermediate, expert)
-	PromptDefaultFocus      string // Default focus areas for analysis (security, performance, style, etc.)
-	PromptDefaultSeverity   string // Default minimum severity level for issues (info, warning, error)
-	PromptDefaultDocFormat  string // Default documentation format (markdown, rst, plain_text)
-	PromptDefaultFramework  string // Default testing framework (standard, jest, pytest, etc.)
-	PromptDefaultCoverage   string // Default test coverage level (basic, comprehensive)
-	PromptDefaultCompliance string // Default compliance standards (OWASP, NIST, etc.)
 }
 
 // ModelVersion represents an actual API-addressable Gemini model
 type ModelVersion struct {
 	ID          string `json:"id"`           // The version ID used by the API (e.g., "gemini-2.5-pro-exp-03-25")
-	Name        string `json:"name"`         // Human-readable name
 	IsPreferred bool   `json:"is_preferred"` // Whether this is the preferred version of the model family
 }
 
 // GeminiModelInfo represents a family of related models
 type GeminiModelInfo struct {
-	FamilyID             string         `json:"family_id"`              // Model family identifier (e.g., "gemini-2.5-pro")
-	Name                 string         `json:"name"`                   // Human-readable family name
-	Description          string         `json:"description"`            // Description of the model family
-	SupportsThinking     bool           `json:"supports_thinking"`      // Whether this model family supports thinking mode
-	ContextWindowSize    int            `json:"context_window_size"`    // Maximum context window size in tokens
-	PreferredForThinking bool           `json:"preferred_for_thinking"` // Whether this family is preferred for thinking tasks
-	PreferredForSearch   bool           `json:"preferred_for_search"`   // Whether this family is preferred for search tasks
-	Versions             []ModelVersion `json:"versions"`               // Available versions of this model family
+	FamilyID          string         `json:"family_id"`           // Model family identifier (e.g., "gemini-2.5-pro")
+	Name              string         `json:"name"`                // Human-readable family name
+	Description       string         `json:"description"`         // Description of the model family
+	SupportsThinking  bool           `json:"supports_thinking"`   // Whether this model family supports thinking mode
+	ContextWindowSize int            `json:"context_window_size"` // Maximum context window size in tokens
+	Versions          []ModelVersion `json:"versions"`            // Available versions of this model family
 }
 
 // FileUploadRequest represents a request to upload a file
@@ -169,7 +156,6 @@ type FileUploadRequest struct {
 // for all calls. Used when the Gemini server is in degraded mode due to initialization errors.
 type ErrorGeminiServer struct {
 	errorMessage string
-	config       *Config
 }
 
 // handleErrorResponse is a handler function that can be used with mark3labs/mcp-go's AddTool

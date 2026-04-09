@@ -133,7 +133,7 @@ func ValidateModelID(modelID string) error {
 	for _, model := range GetAvailableGeminiModels() {
 		sb.WriteString(fmt.Sprintf("\n- %s: %s", model.FamilyID, model.Name))
 		for _, version := range model.Versions {
-			sb.WriteString(fmt.Sprintf("\n  - %s: %s", version.ID, version.Name))
+			sb.WriteString(fmt.Sprintf("\n  - %s", version.ID))
 		}
 	}
 	sb.WriteString("\n\nHowever, we will attempt to use this model anyway. It may be a new or preview model.")
@@ -152,6 +152,11 @@ func AddDynamicAlias(deprecatedID, replacementID string) {
 // FindFamilyReplacement looks for a non-deprecated replacement within the same
 // model family. Returns the preferred version's ID if it differs from modelID,
 // or an empty string when no suitable replacement is found.
+//
+// Note: With the current 1-version-per-family architecture (from dynamic API
+// fetching), this function is defensive — it won't find a replacement because
+// the deprecated model IS the only version. It remains as a safety net for
+// future multi-version families or manually registered aliases.
 func FindFamilyReplacement(modelID string) string {
 	model := GetModelByID(modelID)
 	if model == nil {

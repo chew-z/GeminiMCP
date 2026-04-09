@@ -217,22 +217,22 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 			continue
 		}
 
-		if fileInfo.Mode()&os.ModeSymlink != 0 {
-			linkDest, linkErr := os.Readlink(fullPath)
-			if linkErr != nil {
-				logger.Error("Failed to read symlink %s: %v", filePath, linkErr)
-				warnings = append(warnings, fmt.Sprintf("%s: failed to read symlink", filePath))
-				continue
-			}
-			if filepath.IsAbs(linkDest) || strings.HasPrefix(filepath.Clean(linkDest), "..") {
-				logger.Error("Skipping unsafe symlink: %s -> %s", filePath, linkDest)
-				warnings = append(warnings, fmt.Sprintf("%s: unsafe symlink", filePath))
-				continue
-			}
+		// Resolve the entire symlink chain (multi-hop) and verify the final
+		// target is still within the allowed base directory.
+		resolvedBase, err := filepath.EvalSymlinks(config.FileReadBaseDir)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to resolve base directory: %v", err)
 		}
-
-		if !strings.HasPrefix(fullPath, config.FileReadBaseDir) {
-			return nil, nil, fmt.Errorf("path traversal attempt detected: %s", filePath)
+		resolvedPath, err := filepath.EvalSymlinks(fullPath)
+		if err != nil {
+			logger.Error("Failed to resolve symlink chain for %s: %v", filePath, err)
+			warnings = append(warnings, fmt.Sprintf("%s: failed to resolve symlink", filePath))
+			continue
+		}
+		if !strings.HasPrefix(resolvedPath, resolvedBase+string(filepath.Separator)) && resolvedPath != resolvedBase {
+			logger.Error("Skipping unsafe symlink: %s resolves to %s (outside %s)", filePath, resolvedPath, resolvedBase)
+			warnings = append(warnings, fmt.Sprintf("%s: unsafe symlink", filePath))
+			continue
 		}
 
 		// Check file size before reading to prevent OOM on huge files.

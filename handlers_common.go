@@ -113,17 +113,18 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 	// Extract model parameter - use defaultModel if not specified
 	modelName := extractArgumentString(req, "model", defaultModel)
 
-	// Validate the model
-	if err := ValidateModelID(modelName); err != nil {
-		logger.Error("Invalid model requested: %v", err)
-		return nil, "", fmt.Errorf("invalid model specified: %v", err)
-	}
-
-	// Resolve model ID to ensure we use a valid API-addressable version
+	// Resolve first so aliases (e.g. "gemini-pro-latest") are translated
+	// before validation rejects them as unknown.
 	resolvedModelID := ResolveModelID(modelName)
 	if resolvedModelID != modelName {
 		logger.Info("Resolved model ID from '%s' to '%s'", modelName, resolvedModelID)
 		modelName = resolvedModelID
+	}
+
+	// Validate the resolved model
+	if err := ValidateModelID(modelName); err != nil {
+		logger.Error("Invalid model requested: %v", err)
+		return nil, "", fmt.Errorf("invalid model specified: %v", err)
 	}
 
 	// Extract system prompt

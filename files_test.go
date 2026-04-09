@@ -24,6 +24,9 @@ func TestReadLocalFiles(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(baseDir, "large.txt"), []byte("this file is too large"), 0644))
 	require.NoError(t, os.Symlink("small.txt", filepath.Join(baseDir, "goodlink.txt")))
 
+	// Setup safe multi-hop symlink: multihop_good.txt -> goodlink.txt -> small.txt (stays inside base)
+	require.NoError(t, os.Symlink("goodlink.txt", filepath.Join(baseDir, "multihop_good.txt")))
+
 	// Setup for traversal attack
 	outsideDir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(outsideDir, "secret.txt"), []byte("secret"), 0644))
@@ -32,6 +35,10 @@ func TestReadLocalFiles(t *testing.T) {
 	relPath, err := filepath.Rel(baseDir, filepath.Join(outsideDir, "secret.txt"))
 	require.NoError(t, err)
 	require.NoError(t, os.Symlink(relPath, filepath.Join(baseDir, "badlink.txt")))
+
+	// Setup multi-hop traversal attack: multihop_bad.txt -> hop2.txt -> ../outside/secret.txt
+	require.NoError(t, os.Symlink(relPath, filepath.Join(baseDir, "hop2.txt")))
+	require.NoError(t, os.Symlink("hop2.txt", filepath.Join(baseDir, "multihop_bad.txt")))
 
 	testCases := []struct {
 		name            string
@@ -86,6 +93,20 @@ func TestReadLocalFiles(t *testing.T) {
 			config:        &Config{FileReadBaseDir: baseDir, MaxFileSize: 100},
 			expectedCount: 0,
 			expectError:   false,
+		},
+		{
+			name:          "error on multi-hop symlink path traversal",
+			paths:         []string{"multihop_bad.txt"},
+			config:        &Config{FileReadBaseDir: baseDir, MaxFileSize: 100},
+			expectedCount: 0,
+			expectError:   false,
+		},
+		{
+			name:            "success on safe multi-hop symlink",
+			paths:           []string{"multihop_good.txt"},
+			config:          &Config{FileReadBaseDir: baseDir, MaxFileSize: 100},
+			expectedCount:   1,
+			expectedContent: map[string]string{"multihop_good.txt": "small"},
 		},
 		{
 			name:            "skip file larger than max size",

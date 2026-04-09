@@ -90,14 +90,6 @@ func handleStartupError(ctx context.Context, err error) {
 
 	logger.Error("Initialization error: %v", err)
 
-	// Get config if available
-	var config *Config
-	if configValue := ctx.Value(configKey); configValue != nil {
-		if cfg, ok := configValue.(*Config); ok {
-			config = cfg
-		}
-	}
-
 	// Create MCP server in degraded mode
 	mcpServer := server.NewMCPServer(
 		"gemini",
@@ -107,7 +99,6 @@ func handleStartupError(ctx context.Context, err error) {
 	// Create error server
 	errorServer := &ErrorGeminiServer{
 		errorMessage: errorMsg,
-		config:       config,
 	}
 
 	// Register error handling for tools

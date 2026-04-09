@@ -3,11 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"google.golang.org/genai"
 )
+
+// versionRe matches "gemini-{major}[.{minor}]-..." and captures major/minor.
+var versionRe = regexp.MustCompile(`gemini-(\d+)(?:\.(\d+))?-`)
 
 // modelTier represents one of the three supported model tiers.
 type modelTier int
@@ -150,10 +155,50 @@ func classifyModel(name string) (modelTier, bool) {
 	}
 }
 
+// modelVersion holds the parsed numeric version from a Gemini model name.
+type modelVersion struct {
+	major  int
+	minor  int
+	suffix string // everything after the tier identifier (e.g. "-preview", "-exp-03-25")
+}
+
+// parseModelVersion extracts major, minor, and suffix from a Gemini model name.
+// Returns ok=false if the name doesn't match the expected pattern.
+func parseModelVersion(name string) (modelVersion, bool) {
+	m := versionRe.FindStringSubmatch(name)
+	if m == nil {
+		return modelVersion{}, false
+	}
+	major, err := strconv.Atoi(m[1])
+	if err != nil {
+		return modelVersion{}, false
+	}
+	minor := 0
+	if m[2] != "" {
+		minor, err = strconv.Atoi(m[2])
+		if err != nil {
+			return modelVersion{}, false
+		}
+	}
+
+	// Extract suffix: everything after the tier keyword (pro/flash-lite/flash).
+	// Find the tier portion and take what follows it.
+	suffix := ""
+	lower := strings.ToLower(name)
+	for _, tier := range []string{"flash-lite", "flash_lite", "flash", "pro"} {
+		idx := strings.Index(lower, tier)
+		if idx >= 0 {
+			suffix = name[idx+len(tier):]
+			break
+		}
+	}
+
+	return modelVersion{major: major, minor: minor, suffix: suffix}, true
+}
+
 // isNewerModel returns true if candidate is a newer version than current.
-// Strategy: higher version numbers win; preview/exp beats stable at equal version;
-// simple lexicographic comparison on the normalized name works because Gemini
-// naming follows "gemini-{major}.{minor}-{tier}[-preview|-exp-{date}]" consistently.
+// Uses numeric comparison of major.minor versions, falling back to lexicographic
+// for unparseable names.
 func isNewerModel(candidate, current string) bool {
 	// "latest" aliases always lose to concrete versions — we want real model IDs.
 	candidateIsLatest := strings.Contains(candidate, "-latest")
@@ -165,9 +210,21 @@ func isNewerModel(candidate, current string) bool {
 		return true
 	}
 
-	// Both are concrete or both are "latest": compare lexicographically.
-	// Gemini naming (gemini-3.1-pro-preview > gemini-3-pro-preview > gemini-2.5-pro)
-	// sorts correctly because major.minor increments are reflected in the string.
+	cv, cOK := parseModelVersion(candidate)
+	rv, rOK := parseModelVersion(current)
+
+	if cOK && rOK {
+		if cv.major != rv.major {
+			return cv.major > rv.major
+		}
+		if cv.minor != rv.minor {
+			return cv.minor > rv.minor
+		}
+		// Same major.minor — compare suffix lexicographically
+		return cv.suffix > rv.suffix
+	}
+
+	// Fallback: lexicographic for unparseable names
 	return candidate > current
 }
 

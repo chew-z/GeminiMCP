@@ -18,7 +18,7 @@ This project is a Go-based MCP (Model Control Protocol) server that acts as a br
     - `handlers_common.go`: Shared utilities — parameter extraction, model config, response formatting.
     - `tools.go`: MCP tool definitions (gemini_ask, gemini_search, gemini_models).
     - `file_handlers.go`: GitHub file fetching with concurrent downloads and retry.
-- **Model Management**: `model_functions.go`, `fallback_models.go`, `fetch_models.go`, `completions.go`.
+- **Model Management**: `model_functions.go`, `fetch_models.go`, `completions.go`.
 - **Transport**: Supports `stdio` and `http` (with JWT authentication via `auth.go`, `http_server.go`).
 - **Caching**: Relies on Gemini's automatic implicit caching — files placed before query in request for optimal prefix matching.
 - **Dependencies**:
