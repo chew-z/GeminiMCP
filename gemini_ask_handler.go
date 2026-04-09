@@ -344,16 +344,16 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, uploa
 
 	logger := getLoggerFromContext(ctx)
 
-	// Create initial content with the query
-	contents := []*genai.Content{
-		genai.NewContentFromText(query, genai.RoleUser),
-	}
+	// Build all parts for a single user Content: query text first, then file parts.
+	// Files must be in the same Content as the query — separate Content objects with the
+	// same role are treated as distinct conversation turns and file context is dropped.
+	parts := []*genai.Part{genai.NewPartFromText(query)}
 
 	// Use pre-uploaded files if available
 	if len(uploadedFiles) > 0 {
 		logger.Info("Reusing %d pre-uploaded files", len(uploadedFiles))
 		for _, fileInfo := range uploadedFiles {
-			contents = append(contents, genai.NewContentFromURI(fileInfo.URI, fileInfo.MimeType, genai.RoleUser))
+			parts = append(parts, genai.NewPartFromURI(fileInfo.URI, fileInfo.MimeType))
 		}
 	} else if len(uploads) > 0 {
 		logger.Info("No pre-uploaded files found, proceeding with manual upload")
@@ -369,12 +369,16 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string, uploa
 				return s.client.Files.Upload(ctx, bytes.NewReader(upload.Content), uploadConfig)
 			})
 			if err != nil {
-				logger.Error("Failed to upload file %s: %v - falling back to direct content", upload.FileName, err)
-				contents = append(contents, genai.NewContentFromText(string(upload.Content), genai.RoleUser))
+				logger.Error("Failed to upload file %s: %v - falling back to inline content", upload.FileName, err)
+				parts = append(parts, genai.NewPartFromText(fmt.Sprintf("--- File: %s ---\n%s", upload.FileName, string(upload.Content))))
 				continue
 			}
-			contents = append(contents, genai.NewContentFromURI(file.URI, upload.MimeType, genai.RoleUser))
+			parts = append(parts, genai.NewPartFromURI(file.URI, upload.MimeType))
 		}
+	}
+
+	contents := []*genai.Content{
+		genai.NewContentFromParts(parts, genai.RoleUser),
 	}
 
 	// Generate content with files
