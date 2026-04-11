@@ -131,9 +131,19 @@ func toModelInfo(c *modelCandidate) GeminiModelInfo {
 	}
 }
 
-// classifyModel determines which tier a model belongs to, or returns false
-// if the model should be excluded (e.g., TTS, image, customtools, non-gemini).
-func classifyModel(name string) (modelTier, bool) {
+// inferModelTier classifies a Gemini model name into a tier based purely on
+// its textual shape, without enforcing the generation floor. This is the
+// entry point for resolving client-provided model IDs: the server's contract
+// (CLAUDE.md principle #1) is that clients express intent ("flash") and the
+// server maps that intent to the current tier winner — even if the client
+// names a deprecated model like "gemini-2.5-flash".
+//
+// Non-text-generation variants (TTS, image, native-audio, etc.) and
+// non-Gemini names are still rejected — those are not redirectable.
+//
+// For catalog selection (picking tier winners from the live API), use
+// classifyModel, which additionally enforces the generation floor.
+func inferModelTier(name string) (modelTier, bool) {
 	if !strings.Contains(name, "gemini") {
 		return 0, false
 	}
@@ -148,22 +158,36 @@ func classifyModel(name string) (modelTier, bool) {
 	// Classification order matters: check "flash-lite" / "flash_lite" before "flash",
 	// and "flash" before "pro" (to avoid matching "pro" in "flash-pro" if that ever exists).
 	lower := strings.ToLower(name)
-	var tier modelTier
 	switch {
 	case strings.Contains(lower, "flash-lite") || strings.Contains(lower, "flash_lite"):
-		tier = tierFlashLite
+		return tierFlashLite, true
 	case strings.Contains(lower, "flash"):
-		tier = tierFlash
+		return tierFlash, true
 	case strings.Contains(lower, "pro"):
-		tier = tierPro
-	default:
+		return tierPro, true
+	}
+	return 0, false
+}
+
+// classifyModel determines which tier a model belongs to for catalog selection,
+// or returns false if the model should be excluded (non-text-generation
+// variants, non-Gemini names, or versions below the generation floor).
+// Used by the fetch pipeline to pick tier winners from the live API listing.
+//
+// For resolving client-provided model IDs to a tier (where a sub-floor name
+// should be redirected forward rather than rejected), use inferModelTier.
+func classifyModel(name string) (modelTier, bool) {
+	tier, ok := inferModelTier(name)
+	if !ok {
 		return 0, false
 	}
 
-	// Enforce generation floor: reject Gemini 2.x and earlier. Names whose
-	// version can't be parsed (e.g. "gemini-flash-latest") pass through — the
-	// -latest deprioritization in isNewerModel keeps them from beating concrete
-	// Gemini-3 picks, while still letting them resolve for user requests.
+	// Enforce generation floor for catalog selection: we never want to pick a
+	// Gemini 2.x or earlier model as a tier winner. Names whose version can't
+	// be parsed (e.g. "gemini-flash-latest") pass through — the -latest
+	// deprioritization in isNewerModel keeps them from beating concrete
+	// Gemini-3 picks, while still letting them appear in the catalog if the
+	// API surfaces them as the only option.
 	if v, ok := parseModelVersion(name); ok && v.major < minGeminiGeneration {
 		return 0, false
 	}

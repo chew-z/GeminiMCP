@@ -41,6 +41,30 @@ func TestResolveAndValidateModel(t *testing.T) {
 			wantModelID: "gemini-3.1-pro-preview",
 		},
 		{
+			// CLAUDE.md principle #1: clients express intent, server picks the model.
+			// A deprecated Gemini-2.x name must resolve forward to the current tier
+			// winner, not be bounced with "unknown model" — that would push the
+			// decision back onto the client.
+			name:        "deprecated 2.5 flash redirects to current flash winner",
+			input:       "gemini-2.5-flash",
+			wantModelID: "gemini-3-flash-preview",
+		},
+		{
+			name:        "deprecated 2.5 pro redirects to current pro winner",
+			input:       "gemini-2.5-pro",
+			wantModelID: "gemini-3.1-pro-preview",
+		},
+		{
+			name:        "deprecated 2.5 flash-lite redirects to current flash-lite winner",
+			input:       "gemini-2.5-flash-lite",
+			wantModelID: "gemini-3.1-flash-lite-preview",
+		},
+		{
+			name:        "dated 2.5 flash preview redirects to current flash winner",
+			input:       "gemini-2.5-flash-preview-09-2025",
+			wantModelID: "gemini-3-flash-preview",
+		},
+		{
 			name:    "non-gemini model is rejected",
 			input:   "gpt-4.1",
 			wantErr: "not a recognized Gemini model",
@@ -108,6 +132,19 @@ func TestCreateModelConfig(t *testing.T) {
 			name: "unknown gemini model redirects by tier",
 			args: map[string]interface{}{
 				"model": "gemini-9-flash-preview",
+			},
+			defaultModel:  "gemini-3.1-pro-preview",
+			wantModelName: "gemini-3-flash-preview",
+			wantMaxTokens: 4096,
+			wantThinking:  true,
+			wantLevel:     "high",
+		},
+		{
+			// Foolproof tool: deprecated 2.x input resolves forward to the
+			// current tier winner end-to-end through createModelConfig.
+			name: "deprecated 2.5 flash redirects to current flash winner",
+			args: map[string]interface{}{
+				"model": "gemini-2.5-flash",
 			},
 			defaultModel:  "gemini-3.1-pro-preview",
 			wantModelName: "gemini-3-flash-preview",

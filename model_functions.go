@@ -105,16 +105,24 @@ func ResolveModelID(modelID string) string {
 // bestModelForTier returns the FamilyID of the best available model in the same
 // tier as the given model name. Returns "" if the model name is not a
 // recognizable Gemini model — callers should treat this as a rejection signal.
+//
+// Uses inferModelTier (not classifyModel) for the input so that deprecated
+// sub-floor names like "gemini-2.5-flash" still resolve: the client's intent
+// is "flash tier", and the server honors that by returning the current flash
+// winner rather than bouncing the call with an error. See CLAUDE.md first
+// principle #1 — the server decides the concrete model, the client expresses
+// intent.
 func bestModelForTier(modelName string) string {
-	tier, ok := classifyModel(modelName)
-	if ok {
-		for _, m := range GetAvailableGeminiModels() {
-			if t, match := classifyModel(m.FamilyID); match && t == tier {
-				return m.FamilyID
-			}
+	tier, ok := inferModelTier(modelName)
+	if !ok {
+		return "" // unclassifiable (non-Gemini or non-text-generation) — reject
+	}
+	for _, m := range GetAvailableGeminiModels() {
+		if t, match := classifyModel(m.FamilyID); match && t == tier {
+			return m.FamilyID
 		}
 	}
-	return "" // unclassifiable or catalog empty — signal rejection
+	return "" // catalog empty for this tier
 }
 
 // addDynamicAlias registers a runtime alias so future requests for

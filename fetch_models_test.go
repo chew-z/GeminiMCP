@@ -41,6 +41,49 @@ func TestClassifyModel(t *testing.T) {
 	}
 }
 
+func TestInferModelTier(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantTier modelTier
+		wantOK   bool
+	}{
+		// Current Gemini 3+ models resolve normally.
+		{"3.1 pro", "gemini-3.1-pro-preview", tierPro, true},
+		{"3 flash", "gemini-3-flash-preview", tierFlash, true},
+		{"3.1 flash-lite", "gemini-3.1-flash-lite-preview", tierFlashLite, true},
+		// Tier aliases without an explicit version also resolve (no floor to enforce).
+		{"pro-latest alias", "gemini-pro-latest", tierPro, true},
+		{"flash-latest alias", "gemini-flash-latest", tierFlash, true},
+		{"flash-lite-latest alias", "gemini-flash-lite-latest", tierFlashLite, true},
+		// Sub-floor names MUST still yield a tier — this is what lets
+		// bestModelForTier redirect client input forward instead of rejecting it.
+		{"2.5 flash resolves to flash tier", "gemini-2.5-flash", tierFlash, true},
+		{"2.5 pro resolves to pro tier", "gemini-2.5-pro", tierPro, true},
+		{"2.5 flash-lite resolves to flash-lite tier", "gemini-2.5-flash-lite", tierFlashLite, true},
+		{"1.5 pro resolves to pro tier", "gemini-1.5-pro", tierPro, true},
+		{"2.5 flash dated preview", "gemini-2.5-flash-preview-09-2025", tierFlash, true},
+		// Non-text-generation variants are still rejected (we can't serve them).
+		{"tts variant rejected", "gemini-2.5-flash-tts", 0, false},
+		{"native-audio variant rejected", "gemini-2.5-flash-native-audio-preview-12-2025", 0, false},
+		{"image variant rejected", "gemini-3-flash-image", 0, false},
+		// Non-Gemini names are still rejected outright.
+		{"non-gemini rejected", "palm-2-pro", 0, false},
+		{"gpt rejected", "gpt-4.1", 0, false},
+		{"claude rejected", "claude-3.7-sonnet", 0, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tier, ok := inferModelTier(tc.input)
+			assert.Equal(t, tc.wantOK, ok)
+			if ok {
+				assert.Equal(t, tc.wantTier, tier)
+			}
+		})
+	}
+}
+
 func TestIsNewerModel(t *testing.T) {
 	tests := []struct {
 		name      string
