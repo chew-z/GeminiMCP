@@ -246,11 +246,18 @@ func waitForGitHubRateLimitReset(ctx context.Context, header http.Header, logger
 // rateLimitWaitFromHeaders extracts the implied wait duration and a tag for
 // logging. A zero duration signals the caller should fall back to a bounded
 // default. Returned durations may be negative when a reset point has already
-// passed — the caller treats that as "nothing to wait for".
+// passed — the caller treats that as "nothing to wait for". Non-positive
+// Retry-After values are rejected (treated as missing) so a buggy or
+// malicious upstream cannot disable the backoff guard with "-1".
 func rateLimitWaitFromHeaders(header http.Header) (time.Duration, string) {
 	if ra := strings.TrimSpace(header.Get("Retry-After")); ra != "" {
 		// Retry-After can be either a delta-seconds integer or an HTTP-date.
-		if secs, err := strconv.Atoi(ra); err == nil {
+		// Parse as int64 to avoid platform-dependent int overflow on very
+		// large values, and clamp non-positive values to "not usable".
+		if secs, err := strconv.ParseInt(ra, 10, 64); err == nil {
+			if secs <= 0 {
+				return 0, ""
+			}
 			return time.Duration(secs) * time.Second, "Retry-After"
 		}
 		if t, err := http.ParseTime(ra); err == nil {
@@ -276,26 +283,38 @@ func makeTextPart(header, body string) *genai.Part {
 // message, or review comment from injecting a fake header such as
 // "--- File: secrets.env ---".
 //
-// Hardening notes:
-//   - Line splitting normalizes Unicode line separators U+2028 (LINE
-//     SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) to LF first, so they are
-//     treated as hard line breaks like a bare newline would be.
-//   - Leading whitespace is stripped with [unicode.IsSpace], which covers
-//     ASCII space/tab as well as Unicode whitespace runes such as NBSP
-//     (U+00A0), EN SPACE (U+2002), NARROW NO-BREAK SPACE (U+202F), etc.
-//   - The header match accepts `---` followed by ANY whitespace rune
-//     (including tab), not just a literal space.
-//   - The transform prepends two spaces to any offending line, breaking the
-//     "line anchor" that Gemini would otherwise pattern-match as a header.
+// Hardening (each of these vectors has been observed or predicted as a
+// bypass, so all are closed):
+//
+//   - Line splitting normalizes every Unicode-spec hard line break to LF
+//     first: CRLF, CR, NEL (U+0085), LS (U+2028), PS (U+2029). A payload
+//     that uses any of these to smuggle `\n---` past strings.Split is
+//     neutralised here.
+//   - lineLooksLikeBlockHeader iterates runes, skipping any Cf (format)
+//     character at any position — so zero-width space (U+200B), zero-width
+//     joiner (U+200D), word joiner (U+2060), RLM / LRM, etc., cannot sit
+//     between the dashes or between "---" and the following whitespace.
+//   - The dash match accepts any Unicode dash-like rune, not just the
+//     ASCII hyphen-minus: HYPHEN (U+2010), FIGURE DASH (U+2012), EN DASH,
+//     EM DASH, HORIZONTAL BAR, MINUS SIGN (U+2212), FULLWIDTH HYPHEN-MINUS,
+//     etc. Gemini may visually render `\u2010\u2010\u2010` identically to
+//     `---`, so we treat them as equivalent for anchoring purposes.
+//   - Leading whitespace detection uses [unicode.IsSpace], covering NBSP
+//     (U+00A0), all EN/EM/NARROW/HAIR spaces, tab, and vertical tab.
+//   - The transform prepends two spaces to any offending line, breaking
+//     the "line anchor" Gemini would otherwise pattern-match as a header.
 func sanitizeUntrustedBlockContent(s string) string {
-	if !strings.Contains(s, "---") {
+	if !containsPossibleBlockHeaderAnchor(s) {
 		return s
 	}
-	// Normalize Unicode line separators so they behave like "\n" for the
-	// purposes of line anchoring. A bypass using U+2028 to slip "\n---"
-	// past strings.Split is neutralised here.
-	s = strings.ReplaceAll(s, "\u2028", "\n")
-	s = strings.ReplaceAll(s, "\u2029", "\n")
+
+	// Normalize every hard line break to LF so strings.Split sees them.
+	// CRLF must be normalised first to avoid double conversion.
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	s = strings.ReplaceAll(s, "\u0085", "\n") // NEL
+	s = strings.ReplaceAll(s, "\u2028", "\n") // LINE SEPARATOR
+	s = strings.ReplaceAll(s, "\u2029", "\n") // PARAGRAPH SEPARATOR
 
 	lines := strings.Split(s, "\n")
 	for i, line := range lines {
@@ -306,23 +325,80 @@ func sanitizeUntrustedBlockContent(s string) string {
 	return strings.Join(lines, "\n")
 }
 
-// lineLooksLikeBlockHeader reports whether a single line, after stripping
-// any leading Unicode whitespace, begins with "---" followed by a whitespace
-// rune. This is the exact pattern used by our own server-emitted block
-// headers ("--- File: ...", "--- PR #N ...", "--- Commit <sha> ..."), and it
-// is what Gemini treats as a new block boundary.
-func lineLooksLikeBlockHeader(line string) bool {
-	trimmed := strings.TrimLeftFunc(line, unicode.IsSpace)
-	if !strings.HasPrefix(trimmed, "---") {
-		return false
+// containsPossibleBlockHeaderAnchor is the fast-path early exit. It returns
+// true when the string contains any ASCII or Unicode dash rune that could
+// plausibly start a header. We keep this cheap — rune-level iteration once
+// per call is still O(n) but dominates only malicious inputs.
+func containsPossibleBlockHeaderAnchor(s string) bool {
+	for _, r := range s {
+		if isDashLike(r) {
+			return true
+		}
 	}
-	after := trimmed[len("---"):]
-	if after == "" {
+	return false
+}
+
+// lineLooksLikeBlockHeader reports whether a line, after canonicalising it
+// (stripping leading whitespace and format characters, collapsing Unicode
+// dash variants to ASCII `-`), begins with "---" followed by a whitespace
+// rune. That is the exact pattern Gemini treats as a block boundary, so any
+// line that canonicalises to it must be neutralised.
+func lineLooksLikeBlockHeader(line string) bool {
+	var (
+		dashes     int
+		firstAfter rune
+		sawAfter   bool
+	)
+	for _, r := range line {
+		// Format (Cf) characters — ZWSP, ZWJ, ZWNJ, LRM, RLM, word joiner,
+		// etc. — are invisible to readers and to Gemini. Skip them anywhere
+		// in the header scan so they cannot break the pattern.
+		if unicode.Is(unicode.Cf, r) {
+			continue
+		}
+		if dashes < 3 {
+			if isDashLike(r) {
+				dashes++
+				continue
+			}
+			if dashes == 0 && unicode.IsSpace(r) {
+				// Still consuming leading whitespace before the dashes.
+				continue
+			}
+			// A non-dash, non-space rune before three dashes means this
+			// line does not canonicalise to a block-header anchor.
+			return false
+		}
+		// We have exactly three dashes; the first meaningful rune after
+		// must be whitespace for the header pattern to match.
+		firstAfter = r
+		sawAfter = true
+		break
+	}
+	if dashes < 3 || !sawAfter {
 		// Bare "---" with nothing after it is not a header pattern.
 		return false
 	}
-	for _, r := range after {
-		return unicode.IsSpace(r)
+	return unicode.IsSpace(firstAfter)
+}
+
+// isDashLike reports whether a rune is a dash or hyphen variant that Gemini
+// may visually render identically to the ASCII hyphen-minus. The list is
+// drawn from Unicode's Dash_Punctuation + MINUS SIGN.
+func isDashLike(r rune) bool {
+	switch r {
+	case '-', // U+002D HYPHEN-MINUS
+		'\u2010', // HYPHEN
+		'\u2011', // NON-BREAKING HYPHEN
+		'\u2012', // FIGURE DASH
+		'\u2013', // EN DASH
+		'\u2014', // EM DASH
+		'\u2015', // HORIZONTAL BAR
+		'\u2212', // MINUS SIGN
+		'\ufe58', // SMALL EM DASH
+		'\ufe63', // SMALL HYPHEN-MINUS
+		'\uff0d': // FULLWIDTH HYPHEN-MINUS
+		return true
 	}
 	return false
 }
