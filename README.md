@@ -125,14 +125,6 @@ curl -X POST http://localhost:8081/mcp \
 
 You can use Gemini tools directly from an LLM console by creating prompt examples that invoke the tools. Here are some example prompts for different use cases:
 
-### Listing Available Models
-
-Say to your LLM:
-
-> _Please use the gemini_models tool to show me the list of available Gemini models._
-
-The LLM will invoke the **`gemini_models`** tool and return the list of available models, organized by preference and capability. The output prioritizes recommended models for specific tasks, then organizes remaining models by version (newest to oldest).
-
 ### Code Analysis with **`gemini_ask`**
 
 Say to your LLM:
@@ -212,7 +204,7 @@ When using these tools from an LLM console, always encourage the LLM to set appr
 
 ### Available Tools
 
-The server provides three primary tools:
+The server provides two primary tools:
 
 #### 1. **`gemini_ask`**
 
@@ -295,29 +287,11 @@ Returns structured responses with sources and optional thinking process:
 }
 ```
 
-#### 3. **`gemini_models`**
-
-Lists all available Gemini models with capabilities.
-
-```json
-{
-    "name": "gemini_models",
-    "arguments": {}
-}
-```
-
-Returns comprehensive model information including:
-
-- Detailed descriptions of the supported Gemini 2.5 models (Pro, Flash, Flash Lite).
-- Model IDs, context window sizes, and descriptions.
-- Usage examples
-- Thinking mode support.
-
 ### Model Management
 
-This server is optimized for and exclusively supports the **Gemini 2.5 family of models**. The `gemini_models` tool provides a detailed, static list of these supported models and their specific capabilities as presented by the server.
+This server exposes three logical tiers — Pro, Flash, Flash-Lite — mapped to the latest available Gemini-3+ models selected at startup.
 
-Key supported models (as detailed by the `gemini_models` tool):
+Key supported models:
 
 -   **`gemini-3.1-pro-preview`** (latest Pro):
     *   Most powerful model, 1M token context window.
@@ -331,8 +305,6 @@ Key supported models (as detailed by the `gemini_models` tool):
     *   Fastest and most cost-efficient, 1M token context window.
     *   Best for: Search queries, lightweight tasks, quick responses.
     *   Capabilities: Thinking mode, automatic implicit caching.
-
-**Always use the `gemini_models` tool to get the most current details, capabilities, and example usage for each model as presented by the server.**
 
 ### Implicit Caching
 

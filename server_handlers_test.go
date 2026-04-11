@@ -161,9 +161,9 @@ func TestRegisterErrorTools(t *testing.T) {
 	registerErrorTools(mcpServer, errorServer, NewLogger(LevelError))
 
 	tools := mcpServer.ListTools()
-	require.Len(t, tools, 3)
+	require.Len(t, tools, 2)
 
-	for _, toolName := range []string{"gemini_ask", "gemini_search", "gemini_models"} {
+	for _, toolName := range []string{"gemini_ask", "gemini_search"} {
 		t.Run(toolName, func(t *testing.T) {
 			tool := mcpServer.GetTool(toolName)
 			require.NotNil(t, tool)

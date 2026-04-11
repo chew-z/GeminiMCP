@@ -43,9 +43,3 @@ var GeminiSearchTool = mcp.NewTool(
 			"(RFC3339 format, e.g. '2024-12-31T23:59:59Z'). If provided, start_time must also be provided.",
 	)),
 )
-
-// GeminiModelsTool defines the gemini_models tool specification
-var GeminiModelsTool = mcp.NewTool(
-	"gemini_models",
-	mcp.WithDescription("List available Gemini models with descriptions"),
-)

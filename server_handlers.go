@@ -35,13 +35,6 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(geminiSvc.GeminiSearchHandler, "gemini_search", logger))
 	logger.Info("Registered tool: gemini_search")
 
-	// Use shared tool definition for gemini_models
-
-	// Create handler for gemini_models using direct handler
-	// Register gemini_models with logger wrapper using shared tool definition
-	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(geminiSvc.GeminiModelsHandler, "gemini_models", logger))
-	logger.Info("Registered tool: gemini_models")
-
 	// Register all prompts from the definitions
 	for _, p := range Prompts {
 		handler := geminiSvc.promptHandler(p)
@@ -193,7 +186,6 @@ func registerErrorTools(mcpServer *server.MCPServer, errorServer *ErrorGeminiSer
 	// Register error handlers for all tools using shared tool definitions
 	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_ask", logger))
 	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_search", logger))
-	mcpServer.AddTool(GeminiModelsTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_models", logger))
 
 	logger.Info("Registered error handlers for all tools")
 }

@@ -16,7 +16,6 @@ The project follows a **Modular Monolith** architecture centered around Google's
 2. **Handlers**:
    - `GeminiAskHandler`: Processes code analysis/review requests with file context
    - `GeminiSearchHandler`: Handles search-grounded queries
-   - `GeminiModelsHandler`: Provides model documentation
    - `PromptHandler`: Generates instructions for MCP clients
 
 3. **Supporting Services**:
