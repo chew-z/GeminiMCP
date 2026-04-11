@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -55,14 +53,6 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 	query, config, modelName, err := s.parseAskRequest(ctx, req)
 	if err != nil {
 		return createErrorResult(err.Error()), nil
-	}
-
-	// Early mutual-exclusion check: local file_paths is not compatible with
-	// any github_* parameter. This check runs BEFORE any HTTP fetches so the
-	// client gets a fast, deterministic error instead of a timeout/partial
-	// result driven by unrelated GitHub failures.
-	if errResult := validateNoLocalPathsWithGitHub(req); errResult != nil {
-		return errResult, nil
 	}
 
 	ghContextParts, uploads, inventory, allWarnings, errResult := s.gatherAllContext(ctx, req)
@@ -128,9 +118,8 @@ func (s *GeminiServer) gatherAllContext(
 	return ghContextParts, uploads, inventory, allWarnings, nil
 }
 
-// finalizeFilesInventory records uploaded files in the inventory only when
-// they were sourced from github_files. Local file_paths intentionally never
-// contribute to the inventory addendum.
+// finalizeFilesInventory records uploaded files in the inventory when they
+// were sourced from github_files.
 func finalizeFilesInventory(req mcp.CallToolRequest, inv *contextInventory, uploadCount int) {
 	if uploadCount == 0 {
 		return
@@ -156,8 +145,7 @@ func consolidatedContextError(
 		return nil
 	}
 	anyRequested := spec.any() ||
-		len(extractArgumentStringArray(req, "github_files")) > 0 ||
-		len(extractArgumentStringArray(req, "file_paths")) > 0
+		len(extractArgumentStringArray(req, "github_files")) > 0
 	if !anyRequested {
 		return nil
 	}
@@ -168,29 +156,6 @@ func consolidatedContextError(
 	return createErrorResult(msg)
 }
 
-// validateNoLocalPathsWithGitHub rejects requests that mix local file_paths
-// with any github_* parameter. Returns a CallToolResult error on violation,
-// or nil if the combination is safe.
-func validateNoLocalPathsWithGitHub(req mcp.CallToolRequest) *mcp.CallToolResult {
-	filePaths := extractArgumentStringArray(req, "file_paths")
-	if len(filePaths) == 0 {
-		return nil
-	}
-	githubFiles := extractArgumentStringArray(req, "github_files")
-	_, hasPR := extractArgumentInt(req, "github_pr")
-	commits := extractArgumentStringArray(req, "github_commits")
-	diffBase := extractArgumentString(req, "github_diff_base", "")
-	diffHead := extractArgumentString(req, "github_diff_head", "")
-	githubRepo := extractArgumentString(req, "github_repo", "")
-	githubRef := extractArgumentString(req, "github_ref", "")
-	if len(githubFiles) > 0 || hasPR || len(commits) > 0 ||
-		diffBase != "" || diffHead != "" ||
-		githubRepo != "" || githubRef != "" {
-		return createErrorResult("'file_paths' cannot be combined with any 'github_*' parameter.")
-	}
-	return nil
-}
-
 // gatherGitHubContext fetches the github_pr / github_commits / github_diff
 // parameters (independently and in parallel-friendly order) and returns the
 // resulting genai Parts in the stable merge order:
@@ -198,7 +163,7 @@ func validateNoLocalPathsWithGitHub(req mcp.CallToolRequest) *mcp.CallToolResult
 //	[commits] → [diff] → [PR bundle]
 //
 // Files are intentionally NOT handled here — they're fetched by
-// gatherFileUploads so the existing xor-with-local-file_paths logic stays put.
+// gatherFileUploads.
 func (s *GeminiServer) gatherGitHubContext(
 	ctx context.Context, req mcp.CallToolRequest,
 ) ([]*genai.Part, contextInventory, []string, *mcp.CallToolResult) {
@@ -398,13 +363,10 @@ func applyContextInventory(config *genai.GenerateContentConfig, inv *contextInve
 	config.SystemInstruction = genai.NewContentFromText(existing.String(), "")
 }
 
-// gatherFileUploads handles the logic of selecting, validating, and fetching files
-// from either local paths or a GitHub repository. The github-family parameters
-// (github_pr / github_commits / github_diff_*) are orthogonal peers handled
-// separately by gatherGitHubContext; this function only deals with file attachments.
-//
-// Local file_paths remains exclusive with github_files (and by extension, any
-// other github_* parameter is also exclusive with local file_paths).
+// gatherFileUploads fetches any github_files attached to the request. The
+// github-family parameters (github_pr / github_commits / github_diff_*) are
+// orthogonal peers handled separately by gatherGitHubContext; this function
+// only deals with file attachments.
 //
 // The otherGitHubContextPresent flag relaxes the "files requested but none
 // gathered" hard-fail when another github-sourced context block was already
@@ -415,12 +377,14 @@ func (s *GeminiServer) gatherFileUploads(
 ) ([]*FileUploadRequest, []string, *mcp.CallToolResult) {
 	logger := getLoggerFromContext(ctx)
 
-	filePaths := extractArgumentStringArray(req, "file_paths")
 	githubFiles := extractArgumentStringArray(req, "github_files")
+	logger.Info("Extracted file parameters - github files: %d", len(githubFiles))
 
-	logger.Info("Extracted file parameters - local files: %d, github files: %d", len(filePaths), len(githubFiles))
+	if len(githubFiles) == 0 {
+		return nil, nil, nil
+	}
 
-	uploads, warnings, errResult := s.fetchFileUploadsBySource(ctx, req, filePaths, githubFiles)
+	uploads, warnings, errResult := s.gatherGitHubFiles(ctx, req, githubFiles)
 	if errResult != nil {
 		return s.handleFileUploadError(errResult, warnings, githubFiles, otherGitHubContextPresent)
 	}
@@ -429,8 +393,7 @@ func (s *GeminiServer) gatherFileUploads(
 	// return an error instead of silently falling through to processWithoutFiles —
 	// unless other github context was attached successfully, in which case
 	// this is a partial failure that should surface as warnings.
-	filesRequested := len(filePaths) > 0 || len(githubFiles) > 0
-	if filesRequested && len(uploads) == 0 {
+	if len(uploads) == 0 {
 		if otherGitHubContextPresent {
 			logger.Warn("files requested but none gathered; other GitHub context present, continuing")
 			return nil, warnings, nil
@@ -440,20 +403,6 @@ func (s *GeminiServer) gatherFileUploads(
 	}
 
 	return uploads, warnings, nil
-}
-
-// fetchFileUploadsBySource dispatches to the github_files or local file_paths
-// fetcher, returning (uploads, warnings, errResult).
-func (s *GeminiServer) fetchFileUploadsBySource(
-	ctx context.Context, req mcp.CallToolRequest, filePaths, githubFiles []string,
-) ([]*FileUploadRequest, []string, *mcp.CallToolResult) {
-	if len(githubFiles) > 0 {
-		return s.gatherGitHubFiles(ctx, req, githubFiles)
-	}
-	if len(filePaths) > 0 {
-		return s.gatherLocalFiles(ctx, filePaths)
-	}
-	return nil, nil, nil
 }
 
 // handleFileUploadError softens a hard-fail from the github_files fetcher into
@@ -488,7 +437,7 @@ func (s *GeminiServer) gatherGitHubFiles(
 	githubRef := extractArgumentString(req, "github_ref", "")
 
 	// Validate and fetch
-	if err := validateFilePathArray(githubFiles, true); err != nil {
+	if err := validateFilePathArray(githubFiles); err != nil {
 		logger.Error("GitHub file path validation failed: %v", err)
 		return nil, nil, createErrorResult(err.Error())
 	}
@@ -517,114 +466,6 @@ func (s *GeminiServer) gatherGitHubFiles(
 			len(fetchedUploads), len(githubFiles), len(fileErrs))
 	}
 	return fetchedUploads, warnings, nil
-}
-
-// gatherLocalFiles fetches files from the local filesystem.
-// Returns uploads, warning messages for skipped files, and an optional error result.
-func (s *GeminiServer) gatherLocalFiles(ctx context.Context, filePaths []string) ([]*FileUploadRequest, []string, *mcp.CallToolResult) {
-	if isHTTPTransport(ctx) {
-		return nil, nil, createErrorResult("'file_paths' is not supported in HTTP transport mode. Use 'github_files' instead.")
-	}
-
-	localUploads, warnings, err := readLocalFiles(ctx, filePaths, s.config)
-	if err != nil {
-		getLoggerFromContext(ctx).Error("Error processing local files: %v", err)
-		return nil, nil, createErrorResult(fmt.Sprintf("Error processing local files: %v", err))
-	}
-	return localUploads, warnings, nil
-}
-
-// readLocalFiles reads files from the local filesystem and returns them as FileUploadRequest objects.
-// Returns uploads, warning messages for skipped files, and an error for fatal issues.
-func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]*FileUploadRequest, []string, error) {
-	logger := getLoggerFromContext(ctx)
-	logger.Info("Reading files from local filesystem (source: 'file_paths')")
-
-	if config.FileReadBaseDir == "" {
-		return nil, nil, fmt.Errorf("local file reading is disabled: no base directory configured")
-	}
-
-	var uploads []*FileUploadRequest
-	var warnings []string
-
-	for _, filePath := range filePaths {
-		// Clean the path to resolve ".." etc. and prevent shenanigans.
-		cleanedPath := filepath.Clean(filePath)
-
-		// Prevent absolute paths and path traversal attempts.
-		if filepath.IsAbs(cleanedPath) || strings.HasPrefix(cleanedPath, "..") {
-			return nil, nil, fmt.Errorf("invalid path: %s. Only relative paths within the allowed directory are permitted", filePath)
-		}
-
-		fullPath := filepath.Join(config.FileReadBaseDir, cleanedPath)
-
-		// Final, most important check: ensure the resolved path is still within the base directory.
-		fileInfo, err := os.Lstat(fullPath)
-		if err != nil {
-			logger.Error("Failed to stat file %s: %v", filePath, err)
-			warnings = append(warnings, fmt.Sprintf("%s: file not found or inaccessible", filePath))
-			continue
-		}
-
-		if fileInfo.IsDir() {
-			logger.Warn("Skipping directory: %s", filePath)
-			warnings = append(warnings, fmt.Sprintf("%s: is a directory", filePath))
-			continue
-		}
-
-		// Resolve the entire symlink chain (multi-hop) and verify the final
-		// target is still within the allowed base directory.
-		resolvedBase, err := filepath.EvalSymlinks(config.FileReadBaseDir)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to resolve base directory: %v", err)
-		}
-		resolvedPath, err := filepath.EvalSymlinks(fullPath)
-		if err != nil {
-			logger.Error("Failed to resolve symlink chain for %s: %v", filePath, err)
-			warnings = append(warnings, fmt.Sprintf("%s: failed to resolve symlink", filePath))
-			continue
-		}
-		rel, relErr := filepath.Rel(resolvedBase, resolvedPath)
-		if relErr != nil || strings.HasPrefix(rel, "..") {
-			logger.Error("Skipping unsafe path: %s resolves to %s (outside %s)", filePath, resolvedPath, resolvedBase)
-			warnings = append(warnings, fmt.Sprintf("%s: unsafe symlink", filePath))
-			continue
-		}
-
-		// Check file size before reading to prevent OOM on huge files.
-		// Use resolvedPath (the fully-resolved target) for both stat and read
-		// to avoid TOCTOU races where a symlink is swapped after validation.
-		realInfo, statErr := os.Stat(resolvedPath)
-		if statErr != nil {
-			logger.Error("Failed to stat target of %s: %v", filePath, statErr)
-			warnings = append(warnings, fmt.Sprintf("%s: could not determine file size", filePath))
-			continue
-		}
-		if realInfo.Size() > config.MaxFileSize {
-			logger.Warn("Skipping file %s because it is too large: %d bytes, limit is %d", filePath, realInfo.Size(), config.MaxFileSize)
-			warnings = append(warnings, fmt.Sprintf("%s: file too large (%d bytes, limit %d)", filePath, realInfo.Size(), config.MaxFileSize))
-			continue
-		}
-
-		content, err := os.ReadFile(resolvedPath)
-		if err != nil {
-			logger.Error("Failed to read file %s: %v", filePath, err)
-			warnings = append(warnings, fmt.Sprintf("%s: could not read file", filePath))
-			continue
-		}
-
-		mimeType := getMimeTypeFromPath(filePath)
-		fileName := filepath.Base(filePath)
-
-		logger.Info("Adding file to context: %s", filePath)
-		uploads = append(uploads, &FileUploadRequest{
-			FileName:    fileName,
-			MimeType:    mimeType,
-			Content:     content,
-			DisplayName: fileName,
-		})
-	}
-	return uploads, warnings, nil
 }
 
 // processWithFiles handles a Gemini API request with any combination of

@@ -21,47 +21,47 @@ func TestExtractArgumentStringArray(t *testing.T) {
 		{
 			name: "array from client",
 			args: map[string]interface{}{
-				"file_paths": []any{"a.go", "b.go", 42},
+				"github_files": []any{"a.go", "b.go", 42},
 			},
-			key:      "file_paths",
+			key:      "github_files",
 			expected: []string{"a.go", "b.go"},
 		},
 		{
 			name: "json string array",
 			args: map[string]interface{}{
-				"file_paths": `["x.go","y.go"]`,
+				"github_files": `["x.go","y.go"]`,
 			},
-			key:      "file_paths",
+			key:      "github_files",
 			expected: []string{"x.go", "y.go"},
 		},
 		{
 			name: "plain string value",
 			args: map[string]interface{}{
-				"file_paths": "single.go",
+				"github_files": "single.go",
 			},
-			key:      "file_paths",
+			key:      "github_files",
 			expected: []string{"single.go"},
 		},
 		{
 			name: "malformed json falls back to plain string",
 			args: map[string]interface{}{
-				"file_paths": "[bad-json",
+				"github_files": "[bad-json",
 			},
-			key:      "file_paths",
+			key:      "github_files",
 			expected: []string{"[bad-json"},
 		},
 		{
 			name: "empty string returns empty slice",
 			args: map[string]interface{}{
-				"file_paths": "",
+				"github_files": "",
 			},
-			key:      "file_paths",
+			key:      "github_files",
 			expected: nil,
 		},
 		{
 			name:     "missing key returns empty slice",
 			args:     map[string]interface{}{},
-			key:      "file_paths",
+			key:      "github_files",
 			expected: nil,
 		},
 	}
@@ -90,13 +90,9 @@ func TestServiceTierFromString(t *testing.T) {
 
 func TestValidateFilePathArray(t *testing.T) {
 	t.Run("github paths reject traversal and absolute", func(t *testing.T) {
-		require.NoError(t, validateFilePathArray([]string{"src/main.go", "README.md"}, true))
-		assert.Error(t, validateFilePathArray([]string{"../secret.txt"}, true))
-		assert.Error(t, validateFilePathArray([]string{"/etc/passwd"}, true))
-	})
-
-	t.Run("local paths are not validated here", func(t *testing.T) {
-		require.NoError(t, validateFilePathArray([]string{"../allowed-later.txt"}, false))
+		require.NoError(t, validateFilePathArray([]string{"src/main.go", "README.md"}))
+		assert.Error(t, validateFilePathArray([]string{"../secret.txt"}))
+		assert.Error(t, validateFilePathArray([]string{"/etc/passwd"}))
 	})
 }
 

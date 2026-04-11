@@ -4,7 +4,7 @@
 
 1. MCP clients provide task intent and context; the server decides model tier, thinking, token limits, retries, and caching.
 
-2. Repository context is primary: use `github_repo` + `github_files` by default. Local `file_paths` is a discouraged stdio fallback.
+2. Repository context is the only input surface: use `github_repo` + `github_files` / `github_pr` / `github_commits` / `github_diff_*`.
 
 3. The model contract is three logical tiers (pro, flash, flash-lite). The server maps tiers to latest models.
 

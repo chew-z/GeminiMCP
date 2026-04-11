@@ -131,7 +131,6 @@ func TestCreateHTTPMiddleware(t *testing.T) {
 			middleware := createHTTPMiddleware(tc.config, logger)
 			ctx := middleware(context.Background(), req)
 
-			assert.True(t, isHTTPTransport(ctx))
 			assert.Equal(t, http.MethodPost, ctx.Value(httpMethodKey))
 			assert.Equal(t, "/mcp", ctx.Value(httpPathKey))
 			assert.Equal(t, "203.0.113.10:4242", ctx.Value(httpRemoteAddrKey))

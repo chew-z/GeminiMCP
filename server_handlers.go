@@ -37,9 +37,6 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 
 	registerPrompts(mcpServer, geminiSvc, logger)
 
-	// Log file handling configuration
-	logger.Info("File handling: max size %s", humanReadableSize(config.MaxFileSize))
-
 	// Log thinking configuration if enabled
 	model := GetModelByID(config.GeminiModel)
 	if config.EnableThinking && model != nil && model.SupportsThinking {

@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -58,9 +57,6 @@ func TestAppendFileWarningNote(t *testing.T) {
 func TestGeminiAskHandlerFileSourceBehavior(t *testing.T) {
 	seedModelStateForTest(t, testModelCatalog())
 
-	baseDir := t.TempDir()
-	require.NoError(t, os.WriteFile(baseDir+"/ok.txt", []byte("hello"), 0644))
-
 	s := &GeminiServer{
 		config: &Config{
 			GeminiModel:        "gemini-pro",
@@ -69,8 +65,6 @@ func TestGeminiAskHandlerFileSourceBehavior(t *testing.T) {
 			EnableThinking:     true,
 			ThinkingLevel:      "high",
 			ServiceTier:        "standard",
-			FileReadBaseDir:    baseDir,
-			MaxFileSize:        1024,
 			MaxGitHubFiles:     10,
 			MaxGitHubFileSize:  1024,
 			HTTPTimeout:        50 * time.Millisecond,
@@ -78,22 +72,10 @@ func TestGeminiAskHandlerFileSourceBehavior(t *testing.T) {
 	}
 
 	tests := []struct {
-		name            string
-		args            map[string]interface{}
-		wantErrorText   string
-		wantInternalErr bool
-		httpTransport   bool
+		name          string
+		args          map[string]interface{}
+		wantErrorText string
 	}{
-		{
-			name: "rejects mixed local and github sources",
-			args: map[string]interface{}{
-				"query":        "test query",
-				"file_paths":   []any{"ok.txt"},
-				"github_files": []any{"README.md"},
-				"github_repo":  "owner/repo",
-			},
-			wantErrorText: "'file_paths' cannot be combined with any 'github_*' parameter",
-		},
 		{
 			name: "rejects github_files without github_repo",
 			args: map[string]interface{}{
@@ -101,32 +83,6 @@ func TestGeminiAskHandlerFileSourceBehavior(t *testing.T) {
 				"github_files": []any{"README.md"},
 			},
 			wantErrorText: "'github_repo' is required when using 'github_files'",
-		},
-		{
-			name: "hard-fails when file_paths requested but none gathered",
-			args: map[string]interface{}{
-				"query":      "test query",
-				"file_paths": []any{"missing.txt"},
-			},
-			wantErrorText: "Failed to retrieve any of the requested files",
-		},
-		{
-			name: "rejects local file_paths over HTTP transport",
-			args: map[string]interface{}{
-				"query":      "test query",
-				"file_paths": []any{"ok.txt"},
-			},
-			wantErrorText: "'file_paths' is not supported in HTTP transport mode",
-			httpTransport: true,
-		},
-		{
-			name: "valid local file reaches client validation path",
-			args: map[string]interface{}{
-				"query":      "test query",
-				"file_paths": []any{"ok.txt"},
-			},
-			wantErrorText:   "Internal error: Gemini client not properly initialized",
-			wantInternalErr: true,
 		},
 	}
 
@@ -139,22 +95,13 @@ func TestGeminiAskHandlerFileSourceBehavior(t *testing.T) {
 				},
 			}
 
-			ctx := context.Background()
-			if tc.httpTransport {
-				ctx = withHTTPTransport(ctx)
-			}
-
-			result, err := s.GeminiAskHandler(ctx, req)
+			result, err := s.GeminiAskHandler(context.Background(), req)
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			assert.True(t, result.IsError)
 
 			text := toolResultText(t, result)
 			assert.Contains(t, text, tc.wantErrorText)
-
-			if tc.wantInternalErr {
-				assert.Contains(t, text, "Gemini client not properly initialized")
-			}
 		})
 	}
 }
@@ -278,117 +225,6 @@ func TestGeminiAskHandlerGitHubWarningTruncationInOutboundQuery(t *testing.T) {
 	}
 	assert.NotContains(t, querySent, "path/missing-11.txt: could not be fetched from GitHub")
 	assert.NotContains(t, querySent, "path/missing-12.txt: could not be fetched from GitHub")
-}
-
-func TestGeminiAskHandlerLocalWarningTruncationInOutboundQuery(t *testing.T) {
-	seedModelStateForTest(t, testModelCatalog())
-	ctx := context.Background()
-
-	baseDir := t.TempDir()
-	require.NoError(t, os.WriteFile(baseDir+"/ok.txt", []byte("ok"), 0644))
-
-	requestPathCh := make(chan string, 1)
-	requestBodyCh := make(chan []byte, 1)
-	genaiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		_ = r.Body.Close()
-
-		select {
-		case requestPathCh <- r.URL.String():
-		default:
-		}
-		select {
-		case requestBodyCh <- body:
-		default:
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"mock ok"}]}}]}`))
-	}))
-	defer genaiServer.Close()
-
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey: "test-api-key",
-		HTTPOptions: genai.HTTPOptions{
-			BaseURL: genaiServer.URL,
-		},
-		HTTPClient: genaiServer.Client(),
-	})
-	require.NoError(t, err)
-
-	s := &GeminiServer{
-		config: &Config{
-			GeminiModel:        "gemini-pro",
-			GeminiSystemPrompt: "system prompt",
-			GeminiTemperature:  0.3,
-			EnableThinking:     true,
-			ThinkingLevel:      "high",
-			ServiceTier:        "standard",
-			MaxRetries:         0,
-			HTTPTimeout:        100 * time.Millisecond,
-			FileReadBaseDir:    baseDir,
-			MaxFileSize:        1024,
-		},
-		client: client,
-	}
-
-	filePaths := []any{"ok.txt"}
-	for i := 1; i <= maxReportedWarnings+2; i++ {
-		filePaths = append(filePaths, fmt.Sprintf("missing-%02d.txt", i))
-	}
-
-	req := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name: "gemini_ask",
-			Arguments: map[string]interface{}{
-				"query":      "analyze these files",
-				"file_paths": filePaths,
-			},
-		},
-	}
-
-	result, err := s.GeminiAskHandler(ctx, req)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.False(t, result.IsError, toolResultText(t, result))
-	assert.Contains(t, toolResultText(t, result), "mock ok")
-
-	var requestPath string
-	select {
-	case requestPath = <-requestPathCh:
-	default:
-		t.Fatal("expected outbound GenerateContent request path to be captured")
-	}
-	assert.True(t, strings.Contains(requestPath, ":generateContent"), "request path must target generateContent endpoint: %s", requestPath)
-
-	var requestBody []byte
-	select {
-	case requestBody = <-requestBodyCh:
-	default:
-		t.Fatal("expected outbound GenerateContent request body to be captured")
-	}
-
-	var payload struct {
-		Contents []struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"contents"`
-	}
-	require.NoError(t, json.Unmarshal(requestBody, &payload))
-	require.NotEmpty(t, payload.Contents)
-	require.NotEmpty(t, payload.Contents[0].Parts)
-
-	querySent := payload.Contents[0].Parts[len(payload.Contents[0].Parts)-1].Text
-	assert.Contains(t, querySent, "analyze these files")
-	assert.Contains(t, querySent, "The following requested context could not be loaded")
-	assert.Contains(t, querySent, "... and 2 other item(s)")
-
-	for i := 1; i <= maxReportedWarnings; i++ {
-		assert.Contains(t, querySent, fmt.Sprintf("missing-%02d.txt: file not found or inaccessible", i))
-	}
-	assert.NotContains(t, querySent, "missing-11.txt: file not found or inaccessible")
-	assert.NotContains(t, querySent, "missing-12.txt: file not found or inaccessible")
 }
 
 func TestGeminiAskHandlerWithoutFilesUsesProcessWithoutFiles(t *testing.T) {

@@ -29,7 +29,7 @@ query*          string    The question or task (required)
 model           string    Tier alias or explicit model ID
 systemPrompt    string    Override system prompt
 enable_thinking bool      Enable extended thinking
-thinking_level  string    minimal | low | medium | high  (default: high)
+thinking_level  string    low | medium | high  (default: high)
 max_tokens      number    Override token limit
 ```
 
@@ -43,8 +43,6 @@ github_pr           number    PR → description + diff + review comments
 github_commits      string[]  Commit SHAs → patch + subject per commit
 github_diff_base    string    Base ref for compare diff  ← pair with head
 github_diff_head    string    Head ref for compare diff  ← pair with base
-
-file_paths          string[]  Local files (stdio only, exclusive with github_*)
 ```
 
 **Merge order:** `commits → compare diff → PR bundle → files`
@@ -188,7 +186,6 @@ go build -o bin/mcp-gemini .
 
 | Rule | Detail |
 |------|--------|
-| `file_paths` ↔ `github_*` | Mutually exclusive |
 | `github_diff_base` ↔ `github_diff_head` | Must be paired |
 | `github_repo` | Required when any `github_*` is used |
 | Retry-After cap | 3 600 s max wait honoured |

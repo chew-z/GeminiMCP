@@ -160,7 +160,7 @@ Tier aliases resolve to the latest live API model at startup:
 | `GEMINI_SEARCH_SYSTEM_PROMPT` | — | Default system prompt for `gemini_search` |
 | `GEMINI_TEMPERATURE` | `1.0` | Sampling temperature (0.0–1.0) |
 | `GEMINI_ENABLE_THINKING` | `true` | Enable extended thinking globally |
-| `GEMINI_THINKING_LEVEL` | `high` | Default thinking level for `gemini_ask`: `minimal`, `low`, `medium`, `high` |
+| `GEMINI_THINKING_LEVEL` | `high` | Default thinking level for `gemini_ask`: `low`, `medium`, `high` |
 | `GEMINI_SEARCH_THINKING_LEVEL` | `low` | Default thinking level for `gemini_search` |
 | `GEMINI_SERVICE_TIER` | `standard` | Service tier: `flex`, `standard`, `priority` |
 
@@ -194,13 +194,6 @@ Tier aliases resolve to the latest live API model at startup:
 | `GEMINI_MAX_GITHUB_DIFF_BYTES` | `512000` | Max bytes for a unified diff (500 KB) |
 | `GEMINI_MAX_GITHUB_COMMITS` | `10` | Max commits per `github_commits` call |
 | `GEMINI_MAX_GITHUB_PR_REVIEW_COMMENTS` | `50` | Max PR review comments fetched |
-
-### File Handling
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `GEMINI_MAX_FILE_SIZE` | `10485760` | Max local file size (10 MB) |
-| `GEMINI_FILE_READ_BASE_DIR` | — | Restrict local file reads to this directory |
 
 ### Retry
 

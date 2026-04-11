@@ -142,12 +142,11 @@ Clients may also pass explicit model IDs which are validated by `ValidateModelID
 ```
 GeminiAskHandler
   └─ parseAskRequest()
-  └─ validateNoLocalPathsWithGitHub()   — mutual exclusion enforcement
   └─ gatherAllContext()
        ├─ gatherGitHubContext()          — commits → diff → PR bundle
        │    └─ fetchGitHubContextSources() (parallel-safe)
-       └─ gatherFileUploads()            — local paths OR github_files (exclusive)
-            └─ fetchFileUploadsBySource()
+       └─ gatherFileUploads()            — github_files
+            └─ gatherGitHubFiles()
   └─ applyContextInventory()            — prepend inventory block to system prompt
   └─ processWithFiles()  |
      processWithoutFiles()              — call Gemini API with assembled parts
@@ -212,11 +211,6 @@ a multi-pass scan per line:
 `Claims` carries `UserID`, `Username`, and `Role`. Enabled via `--auth-enabled` or
 `GEMINI_AUTH_ENABLED=true`. The server **refuses to start** if auth is enabled but
 `GEMINI_AUTH_SECRET_KEY` is absent.
-
-### Mutual Exclusion
-
-`file_paths` (stdio local files) and `github_*` parameters are enforced as strictly
-mutually exclusive by `validateNoLocalPathsWithGitHub()`.
 
 ---
 

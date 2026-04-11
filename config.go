@@ -28,9 +28,6 @@ Your answers should be comprehensive but concise, focusing on the most relevant 
 Cite your sources when appropriate and maintain a neutral, informative tone.
 If the search results don't contain enough information to fully answer the query, acknowledge the limitations.
 `
-	// File handling defaults
-	defaultMaxFileSize = int64(10 * 1024 * 1024) // 10MB explicitly as int64
-
 	// GitHub settings defaults
 	defaultGitHubAPIBaseURL          = "https://api.github.com"
 	defaultMaxGitHubFiles            = 20
@@ -188,15 +185,6 @@ func NewConfig(logger Logger) (*Config, error) {
 		return nil, fmt.Errorf("GEMINI_TEMPERATURE must be between 0.0 and 1.0, got %v", geminiTemperature)
 	}
 
-	// File handling settings
-	maxFileSize := int64(parseEnvVarInt("GEMINI_MAX_FILE_SIZE", int(defaultMaxFileSize), logger))
-	if maxFileSize <= 0 {
-		logger.Warnf("GEMINI_MAX_FILE_SIZE must be positive. Using default: %d", defaultMaxFileSize)
-		maxFileSize = defaultMaxFileSize
-	}
-
-	fileReadBaseDir := os.Getenv("GEMINI_FILE_READ_BASE_DIR")
-
 	// GitHub settings
 	githubToken := os.Getenv("GEMINI_GITHUB_TOKEN")
 	githubAPIBaseURL := os.Getenv("GEMINI_GITHUB_API_BASE_URL")
@@ -310,8 +298,6 @@ func NewConfig(logger Logger) (*Config, error) {
 			MaxRetries:               maxRetries,
 			InitialBackoff:           initialBackoff,
 			MaxBackoff:               maxBackoff,
-			MaxFileSize:              maxFileSize,
-			FileReadBaseDir:          fileReadBaseDir,
 
 			// GitHub settings
 			GitHubToken:               githubToken,

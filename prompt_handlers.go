@@ -32,7 +32,6 @@ func createTaskInstructions(problemStatement, systemPrompt string) string {
 			"2. Provide the code to be analyzed using ONE of the following methods (in order of preference):\n"+
 			"   a) PREFERRED: Use `github_files` array with `github_repo` (owner/repo) and `github_ref` (branch/tag/commit)\n"+
 			"   b) For small code snippets only: Embed code directly into the `query` argument\n"+
-			"   c) LAST RESORT: Use `file_paths` array (requires user approval and only works in stdio mode)\n"+
 			userInstructionTemplate+
 			"<problem_statement>\n```\n%s\n```\n</problem_statement>", sanitizedProblemStatement)
 	}
@@ -43,7 +42,6 @@ func createTaskInstructions(problemStatement, systemPrompt string) string {
 		"2. Provide the code to be analyzed using ONE of the following methods (in order of preference):\n"+
 		"   a) PREFERRED: Use `github_files` array with `github_repo` (owner/repo) and `github_ref` (branch/tag/commit)\n"+
 		"   b) For small code snippets only: Embed code directly into the `query` argument\n"+
-		"   c) LAST RESORT: Use `file_paths` array (requires user approval and only works in stdio mode)\n"+
 		"3. Use the following text for the `systemPrompt` argument:\n\n"+
 		"<system_prompt>\n%s\n</system_prompt>\n\n"+
 		userInstructionTemplate+

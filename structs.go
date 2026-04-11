@@ -116,10 +116,6 @@ type Config struct {
 	InitialBackoff time.Duration
 	MaxBackoff     time.Duration
 
-	// File handling settings
-	MaxFileSize     int64  // Max file size in bytes
-	FileReadBaseDir string // Base directory for local file reads
-
 	// GitHub settings
 	GitHubToken               string // Token for private repo access
 	GitHubAPIBaseURL          string // For GitHub Enterprise

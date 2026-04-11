@@ -353,16 +353,11 @@ func validateRequiredString(req mcp.CallToolRequest, paramName string) (string, 
 	return value, nil
 }
 
-// validateFilePathArray validates an array of file paths
-func validateFilePathArray(filePaths []string, isGitHub bool) error {
+// validateFilePathArray validates an array of GitHub file paths.
+func validateFilePathArray(filePaths []string) error {
 	for _, filePath := range filePaths {
-		if isGitHub {
-			// GitHub file paths validation
-			if strings.Contains(filePath, "..") || strings.HasPrefix(filePath, "/") {
-				return fmt.Errorf("invalid file path: %s. Path must be relative and within the repository", filePath)
-			}
-		} else {
-			// Local file paths are validated later in readLocalFiles
+		if strings.Contains(filePath, "..") || strings.HasPrefix(filePath, "/") {
+			return fmt.Errorf("invalid file path: %s. Path must be relative and within the repository", filePath)
 		}
 	}
 	return nil

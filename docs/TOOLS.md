@@ -45,7 +45,7 @@ parameters are **independent, optional peers** — mix and match freely in one c
 | `model` | string | No | Override default model (tier alias or explicit model ID) |
 | `systemPrompt` | string | No | Override default system prompt for this call |
 | `enable_thinking` | boolean | No | Enable extended thinking mode |
-| `thinking_level` | string | No | `minimal`, `low`, `medium`, `high` (default: `high`) |
+| `thinking_level` | string | No | `low`, `medium`, `high` (default: `high`) |
 | `max_tokens` | number | No | Override maximum response token limit |
 | `github_repo` | string | No* | Repository in `owner/repo` format — **required when any `github_*` param is used** |
 | `github_ref` | string | No | Git branch, tag, or SHA — applies to `github_files` only |
@@ -54,7 +54,6 @@ parameters are **independent, optional peers** — mix and match freely in one c
 | `github_commits` | string[] | No | Commit SHAs (short or full) — attaches patch + subject for each |
 | `github_diff_base` | string | No | Base ref for a compare diff — must be paired with `github_diff_head` |
 | `github_diff_head` | string | No | Head ref for a compare diff — must be paired with `github_diff_base` |
-| `file_paths` | string[] | No | **stdio only.** Local file paths. Mutually exclusive with all `github_*` params |
 
 ### GitHub Context Behavior
 
@@ -87,7 +86,6 @@ prompt-injection attempts before being sent to the model.
 
 ### Mutual Exclusions
 
-- `file_paths` and any `github_*` parameter **cannot be used in the same call**.
 - `github_diff_base` and `github_diff_head` must be provided **together**.
 - `github_repo` is **required** whenever any `github_*` parameter is present.
 
@@ -378,6 +376,5 @@ clients always receive a human-readable message.
 | Missing required parameter | Error result with parameter name |
 | Invalid model ID | Error result with validation details |
 | GitHub API unreachable after retries | Error result with last HTTP status |
-| `file_paths` + `github_*` together | Error result (mutual exclusion) |
 | Auth enabled but secret missing | Server refuses to start |
 | Startup failure (API key missing etc.) | Degraded server returns errors for all calls |

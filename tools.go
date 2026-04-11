@@ -17,7 +17,7 @@ var GeminiAskTool = mcp.NewTool(
 	mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
 	mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
 	mcp.WithString("github_repo", mcp.Description(
-		"GitHub repository (owner/repo). Required whenever any github_* context parameter is used.")),
+		"Required. Must be always provided when any github_* context parameter is used!")),
 	mcp.WithString("github_ref", mcp.Description(
 		"Optional: Git branch, tag, or commit SHA. Applies only to 'github_files'.")),
 	mcp.WithArray("github_files", mcp.Description(
@@ -38,12 +38,8 @@ var GeminiAskTool = mcp.NewTool(
 	mcp.WithString("github_diff_head", mcp.Description(
 		"Optional: head ref for a GitHub compare diff (branch, tag, or SHA). "+
 			"Must be paired with github_diff_base.")),
-	mcp.WithArray("file_paths", mcp.Description(
-		"An array of local file paths. This should only be used when specifically instructed, "+
-			"as it's only supported in 'stdio' transport mode.",
-	), mcp.WithStringItems()),
 	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process")),
-	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (minimal, low, medium, high). Default is 'high'")),
+	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (low, medium, high). Default is 'high'")),
 	mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
 )
 

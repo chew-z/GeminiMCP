@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -289,45 +288,6 @@ func TestGeminiAskHandlerMergesGitHubContext(t *testing.T) {
 	assert.Contains(t, systemText, "1 source file(s)")
 	assert.Contains(t, systemText, "1 commit patch(es)")
 	assert.Contains(t, systemText, "Pull request #7")
-}
-
-// TestGeminiAskHandlerRejectsLocalFilePathsWithGitHubContext verifies the
-// local file_paths source is still exclusive with any github_* parameter.
-func TestGeminiAskHandlerRejectsLocalFilePathsWithGitHubContext(t *testing.T) {
-	seedModelStateForTest(t, testModelCatalog())
-	s := &GeminiServer{
-		config: &Config{
-			GeminiModel:               "gemini-pro",
-			GeminiSystemPrompt:        "sp",
-			GeminiTemperature:         0.3,
-			ServiceTier:               "standard",
-			MaxGitHubFiles:            10,
-			MaxGitHubFileSize:         1024,
-			MaxGitHubDiffBytes:        1024,
-			MaxGitHubCommits:          5,
-			MaxGitHubPRReviewComments: 5,
-			GitHubAPIBaseURL:          "http://127.0.0.1:1", // unreachable on purpose
-			HTTPTimeout:               50 * time.Millisecond,
-		},
-	}
-
-	req := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name: "gemini_ask",
-			Arguments: map[string]any{
-				"query":       "q",
-				"github_repo": "o/r",
-				"github_pr":   float64(1),
-				"file_paths":  []any{"local.txt"},
-			},
-		},
-	}
-
-	result, err := s.GeminiAskHandler(context.Background(), req)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.True(t, result.IsError)
-	assert.Contains(t, toolResultText(t, result), "'file_paths' cannot be combined")
 }
 
 // TestGeminiAskHandlerGitHubDiffRequiresBothRefs ensures supplying only one of
@@ -774,123 +734,6 @@ func TestCommitSubjectInjection(t *testing.T) {
 	// A legitimate block-header would begin with "--- ". The quoted form
 	// breaks that prefix by placing the `"` character in front.
 	assert.NotContains(t, text, "\n--- injected ---")
-}
-
-// --- P3 bug 5 regression ---
-
-// TestValidateNoLocalPathsWithGitHubRepoOnly ensures file_paths combined with
-// bare github_repo is rejected by the early validation step.
-func TestValidateNoLocalPathsWithGitHubRepoOnly(t *testing.T) {
-	seedModelStateForTest(t, testModelCatalog())
-	s := &GeminiServer{
-		config: &Config{
-			GeminiModel:        "gemini-pro",
-			GeminiSystemPrompt: "sp",
-			GeminiTemperature:  0.3,
-			ServiceTier:        "standard",
-			HTTPTimeout:        50 * time.Millisecond,
-		},
-	}
-
-	req := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name: "gemini_ask",
-			Arguments: map[string]any{
-				"query":       "q",
-				"github_repo": "o/r",
-				"file_paths":  []any{"local.txt"},
-			},
-		},
-	}
-
-	result, err := s.GeminiAskHandler(context.Background(), req)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.True(t, result.IsError)
-	assert.Contains(t, toolResultText(t, result), "'file_paths' cannot be combined")
-}
-
-// --- P3 bug 6 regression ---
-
-// TestLocalFilePathsHasNoInventoryAddendum verifies that a pure-file_paths
-// request does NOT trigger the inventory addendum in the outbound system
-// instruction. The addendum is reserved for github_* context sources.
-func TestLocalFilePathsHasNoInventoryAddendum(t *testing.T) {
-	seedModelStateForTest(t, testModelCatalog())
-	ctx := context.Background()
-
-	baseDir := t.TempDir()
-	require.NoError(t, os.WriteFile(baseDir+"/local.go", []byte("package main\n"), 0644))
-
-	requestBodyCh := make(chan []byte, 1)
-	genaiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		_ = r.Body.Close()
-		select {
-		case requestBodyCh <- body:
-		default:
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]}}]}`))
-	}))
-	defer genaiServer.Close()
-
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey: "test-api-key",
-		HTTPOptions: genai.HTTPOptions{
-			BaseURL: genaiServer.URL,
-		},
-		HTTPClient: genaiServer.Client(),
-	})
-	require.NoError(t, err)
-
-	s := &GeminiServer{
-		config: &Config{
-			GeminiModel:        "gemini-pro",
-			GeminiSystemPrompt: "base system prompt",
-			GeminiTemperature:  0.3,
-			ServiceTier:        "standard",
-			MaxRetries:         0,
-			HTTPTimeout:        100 * time.Millisecond,
-			FileReadBaseDir:    baseDir,
-			MaxFileSize:        1024,
-		},
-		client: client,
-	}
-
-	req := mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name: "gemini_ask",
-			Arguments: map[string]any{
-				"query":      "describe these local files",
-				"file_paths": []any{"local.go"},
-			},
-		},
-	}
-
-	result, err := s.GeminiAskHandler(ctx, req)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.False(t, result.IsError, toolResultText(t, result))
-
-	var body []byte
-	select {
-	case body = <-requestBodyCh:
-	default:
-		t.Fatal("expected outbound request to be captured")
-	}
-	var payload struct {
-		SystemInstruction struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"systemInstruction"`
-	}
-	require.NoError(t, json.Unmarshal(body, &payload))
-	require.NotEmpty(t, payload.SystemInstruction.Parts)
-	systemText := payload.SystemInstruction.Parts[0].Text
-	assert.Contains(t, systemText, "base system prompt")
-	assert.NotContains(t, systemText, "You have been provided with the following context blocks")
 }
 
 // helper guard so go vet doesn't complain about unused fmt in slimmed builds.
