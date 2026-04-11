@@ -172,6 +172,14 @@ func configureThinking(ctx context.Context, req mcp.CallToolRequest, config *gen
 			}
 		}
 
+		// Upgrade "minimal" to "low" for Pro models — the API rejects minimal there.
+		if thinkingLevel == "minimal" {
+			if tier, ok := inferModelTier(modelName); ok && tier == tierPro {
+				logger.Warn("thinking_level 'minimal' is not supported by Pro models — upgrading to 'low'")
+				thinkingLevel = "low"
+			}
+		}
+
 		config.ThinkingConfig = &genai.ThinkingConfig{
 			IncludeThoughts: true,
 			ThinkingLevel:   genai.ThinkingLevel(thinkingLevel),
