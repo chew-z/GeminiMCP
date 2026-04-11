@@ -23,6 +23,10 @@ const (
 	tierFlashLite
 )
 
+// minGeminiGeneration is the lowest Gemini major version the server accepts.
+// Gemini 2.x and earlier are rejected even if still advertised by the API.
+const minGeminiGeneration = 3
+
 // tierName returns a human-readable label for a tier.
 func tierName(t modelTier) string {
 	switch t {
@@ -135,7 +139,7 @@ func classifyModel(name string) (modelTier, bool) {
 	}
 
 	// Exclude non-text-generation variants
-	for _, suffix := range []string{"-tts", "-image", "-customtools"} {
+	for _, suffix := range []string{"-tts", "-image", "-customtools", "-native-audio", "-image-generation"} {
 		if strings.Contains(name, suffix) {
 			return 0, false
 		}
@@ -144,16 +148,26 @@ func classifyModel(name string) (modelTier, bool) {
 	// Classification order matters: check "flash-lite" / "flash_lite" before "flash",
 	// and "flash" before "pro" (to avoid matching "pro" in "flash-pro" if that ever exists).
 	lower := strings.ToLower(name)
+	var tier modelTier
 	switch {
 	case strings.Contains(lower, "flash-lite") || strings.Contains(lower, "flash_lite"):
-		return tierFlashLite, true
+		tier = tierFlashLite
 	case strings.Contains(lower, "flash"):
-		return tierFlash, true
+		tier = tierFlash
 	case strings.Contains(lower, "pro"):
-		return tierPro, true
+		tier = tierPro
 	default:
 		return 0, false
 	}
+
+	// Enforce generation floor: reject Gemini 2.x and earlier. Names whose
+	// version can't be parsed (e.g. "gemini-flash-latest") pass through — the
+	// -latest deprioritization in isNewerModel keeps them from beating concrete
+	// Gemini-3 picks, while still letting them resolve for user requests.
+	if v, ok := parseModelVersion(name); ok && v.major < minGeminiGeneration {
+		return 0, false
+	}
+	return tier, true
 }
 
 // modelVersion holds the parsed numeric version from a Gemini model name.

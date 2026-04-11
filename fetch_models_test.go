@@ -18,10 +18,16 @@ func TestClassifyModel(t *testing.T) {
 		{"flash model", "gemini-3-flash-preview", tierFlash, true},
 		{"flash-lite model", "gemini-3.1-flash-lite-preview", tierFlashLite, true},
 		{"flash_lite model", "gemini-3_flash_lite", tierFlashLite, true},
+		{"flash-latest alias", "gemini-flash-latest", tierFlash, true},
+		{"flash-lite-latest alias", "gemini-flash-lite-latest", tierFlashLite, true},
 		{"non-gemini model", "palm-2-pro", 0, false},
 		{"tts variant", "gemini-3-pro-tts", 0, false},
 		{"image variant", "gemini-3-flash-image", 0, false},
 		{"customtools variant", "gemini-3-pro-customtools", 0, false},
+		{"below generation floor - 2.5 flash", "gemini-2.5-flash", 0, false},
+		{"below generation floor - 2.5 pro", "gemini-2.5-pro", 0, false},
+		{"below generation floor - 2.5 flash preview", "gemini-2.5-flash-preview-09-2025", 0, false},
+		{"native-audio variant", "gemini-2.5-flash-native-audio-preview-12-2025", 0, false},
 	}
 
 	for _, tc := range tests {
@@ -51,6 +57,8 @@ func TestIsNewerModel(t *testing.T) {
 		{"equal names", "gemini-3-pro-preview", "gemini-3-pro-preview", false},
 		{"higher major wins", "gemini-4-pro-preview", "gemini-3.9-pro-preview", true},
 		{"suffix comparison at equal version", "gemini-3-pro-preview", "gemini-3-pro-exp", true},
+		{"preview beats stable at equal version", "gemini-3-flash-preview", "gemini-3-flash", true},
+		{"flash-latest loses to concrete 3.x preview", "gemini-flash-latest", "gemini-3-flash-preview", false},
 	}
 
 	for _, tc := range tests {
@@ -62,18 +70,21 @@ func TestIsNewerModel(t *testing.T) {
 
 func TestParseModelVersion(t *testing.T) {
 	tests := []struct {
-		name      string
-		input     string
-		wantMajor int
-		wantMinor int
-		wantOK    bool
+		name       string
+		input      string
+		wantMajor  int
+		wantMinor  int
+		wantSuffix string
+		wantOK     bool
 	}{
-		{"major only", "gemini-3-pro-preview", 3, 0, true},
-		{"major.minor", "gemini-3.1-pro-preview", 3, 1, true},
-		{"double digit minor", "gemini-3.10-flash-preview", 3, 10, true},
-		{"flash-lite", "gemini-3.1-flash-lite-preview", 3, 1, true},
-		{"no match", "palm-2-pro", 0, 0, false},
-		{"no match - no dash after version", "gemini-3pro", 0, 0, false},
+		{"major only", "gemini-3-pro-preview", 3, 0, "-preview", true},
+		{"major.minor", "gemini-3.1-pro-preview", 3, 1, "-preview", true},
+		{"double digit minor", "gemini-3.10-flash-preview", 3, 10, "-preview", true},
+		{"flash-lite", "gemini-3.1-flash-lite-preview", 3, 1, "-preview", true},
+		{"2.5 flash dated preview", "gemini-2.5-flash-preview-09-2025", 2, 5, "-preview-09-2025", true},
+		{"latest alias has no version", "gemini-flash-latest", 0, 0, "", false},
+		{"no match", "palm-2-pro", 0, 0, "", false},
+		{"no match - no dash after version", "gemini-3pro", 0, 0, "", false},
 	}
 
 	for _, tc := range tests {
@@ -83,6 +94,7 @@ func TestParseModelVersion(t *testing.T) {
 			if ok {
 				assert.Equal(t, tc.wantMajor, v.major)
 				assert.Equal(t, tc.wantMinor, v.minor)
+				assert.Equal(t, tc.wantSuffix, v.suffix)
 			}
 		})
 	}
