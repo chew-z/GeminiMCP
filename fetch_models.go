@@ -144,7 +144,14 @@ func toModelInfo(c *modelCandidate) GeminiModelInfo {
 // For catalog selection (picking tier winners from the live API), use
 // classifyModel, which additionally enforces the generation floor.
 func inferModelTier(name string) (modelTier, bool) {
-	if !strings.Contains(name, "gemini") {
+	// Normalize case and surrounding whitespace up-front so every
+	// downstream check is case-insensitive and tolerant of leading/trailing
+	// padding. Per principle #1 in CLAUDE.md, the server absorbs client
+	// formatting quirks — "Gemini-3-Flash", " gemini-3-flash ", and
+	// "gemini-3-flash" must all resolve identically.
+	lower := strings.ToLower(strings.TrimSpace(name))
+
+	if !strings.Contains(lower, "gemini") {
 		return 0, false
 	}
 
@@ -153,25 +160,34 @@ func inferModelTier(name string) (modelTier, bool) {
 	// containing an underscore is therefore not a real Gemini ID — reject it
 	// outright rather than risk misclassifying (e.g. "gemini-3_flash_lite"
 	// would otherwise substring-match "flash" and route to the wrong tier).
-	if strings.Contains(name, "_") {
+	if strings.Contains(lower, "_") {
 		return 0, false
 	}
 
-	// Exclude non-text-generation variants
+	// Exclude non-text-generation variants — these cannot be served by
+	// gemini_ask / gemini_search regardless of tier.
 	for _, suffix := range []string{"-tts", "-image", "-customtools", "-native-audio", "-image-generation"} {
-		if strings.Contains(name, suffix) {
+		if strings.Contains(lower, suffix) {
 			return 0, false
 		}
 	}
 
-	// Classification order matters: check "flash-lite" before "flash", and
-	// "flash" before "pro" (to avoid matching "pro" in a hypothetical
-	// "flash-pro" suffix).
-	lower := strings.ToLower(name)
+	// Tier intent mapping per CLAUDE.md principle #3 (three logical tiers):
+	//   - "flash" AND "lite"  → flash-lite
+	//   - "flash" alone       → flash
+	//   - "pro"               → pro
+	//
+	// Keywords don't need to be adjacent or in any particular position;
+	// presence of the tokens anywhere in the (lowercased, trimmed) name is
+	// sufficient. Order matters: check flash-lite before bare flash, and
+	// flash before pro, so compound intents resolve to the more specific
+	// tier.
+	hasFlash := strings.Contains(lower, "flash")
+	hasLite := strings.Contains(lower, "lite")
 	switch {
-	case strings.Contains(lower, "flash-lite"):
+	case hasFlash && hasLite:
 		return tierFlashLite, true
-	case strings.Contains(lower, "flash"):
+	case hasFlash:
 		return tierFlash, true
 	case strings.Contains(lower, "pro"):
 		return tierPro, true
@@ -213,7 +229,10 @@ type modelVersion struct {
 
 // parseModelVersion extracts major, minor, and suffix from a Gemini model name.
 // Returns ok=false if the name doesn't match the expected pattern.
+// Case-insensitive: the input is lowercased before matching so defensive
+// callers passing uppercase names still hit the version extraction.
 func parseModelVersion(name string) (modelVersion, bool) {
+	name = strings.ToLower(strings.TrimSpace(name))
 	m := versionRe.FindStringSubmatch(name)
 	if m == nil {
 		return modelVersion{}, false
@@ -233,13 +252,11 @@ func parseModelVersion(name string) (modelVersion, bool) {
 	// Extract suffix: everything after the tier keyword (pro/flash-lite/flash).
 	// Find the tier portion and take what follows it. Gemini model IDs use
 	// hyphens exclusively (see inferModelTier), so we only match hyphenated
-	// tier tokens.
+	// tier tokens. Name is already lowercased at function entry.
 	suffix := ""
-	lower := strings.ToLower(name)
 	for _, tier := range []string{"flash-lite", "flash", "pro"} {
-		idx := strings.Index(lower, tier)
-		if idx >= 0 {
-			suffix = name[idx+len(tier):]
+		if _, after, found := strings.Cut(name, tier); found {
+			suffix = after
 			break
 		}
 	}

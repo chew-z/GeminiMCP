@@ -79,6 +79,24 @@ func TestInferModelTier(t *testing.T) {
 		// https://ai.google.dev/gemini-api/docs/models#model-versions
 		{"underscore variant rejected", "gemini-3_flash_lite", 0, false},
 		{"underscored name rejected", "gemini_3_flash", 0, false},
+		// Case-insensitivity — per CLAUDE.md principle #1, the server
+		// absorbs client formatting quirks (typographic case, whitespace).
+		{"titlecase Gemini", "Gemini-3-Flash-Preview", tierFlash, true},
+		{"uppercase GEMINI", "GEMINI-3-PRO-PREVIEW", tierPro, true},
+		{"uppercase flash-lite", "GEMINI-3.1-FLASH-LITE-PREVIEW", tierFlashLite, true},
+		{"mixed case pro", "Gemini-3.1-Pro-Preview", tierPro, true},
+		// Whitespace tolerance
+		{"leading whitespace", "  gemini-3-flash-preview", tierFlash, true},
+		{"trailing whitespace", "gemini-3-flash-preview  ", tierFlash, true},
+		{"both sides whitespace", "   gemini-3-pro-preview   ", tierPro, true},
+		{"space-separated tokens", "gemini 3 flash lite preview", tierFlashLite, true},
+		{"space-separated pro", "gemini 3 pro", tierPro, true},
+		// False-positive guards — bare "lite" without "flash" must NOT
+		// trip the flash-lite branch; "lightning" / "delightful" must
+		// not be mistaken for tier keywords.
+		{"delightful-pro classifies as pro", "gemini-delightful-pro", tierPro, true},
+		{"elite-pro classifies as pro", "gemini-elite-pro", tierPro, true},
+		{"lightning-flash classifies as flash", "gemini-lightning-flash", tierFlash, true},
 	}
 
 	for _, tc := range tests {
