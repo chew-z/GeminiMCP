@@ -148,6 +148,15 @@ func inferModelTier(name string) (modelTier, bool) {
 		return 0, false
 	}
 
+	// Google's published Gemini naming convention uses hyphens exclusively
+	// (https://ai.google.dev/gemini-api/docs/models#model-versions). A name
+	// containing an underscore is therefore not a real Gemini ID — reject it
+	// outright rather than risk misclassifying (e.g. "gemini-3_flash_lite"
+	// would otherwise substring-match "flash" and route to the wrong tier).
+	if strings.Contains(name, "_") {
+		return 0, false
+	}
+
 	// Exclude non-text-generation variants
 	for _, suffix := range []string{"-tts", "-image", "-customtools", "-native-audio", "-image-generation"} {
 		if strings.Contains(name, suffix) {
@@ -155,11 +164,12 @@ func inferModelTier(name string) (modelTier, bool) {
 		}
 	}
 
-	// Classification order matters: check "flash-lite" / "flash_lite" before "flash",
-	// and "flash" before "pro" (to avoid matching "pro" in "flash-pro" if that ever exists).
+	// Classification order matters: check "flash-lite" before "flash", and
+	// "flash" before "pro" (to avoid matching "pro" in a hypothetical
+	// "flash-pro" suffix).
 	lower := strings.ToLower(name)
 	switch {
-	case strings.Contains(lower, "flash-lite") || strings.Contains(lower, "flash_lite"):
+	case strings.Contains(lower, "flash-lite"):
 		return tierFlashLite, true
 	case strings.Contains(lower, "flash"):
 		return tierFlash, true
@@ -221,10 +231,12 @@ func parseModelVersion(name string) (modelVersion, bool) {
 	}
 
 	// Extract suffix: everything after the tier keyword (pro/flash-lite/flash).
-	// Find the tier portion and take what follows it.
+	// Find the tier portion and take what follows it. Gemini model IDs use
+	// hyphens exclusively (see inferModelTier), so we only match hyphenated
+	// tier tokens.
 	suffix := ""
 	lower := strings.ToLower(name)
-	for _, tier := range []string{"flash-lite", "flash_lite", "flash", "pro"} {
+	for _, tier := range []string{"flash-lite", "flash", "pro"} {
 		idx := strings.Index(lower, tier)
 		if idx >= 0 {
 			suffix = name[idx+len(tier):]

@@ -17,7 +17,10 @@ func TestClassifyModel(t *testing.T) {
 		{"pro model", "gemini-3.1-pro-preview", tierPro, true},
 		{"flash model", "gemini-3-flash-preview", tierFlash, true},
 		{"flash-lite model", "gemini-3.1-flash-lite-preview", tierFlashLite, true},
-		{"flash_lite model", "gemini-3_flash_lite", tierFlashLite, true},
+		// Google Gemini model IDs use hyphens exclusively; underscore
+		// variants are not real and must be rejected as unclassifiable.
+		// https://ai.google.dev/gemini-api/docs/models#model-versions
+		{"underscore variant rejected", "gemini-3_flash_lite", 0, false},
 		{"flash-latest alias", "gemini-flash-latest", tierFlash, true},
 		{"flash-lite-latest alias", "gemini-flash-lite-latest", tierFlashLite, true},
 		{"non-gemini model", "palm-2-pro", 0, false},
@@ -71,6 +74,11 @@ func TestInferModelTier(t *testing.T) {
 		{"non-gemini rejected", "palm-2-pro", 0, false},
 		{"gpt rejected", "gpt-4.1", 0, false},
 		{"claude rejected", "claude-3.7-sonnet", 0, false},
+		// Underscore variants are not real Gemini model IDs — Google's
+		// published naming convention uses hyphens exclusively.
+		// https://ai.google.dev/gemini-api/docs/models#model-versions
+		{"underscore variant rejected", "gemini-3_flash_lite", 0, false},
+		{"underscored name rejected", "gemini_3_flash", 0, false},
 	}
 
 	for _, tc := range tests {
