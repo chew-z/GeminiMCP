@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"google.golang.org/genai"
 )
@@ -206,32 +207,34 @@ func classifyGitHubStatus(ctx context.Context, resp *http.Response, logger Logge
 	return fmt.Errorf("github api %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 }
 
-// waitForGitHubRateLimitReset honours the X-RateLimit-Reset header when the
-// wait is feasible (≤ 2 minutes), sleeping the current attempt until the
-// reset point. On long resets it returns immediately and lets the caller
-// escalate via the standard retry backoff.
+// waitForGitHubRateLimitReset honours rate-limit response headers when the
+// implied wait is feasible (≤ 2 minutes), sleeping the current attempt until
+// the reset point. On genuine long resets it returns immediately and lets
+// the caller escalate via the standard retry backoff. When no usable header
+// is present, it falls back to a bounded 60-second sleep so the retry loop
+// does not hammer GitHub every ~10 seconds under rate-limit pressure.
+//
+// Header precedence (GitHub secondary rate limits can use either form):
+//  1. Retry-After (seconds, e.g. "30", or an HTTP-date) — if present, wins.
+//  2. X-RateLimit-Reset (unix timestamp).
+//  3. Bounded fallback: 60 seconds.
 func waitForGitHubRateLimitReset(ctx context.Context, header http.Header, logger Logger) {
-	// Parse X-RateLimit-Reset as a Unix timestamp; fall back to a 5-minute
-	// synthetic reset when missing or malformed so we don't hot-loop.
-	var waitTime time.Duration
-	if resetStr := header.Get("X-RateLimit-Reset"); resetStr != "" {
-		if resetTime, err := strconv.ParseInt(resetStr, 10, 64); err == nil {
-			waitTime = time.Until(time.Unix(resetTime, 0))
-		} else {
-			waitTime = 5 * time.Minute
-		}
-	} else {
-		waitTime = 5 * time.Minute
+	const missingHeaderFallback = 60 * time.Second
+	waitTime, source := rateLimitWaitFromHeaders(header)
+	if waitTime == 0 {
+		waitTime = missingHeaderFallback
+		source = "fallback"
 	}
 
 	if waitTime <= 0 {
 		return
 	}
 	if waitTime > 2*time.Minute {
-		logger.Warn("GitHub rate limit reset is too far away (%s); deferring to retry backoff", waitTime)
+		logger.Warn("GitHub rate limit reset is too far away (%s via %s); deferring to retry backoff",
+			waitTime, source)
 		return
 	}
-	logger.Warn("GitHub rate limit hit; sleeping %s until reset", waitTime)
+	logger.Warn("GitHub rate limit hit; sleeping %s (via %s) until reset", waitTime, source)
 	select {
 	case <-ctx.Done():
 		return
@@ -240,27 +243,86 @@ func waitForGitHubRateLimitReset(ctx context.Context, header http.Header, logger
 	}
 }
 
+// rateLimitWaitFromHeaders extracts the implied wait duration and a tag for
+// logging. A zero duration signals the caller should fall back to a bounded
+// default. Returned durations may be negative when a reset point has already
+// passed — the caller treats that as "nothing to wait for".
+func rateLimitWaitFromHeaders(header http.Header) (time.Duration, string) {
+	if ra := strings.TrimSpace(header.Get("Retry-After")); ra != "" {
+		// Retry-After can be either a delta-seconds integer or an HTTP-date.
+		if secs, err := strconv.Atoi(ra); err == nil {
+			return time.Duration(secs) * time.Second, "Retry-After"
+		}
+		if t, err := http.ParseTime(ra); err == nil {
+			return time.Until(t), "Retry-After"
+		}
+	}
+	if resetStr := strings.TrimSpace(header.Get("X-RateLimit-Reset")); resetStr != "" {
+		if resetTime, err := strconv.ParseInt(resetStr, 10, 64); err == nil {
+			return time.Until(time.Unix(resetTime, 0)), "X-RateLimit-Reset"
+		}
+	}
+	return 0, ""
+}
+
 // makeTextPart wraps a labelled block into a genai text Part.
 func makeTextPart(header, body string) *genai.Part {
 	return genai.NewPartFromText(fmt.Sprintf("%s\n%s", header, body))
 }
 
-// sanitizeUntrustedBlockContent neutralizes any line that looks like a
-// server-emitted context-block header (starting with "--- ") inside
-// attacker-controlled text. It prevents a malicious PR body / commit message /
-// review comment from impersonating a legitimate block header such as
-// "--- File: secrets.env ---". The fix is a minimal transform: two leading
-// spaces in front of any offending line, which breaks the exact header prefix
-// without altering semantics for Gemini.
+// sanitizeUntrustedBlockContent neutralizes any line that could impersonate
+// a server-emitted context-block header (a line matching `---<whitespace>`)
+// inside attacker-controlled text. It prevents a malicious PR body, commit
+// message, or review comment from injecting a fake header such as
+// "--- File: secrets.env ---".
+//
+// Hardening notes:
+//   - Line splitting normalizes Unicode line separators U+2028 (LINE
+//     SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) to LF first, so they are
+//     treated as hard line breaks like a bare newline would be.
+//   - Leading whitespace is stripped with [unicode.IsSpace], which covers
+//     ASCII space/tab as well as Unicode whitespace runes such as NBSP
+//     (U+00A0), EN SPACE (U+2002), NARROW NO-BREAK SPACE (U+202F), etc.
+//   - The header match accepts `---` followed by ANY whitespace rune
+//     (including tab), not just a literal space.
+//   - The transform prepends two spaces to any offending line, breaking the
+//     "line anchor" that Gemini would otherwise pattern-match as a header.
 func sanitizeUntrustedBlockContent(s string) string {
-	if !strings.Contains(s, "--- ") {
+	if !strings.Contains(s, "---") {
 		return s
 	}
+	// Normalize Unicode line separators so they behave like "\n" for the
+	// purposes of line anchoring. A bypass using U+2028 to slip "\n---"
+	// past strings.Split is neutralised here.
+	s = strings.ReplaceAll(s, "\u2028", "\n")
+	s = strings.ReplaceAll(s, "\u2029", "\n")
+
 	lines := strings.Split(s, "\n")
 	for i, line := range lines {
-		if strings.HasPrefix(line, "--- ") {
+		if lineLooksLikeBlockHeader(line) {
 			lines[i] = "  " + line
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// lineLooksLikeBlockHeader reports whether a single line, after stripping
+// any leading Unicode whitespace, begins with "---" followed by a whitespace
+// rune. This is the exact pattern used by our own server-emitted block
+// headers ("--- File: ...", "--- PR #N ...", "--- Commit <sha> ..."), and it
+// is what Gemini treats as a new block boundary.
+func lineLooksLikeBlockHeader(line string) bool {
+	trimmed := strings.TrimLeftFunc(line, unicode.IsSpace)
+	if !strings.HasPrefix(trimmed, "---") {
+		return false
+	}
+	after := trimmed[len("---"):]
+	if after == "" {
+		// Bare "---" with nothing after it is not a header pattern.
+		return false
+	}
+	for _, r := range after {
+		return unicode.IsSpace(r)
+	}
+	return false
 }
