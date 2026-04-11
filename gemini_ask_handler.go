@@ -23,11 +23,11 @@ func appendFileWarningNote(query string, warnings []string) string {
 	reported := warnings
 	suffix := ""
 	if len(reported) > maxReportedWarnings {
-		suffix = fmt.Sprintf("\n- ... and %d other file(s)", len(reported)-maxReportedWarnings)
+		suffix = fmt.Sprintf("\n- ... and %d other item(s)", len(reported)-maxReportedWarnings)
 		reported = reported[:maxReportedWarnings]
 	}
 
-	return query + "\n\n[System Note: The following requested files could not be loaded:\n- " +
+	return query + "\n\n[System Note: The following requested context could not be loaded:\n- " +
 		strings.Join(reported, "\n- ") + suffix + "]"
 }
 
@@ -90,10 +90,15 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 
 // gatherAllContext runs the two independent context-gathering paths (GitHub
 // PR/commits/diff and files) and merges their warnings and inventory state.
+// The "everything the client asked for failed" hard-fail lives here, not
+// inside either sub-fetcher, so a failed PR fetch does not block a successful
+// github_files fetch (and vice versa).
 func (s *GeminiServer) gatherAllContext(
 	ctx context.Context, req mcp.CallToolRequest,
 ) ([]*genai.Part, []*FileUploadRequest, contextInventory, []string, *mcp.CallToolResult) {
 	logger := getLoggerFromContext(ctx)
+
+	spec := parseGitHubContextSpec(req)
 
 	ghContextParts, inventory, ghWarnings, errResult := s.gatherGitHubContext(ctx, req)
 	if errResult != nil {
@@ -101,21 +106,66 @@ func (s *GeminiServer) gatherAllContext(
 	}
 
 	logger.Info("Starting file handling logic")
-	uploads, fileWarnings, errResult := s.gatherFileUploads(ctx, req, inventory.HasAny())
+	// Pass spec.any() as the "more than just files was requested" flag so a
+	// file-fetch failure becomes a warning (not a hard-fail) whenever other
+	// github_* sources were also requested — even if those other sources
+	// themselves failed. The consolidated decision below sees both paths.
+	uploads, fileWarnings, errResult := s.gatherFileUploads(ctx, req, spec.any())
 	if errResult != nil {
 		return nil, nil, inventory, nil, errResult
 	}
-	if len(uploads) > 0 {
-		inventory.Files.Count = len(uploads)
-		inventory.Files.Ref = extractArgumentString(req, "github_ref", "")
-		if inventory.Repo == "" {
-			inventory.Repo = extractArgumentString(req, "github_repo", "")
-		}
-	}
+
+	finalizeFilesInventory(req, &inventory, len(uploads))
 
 	allWarnings := append([]string{}, ghWarnings...)
 	allWarnings = append(allWarnings, fileWarnings...)
+
+	totalContent := len(ghContextParts) + len(uploads)
+	if errResult = consolidatedContextError(req, spec, totalContent, allWarnings); errResult != nil {
+		return nil, nil, inventory, nil, errResult
+	}
+
 	return ghContextParts, uploads, inventory, allWarnings, nil
+}
+
+// finalizeFilesInventory records uploaded files in the inventory only when
+// they were sourced from github_files. Local file_paths intentionally never
+// contribute to the inventory addendum.
+func finalizeFilesInventory(req mcp.CallToolRequest, inv *contextInventory, uploadCount int) {
+	if uploadCount == 0 {
+		return
+	}
+	if len(extractArgumentStringArray(req, "github_files")) == 0 {
+		return
+	}
+	inv.Files.Count = uploadCount
+	inv.Files.Ref = extractArgumentString(req, "github_ref", "")
+	if inv.Repo == "" {
+		inv.Repo = extractArgumentString(req, "github_repo", "")
+	}
+}
+
+// consolidatedContextError returns a single error result enumerating every
+// accumulated warning if the client requested any context source and we
+// produced nothing at all. Returns nil when the request has useful content
+// or the client asked for nothing.
+func consolidatedContextError(
+	req mcp.CallToolRequest, spec githubContextSpec, totalContent int, allWarnings []string,
+) *mcp.CallToolResult {
+	if totalContent > 0 {
+		return nil
+	}
+	anyRequested := spec.any() ||
+		len(extractArgumentStringArray(req, "github_files")) > 0 ||
+		len(extractArgumentStringArray(req, "file_paths")) > 0
+	if !anyRequested {
+		return nil
+	}
+	msg := "Failed to fetch any of the requested context."
+	if len(allWarnings) > 0 {
+		msg += " Warnings: " + strings.Join(allWarnings, "; ")
+	}
+	return createErrorResult(msg)
 }
 
 // validateNoLocalPathsWithGitHub rejects requests that mix local file_paths
@@ -131,7 +181,11 @@ func validateNoLocalPathsWithGitHub(req mcp.CallToolRequest) *mcp.CallToolResult
 	commits := extractArgumentStringArray(req, "github_commits")
 	diffBase := extractArgumentString(req, "github_diff_base", "")
 	diffHead := extractArgumentString(req, "github_diff_head", "")
-	if len(githubFiles) > 0 || hasPR || len(commits) > 0 || diffBase != "" || diffHead != "" {
+	githubRepo := extractArgumentString(req, "github_repo", "")
+	githubRef := extractArgumentString(req, "github_ref", "")
+	if len(githubFiles) > 0 || hasPR || len(commits) > 0 ||
+		diffBase != "" || diffHead != "" ||
+		githubRepo != "" || githubRef != "" {
 		return createErrorResult("'file_paths' cannot be combined with any 'github_*' parameter.")
 	}
 	return nil
@@ -174,13 +228,10 @@ func (s *GeminiServer) gatherGitHubContext(
 	if errResult != nil {
 		return nil, inv, nil, errResult
 	}
-
-	// Hard fail only if every requested source failed.
-	if len(parts) == 0 {
-		return nil, inv, nil, createErrorResult(fmt.Sprintf(
-			"Failed to fetch any of the requested GitHub context (pr=%v, commits=%d, diff=%v). Warnings: %s",
-			spec.hasPR, len(spec.commits), spec.wantsDiff, strings.Join(warnings, "; ")))
-	}
+	// Return whatever parts and warnings the per-source fetchers produced,
+	// even if empty. The consolidated "nothing succeeded" decision lives in
+	// gatherAllContext so it can see both github-context and file-upload
+	// results before hard-failing.
 	return parts, inv, warnings, nil
 }
 
@@ -277,7 +328,7 @@ func buildContextInventoryAddendum(inv *contextInventory) string {
 	writeDiffInventory(&b, inv.Diff)
 	writePRInventory(&b, inv.PR)
 
-	b.WriteString("\nUse these blocks to answer the user's query. When you cite code, reference the block header and file path.")
+	b.WriteString("\nUse these blocks to answer the user's query.")
 	return b.String()
 }
 

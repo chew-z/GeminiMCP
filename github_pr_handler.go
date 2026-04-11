@@ -144,6 +144,8 @@ func assemblePRParts(
 	body := strings.TrimSpace(meta.Body)
 	if body == "" {
 		body = "(no description)"
+	} else {
+		body = sanitizeUntrustedBlockContent(body)
 	}
 	parts = append(parts, makeTextPart(header, body))
 
@@ -153,12 +155,14 @@ func assemblePRParts(
 	}
 
 	for _, c := range comments {
-		location := c.Path
+		// Path is attacker-controlled — quote it so a path with "---" in it
+		// cannot impersonate a block-header separator.
+		location := fmt.Sprintf("%q", c.Path)
 		if c.Line > 0 {
-			location = fmt.Sprintf("%s:%d", c.Path, c.Line)
+			location = fmt.Sprintf("%q:%d", c.Path, c.Line)
 		}
 		commentHeader := fmt.Sprintf("--- PR #%d Review by @%s on %s ---", meta.Number, c.User.Login, location)
-		parts = append(parts, makeTextPart(commentHeader, strings.TrimSpace(c.Body)))
+		parts = append(parts, makeTextPart(commentHeader, sanitizeUntrustedBlockContent(strings.TrimSpace(c.Body))))
 	}
 	return parts
 }

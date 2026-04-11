@@ -77,16 +77,23 @@ func (s *GeminiServer) gatherCommits(
 		patch, truncated := truncateDiff(string(patchBytes), s.config.MaxGitHubDiffBytes)
 
 		subject, messageBody := splitCommitMessage(meta.Commit.Message)
-		author := meta.Commit.Author.Name
+		// Author is either a GitHub Login (alphanumeric/dash, safe) or the
+		// free-form Commit.Author.Name (attacker-controlled). Quote the
+		// free-form form so a name containing "---" cannot spoof a header.
+		var author string
 		if meta.Author.Login != "" {
 			author = "@" + meta.Author.Login
+		} else {
+			author = fmt.Sprintf("%q", meta.Commit.Author.Name)
 		}
 
-		header := fmt.Sprintf("--- Commit %s by %s (%s): %s ---",
+		// subject is attacker-controlled (commit message first line); %q
+		// quotes it so embedded "---" cannot impersonate a block header.
+		header := fmt.Sprintf("--- Commit %s by %s (%s): %q ---",
 			shortSHA(meta.SHA), author, meta.Commit.Author.Date, subject)
 		var body strings.Builder
 		if messageBody != "" {
-			body.WriteString(messageBody)
+			body.WriteString(sanitizeUntrustedBlockContent(messageBody))
 			body.WriteString("\n\n")
 		}
 		body.WriteString(patch)

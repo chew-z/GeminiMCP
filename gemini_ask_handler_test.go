@@ -44,8 +44,8 @@ func TestAppendFileWarningNote(t *testing.T) {
 
 		got := appendFileWarningNote(baseQuery, warnings)
 		assert.Contains(t, got, baseQuery)
-		assert.Contains(t, got, "The following requested files could not be loaded")
-		assert.Contains(t, got, "... and 2 other file(s)")
+		assert.Contains(t, got, "The following requested context could not be loaded")
+		assert.Contains(t, got, "... and 2 other item(s)")
 
 		for i := 0; i < maxReportedWarnings; i++ {
 			assert.Contains(t, got, warnings[i])
@@ -270,8 +270,8 @@ func TestGeminiAskHandlerGitHubWarningTruncationInOutboundQuery(t *testing.T) {
 
 	querySent := payload.Contents[0].Parts[len(payload.Contents[0].Parts)-1].Text
 	assert.Contains(t, querySent, "analyze this repository")
-	assert.Contains(t, querySent, "The following requested files could not be loaded")
-	assert.Contains(t, querySent, "... and 2 other file(s)")
+	assert.Contains(t, querySent, "The following requested context could not be loaded")
+	assert.Contains(t, querySent, "... and 2 other item(s)")
 
 	for i := 1; i <= maxReportedWarnings; i++ {
 		assert.Contains(t, querySent, fmt.Sprintf("path/missing-%02d.txt: could not be fetched from GitHub", i))
@@ -381,8 +381,8 @@ func TestGeminiAskHandlerLocalWarningTruncationInOutboundQuery(t *testing.T) {
 
 	querySent := payload.Contents[0].Parts[len(payload.Contents[0].Parts)-1].Text
 	assert.Contains(t, querySent, "analyze these files")
-	assert.Contains(t, querySent, "The following requested files could not be loaded")
-	assert.Contains(t, querySent, "... and 2 other file(s)")
+	assert.Contains(t, querySent, "The following requested context could not be loaded")
+	assert.Contains(t, querySent, "... and 2 other item(s)")
 
 	for i := 1; i <= maxReportedWarnings; i++ {
 		assert.Contains(t, querySent, fmt.Sprintf("missing-%02d.txt: file not found or inaccessible", i))
