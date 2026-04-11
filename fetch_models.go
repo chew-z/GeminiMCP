@@ -131,57 +131,29 @@ func toModelInfo(c *modelCandidate) GeminiModelInfo {
 	}
 }
 
-// inferModelTier classifies a Gemini model name into a tier based purely on
-// its textual shape, without enforcing the generation floor. This is the
-// entry point for resolving client-provided model IDs: the server's contract
-// (CLAUDE.md principle #1) is that clients express intent ("flash") and the
-// server maps that intent to the current tier winner — even if the client
-// names a deprecated model like "gemini-2.5-flash".
+// inferModelTier maps a client-provided model name to one of the three
+// logical tiers (pro, flash, flash-lite) by substring match. The input is
+// lowercased and trimmed, so case and whitespace don't matter. Clients
+// express intent; the server honors it even for deprecated or non-canonical
+// names. See CLAUDE.md principles #1 and #3.
 //
-// Non-text-generation variants (TTS, image, native-audio, etc.) and
-// non-Gemini names are still rejected — those are not redirectable.
+// Rejects non-Gemini names and non-text-generation variants (TTS, image,
+// native-audio, customtools) — those cannot be served by gemini_ask /
+// gemini_search regardless of expressed tier.
 //
-// For catalog selection (picking tier winners from the live API), use
-// classifyModel, which additionally enforces the generation floor.
+// For catalog selection where the generation floor matters, use classifyModel.
 func inferModelTier(name string) (modelTier, bool) {
-	// Normalize case and surrounding whitespace up-front so every
-	// downstream check is case-insensitive and tolerant of leading/trailing
-	// padding. Per principle #1 in CLAUDE.md, the server absorbs client
-	// formatting quirks — "Gemini-3-Flash", " gemini-3-flash ", and
-	// "gemini-3-flash" must all resolve identically.
 	lower := strings.ToLower(strings.TrimSpace(name))
 
 	if !strings.Contains(lower, "gemini") {
 		return 0, false
 	}
-
-	// Google's published Gemini naming convention uses hyphens exclusively
-	// (https://ai.google.dev/gemini-api/docs/models#model-versions). A name
-	// containing an underscore is therefore not a real Gemini ID — reject it
-	// outright rather than risk misclassifying (e.g. "gemini-3_flash_lite"
-	// would otherwise substring-match "flash" and route to the wrong tier).
-	if strings.Contains(lower, "_") {
-		return 0, false
-	}
-
-	// Exclude non-text-generation variants — these cannot be served by
-	// gemini_ask / gemini_search regardless of tier.
 	for _, suffix := range []string{"-tts", "-image", "-customtools", "-native-audio", "-image-generation"} {
 		if strings.Contains(lower, suffix) {
 			return 0, false
 		}
 	}
 
-	// Tier intent mapping per CLAUDE.md principle #3 (three logical tiers):
-	//   - "flash" AND "lite"  → flash-lite
-	//   - "flash" alone       → flash
-	//   - "pro"               → pro
-	//
-	// Keywords don't need to be adjacent or in any particular position;
-	// presence of the tokens anywhere in the (lowercased, trimmed) name is
-	// sufficient. Order matters: check flash-lite before bare flash, and
-	// flash before pro, so compound intents resolve to the more specific
-	// tier.
 	hasFlash := strings.Contains(lower, "flash")
 	hasLite := strings.Contains(lower, "lite")
 	switch {

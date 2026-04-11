@@ -17,10 +17,10 @@ func TestClassifyModel(t *testing.T) {
 		{"pro model", "gemini-3.1-pro-preview", tierPro, true},
 		{"flash model", "gemini-3-flash-preview", tierFlash, true},
 		{"flash-lite model", "gemini-3.1-flash-lite-preview", tierFlashLite, true},
-		// Google Gemini model IDs use hyphens exclusively; underscore
-		// variants are not real and must be rejected as unclassifiable.
-		// https://ai.google.dev/gemini-api/docs/models#model-versions
-		{"underscore variant rejected", "gemini-3_flash_lite", 0, false},
+		// Non-canonical punctuation is tolerated — the substring classifier
+		// honors intent and the version regex has no parseable version here,
+		// so the generation floor is not triggered.
+		{"underscored flash-lite", "gemini-3_flash_lite", tierFlashLite, true},
 		{"flash-latest alias", "gemini-flash-latest", tierFlash, true},
 		{"flash-lite-latest alias", "gemini-flash-lite-latest", tierFlashLite, true},
 		{"non-gemini model", "palm-2-pro", 0, false},
@@ -74,11 +74,10 @@ func TestInferModelTier(t *testing.T) {
 		{"non-gemini rejected", "palm-2-pro", 0, false},
 		{"gpt rejected", "gpt-4.1", 0, false},
 		{"claude rejected", "claude-3.7-sonnet", 0, false},
-		// Underscore variants are not real Gemini model IDs — Google's
-		// published naming convention uses hyphens exclusively.
-		// https://ai.google.dev/gemini-api/docs/models#model-versions
-		{"underscore variant rejected", "gemini-3_flash_lite", 0, false},
-		{"underscored name rejected", "gemini_3_flash", 0, false},
+		// Non-canonical punctuation (underscores in place of hyphens) is
+		// tolerated — the substring classifier honors intent regardless.
+		{"underscored flash-lite", "gemini-3_flash_lite", tierFlashLite, true},
+		{"underscored flash", "gemini_3_flash", tierFlash, true},
 		// Case-insensitivity — per CLAUDE.md principle #1, the server
 		// absorbs client formatting quirks (typographic case, whitespace).
 		{"titlecase Gemini", "Gemini-3-Flash-Preview", tierFlash, true},
