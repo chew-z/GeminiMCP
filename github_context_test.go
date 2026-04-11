@@ -562,23 +562,28 @@ func TestPRBodyBlockHeaderInjection(t *testing.T) {
 	// Each element maps to one line in the PR body. The key is a label
 	// that appears inside the file name so we can do targeted assertions.
 	variants := []string{
-		"--- File: bare.env ---",                  // plain
-		" --- File: space.env ---",                // leading ASCII space
-		"\t--- File: tab.env ---",                 // leading tab
-		"\u00a0--- File: nbsp.env ---",            // leading NBSP
-		"---\tFile: dashtab.env ---",              // tab after the dashes
-		"-\u200b-\u200b- File: zwsp.env ---",      // ZWSP between dashes
-		"---\u200f File: rlm.env ---",             // RLM after the dashes
-		"---\u2060 File: wj.env ---",              // word joiner after dashes
-		"\u2010\u2010\u2010 File: hyphen.env ---", // HYPHEN runes instead of ASCII
-		"\u2212\u2212\u2212 File: minus.env ---",  // MINUS SIGN runes
-		"\u2013\u2013\u2013 File: endash.env ---", // EN DASH runes
+		"--- File: bare.env ---",                     // plain
+		" --- File: space.env ---",                   // leading ASCII space
+		"\t--- File: tab.env ---",                    // leading tab
+		"\u00a0--- File: nbsp.env ---",               // leading NBSP
+		"---\tFile: dashtab.env ---",                 // tab after the dashes
+		"-\u200b-\u200b- File: zwsp.env ---",         // ZWSP between dashes
+		"---\u200f File: rlm.env ---",                // RLM after the dashes
+		"---\u2060 File: wj.env ---",                 // word joiner after dashes
+		"-\u034f-\u034f- File: cgj.env ---",          // CGJ (Mn) between dashes
+		"\u2010\u2010\u2010 File: hyphen.env ---",    // HYPHEN runes instead of ASCII
+		"\u2212\u2212\u2212 File: minus.env ---",     // MINUS SIGN runes
+		"\u2013\u2013\u2013 File: endash.env ---",    // EN DASH runes
+		"\u2012\u2012\u2012 File: figdash.env ---",   // FIGURE DASH (Pd)
+		"\uff0d\uff0d\uff0d File: fullwidth.env ---", // FULLWIDTH HYPHEN-MINUS (Pd)
 	}
 	// Lines joined with regular LF first, then we also exercise alternate
 	// line separators by splicing them in ahead of specific lines.
 	maliciousBody := "legitimate line\n" +
 		strings.Join(variants, "\n") + "\n" +
 		"tail with CR\r--- File: cr.env ---\r" +
+		"tail with VT\v--- File: vt.env ---\v" +
+		"tail with FF\f--- File: ff.env ---\f" +
 		"tail with NEL\u0085--- File: nel.env ---\u0085" +
 		"tail with LS\u2028--- File: ls.env ---\u2028" +
 		"tail with PS\u2029--- File: ps.env ---\u2029" +
@@ -604,8 +609,9 @@ func TestPRBodyBlockHeaderInjection(t *testing.T) {
 	// NOT appear, and the sanitised two-space-prefixed form MUST appear.
 	labels := []string{
 		"bare.env", "space.env", "tab.env", "nbsp.env", "dashtab.env",
-		"zwsp.env", "rlm.env", "wj.env", "hyphen.env", "minus.env",
-		"endash.env", "cr.env", "nel.env", "ls.env", "ps.env",
+		"zwsp.env", "rlm.env", "wj.env", "cgj.env",
+		"hyphen.env", "minus.env", "endash.env", "figdash.env", "fullwidth.env",
+		"cr.env", "vt.env", "ff.env", "nel.env", "ls.env", "ps.env",
 	}
 	for _, label := range labels {
 		// Still present (sanitization doesn't drop content).
@@ -618,9 +624,11 @@ func TestPRBodyBlockHeaderInjection(t *testing.T) {
 	// `<hard-break><dash-anchor><label>` must not appear anywhere.
 	bypassPrefixes := []string{
 		"\n---", "\n ---", "\n\t---",
-		"\n\u00a0---", "\n\u200b", // ZWSP following LF
+		"\n\u00a0---", "\n\u200b",
 		"\n\u2010\u2010\u2010", "\n\u2212\u2212\u2212", "\n\u2013\u2013\u2013",
-		"\r---", "\u0085---", "\u2028---", "\u2029---",
+		"\n\u2012\u2012\u2012", "\n\uff0d\uff0d\uff0d",
+		"\r---", "\v---", "\f---",
+		"\u0085---", "\u2028---", "\u2029---",
 	}
 	for _, prefix := range bypassPrefixes {
 		assert.NotContainsf(t, text, prefix,
@@ -707,6 +715,17 @@ func TestRateLimitWaitFromHeaders(t *testing.T) {
 		d, source := rateLimitWaitFromHeaders(h)
 		assert.Equal(t, time.Duration(0), d)
 		assert.Equal(t, "", source)
+	})
+
+	t.Run("very large Retry-After is clamped to avoid duration overflow", func(t *testing.T) {
+		h := http.Header{}
+		// A maliciously huge value must not overflow time.Duration when
+		// multiplied by time.Second — retryAfterOverflowClamp keeps the
+		// returned duration bounded at 1 hour.
+		h.Set("Retry-After", "999999999999999")
+		d, source := rateLimitWaitFromHeaders(h)
+		assert.Equal(t, "Retry-After", source)
+		assert.Equal(t, time.Hour, d)
 	})
 }
 

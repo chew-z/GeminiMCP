@@ -243,26 +243,20 @@ func waitForGitHubRateLimitReset(ctx context.Context, header http.Header, logger
 	}
 }
 
+// retryAfterOverflowClamp bounds Retry-After seconds so that converting to
+// time.Duration cannot overflow, and so that an unreasonably large value
+// from a buggy upstream still produces a sane (above-cap) duration. Any
+// value over one hour is clamped to one hour — the caller's 2-minute cap
+// will then defer to retry backoff anyway.
+const retryAfterOverflowClamp = int64(3600)
+
 // rateLimitWaitFromHeaders extracts the implied wait duration and a tag for
 // logging. A zero duration signals the caller should fall back to a bounded
 // default. Returned durations may be negative when a reset point has already
-// passed — the caller treats that as "nothing to wait for". Non-positive
-// Retry-After values are rejected (treated as missing) so a buggy or
-// malicious upstream cannot disable the backoff guard with "-1".
+// passed — the caller treats that as "nothing to wait for".
 func rateLimitWaitFromHeaders(header http.Header) (time.Duration, string) {
-	if ra := strings.TrimSpace(header.Get("Retry-After")); ra != "" {
-		// Retry-After can be either a delta-seconds integer or an HTTP-date.
-		// Parse as int64 to avoid platform-dependent int overflow on very
-		// large values, and clamp non-positive values to "not usable".
-		if secs, err := strconv.ParseInt(ra, 10, 64); err == nil {
-			if secs <= 0 {
-				return 0, ""
-			}
-			return time.Duration(secs) * time.Second, "Retry-After"
-		}
-		if t, err := http.ParseTime(ra); err == nil {
-			return time.Until(t), "Retry-After"
-		}
+	if d, ok := parseRetryAfter(strings.TrimSpace(header.Get("Retry-After"))); ok {
+		return d, "Retry-After"
 	}
 	if resetStr := strings.TrimSpace(header.Get("X-RateLimit-Reset")); resetStr != "" {
 		if resetTime, err := strconv.ParseInt(resetStr, 10, 64); err == nil {
@@ -270,6 +264,29 @@ func rateLimitWaitFromHeaders(header http.Header) (time.Duration, string) {
 		}
 	}
 	return 0, ""
+}
+
+// parseRetryAfter interprets a Retry-After header value. It accepts either
+// a delta-seconds integer or an HTTP-date. Non-positive integers and very
+// large integers are treated as unusable (ok=false) so a buggy or malicious
+// upstream cannot disable the backoff guard or overflow time.Duration.
+func parseRetryAfter(ra string) (time.Duration, bool) {
+	if ra == "" {
+		return 0, false
+	}
+	if secs, err := strconv.ParseInt(ra, 10, 64); err == nil {
+		if secs <= 0 {
+			return 0, false
+		}
+		if secs > retryAfterOverflowClamp {
+			secs = retryAfterOverflowClamp
+		}
+		return time.Duration(secs) * time.Second, true
+	}
+	if t, err := http.ParseTime(ra); err == nil {
+		return time.Until(t), true
+	}
+	return 0, false
 }
 
 // makeTextPart wraps a labelled block into a genai text Part.
@@ -287,20 +304,21 @@ func makeTextPart(header, body string) *genai.Part {
 // bypass, so all are closed):
 //
 //   - Line splitting normalizes every Unicode-spec hard line break to LF
-//     first: CRLF, CR, NEL (U+0085), LS (U+2028), PS (U+2029). A payload
-//     that uses any of these to smuggle `\n---` past strings.Split is
-//     neutralised here.
-//   - lineLooksLikeBlockHeader iterates runes, skipping any Cf (format)
-//     character at any position — so zero-width space (U+200B), zero-width
-//     joiner (U+200D), word joiner (U+2060), RLM / LRM, etc., cannot sit
+//     first: CRLF, CR, VT (U+000B), FF (U+000C), NEL (U+0085), LS (U+2028),
+//     PS (U+2029). Any of these can smuggle `\n---` past strings.Split if
+//     left untouched.
+//   - lineLooksLikeBlockHeader iterates runes, skipping any invisible rune
+//     at any position: unicode.Cf (format — ZWSP, ZWJ, LRM, word joiner),
+//     unicode.Mn (nonspacing marks — combining diacriticals, CGJ U+034F),
+//     and unicode.Me (enclosing marks). None of these characters can sit
 //     between the dashes or between "---" and the following whitespace.
-//   - The dash match accepts any Unicode dash-like rune, not just the
-//     ASCII hyphen-minus: HYPHEN (U+2010), FIGURE DASH (U+2012), EN DASH,
-//     EM DASH, HORIZONTAL BAR, MINUS SIGN (U+2212), FULLWIDTH HYPHEN-MINUS,
-//     etc. Gemini may visually render `\u2010\u2010\u2010` identically to
-//     `---`, so we treat them as equivalent for anchoring purposes.
-//   - Leading whitespace detection uses [unicode.IsSpace], covering NBSP
-//     (U+00A0), all EN/EM/NARROW/HAIR spaces, tab, and vertical tab.
+//   - Dashes accept any Unicode Pd (Dash_Punctuation) rune plus U+2212
+//     MINUS SIGN (category Sm). Gemini may visually render three of these
+//     identically to `---`, so all variants canonicalise to the same
+//     anchor: HYPHEN (U+2010), FIGURE DASH, EN DASH, EM DASH, HORIZONTAL
+//     BAR, MINUS SIGN, FULLWIDTH HYPHEN-MINUS, etc.
+//   - Leading whitespace detection uses [unicode.IsSpace], covering NBSP,
+//     tab, all EN/EM/NARROW/HAIR spaces.
 //   - The transform prepends two spaces to any offending line, breaking
 //     the "line anchor" Gemini would otherwise pattern-match as a header.
 func sanitizeUntrustedBlockContent(s string) string {
@@ -312,6 +330,8 @@ func sanitizeUntrustedBlockContent(s string) string {
 	// CRLF must be normalised first to avoid double conversion.
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
+	s = strings.ReplaceAll(s, "\v", "\n")     // VERTICAL TAB
+	s = strings.ReplaceAll(s, "\f", "\n")     // FORM FEED
 	s = strings.ReplaceAll(s, "\u0085", "\n") // NEL
 	s = strings.ReplaceAll(s, "\u2028", "\n") // LINE SEPARATOR
 	s = strings.ReplaceAll(s, "\u2029", "\n") // PARAGRAPH SEPARATOR
@@ -339,10 +359,10 @@ func containsPossibleBlockHeaderAnchor(s string) bool {
 }
 
 // lineLooksLikeBlockHeader reports whether a line, after canonicalising it
-// (stripping leading whitespace and format characters, collapsing Unicode
-// dash variants to ASCII `-`), begins with "---" followed by a whitespace
-// rune. That is the exact pattern Gemini treats as a block boundary, so any
-// line that canonicalises to it must be neutralised.
+// (stripping leading whitespace and invisible characters, collapsing all
+// Unicode dash variants to ASCII `-`), begins with "---" followed by a
+// whitespace rune. That is the exact pattern Gemini treats as a block
+// boundary, so any line canonicalising to it must be neutralised.
 func lineLooksLikeBlockHeader(line string) bool {
 	var (
 		dashes     int
@@ -350,10 +370,11 @@ func lineLooksLikeBlockHeader(line string) bool {
 		sawAfter   bool
 	)
 	for _, r := range line {
-		// Format (Cf) characters — ZWSP, ZWJ, ZWNJ, LRM, RLM, word joiner,
-		// etc. — are invisible to readers and to Gemini. Skip them anywhere
-		// in the header scan so they cannot break the pattern.
-		if unicode.Is(unicode.Cf, r) {
+		// Invisible characters at any position are ignored: Cf (ZWSP,
+		// ZWJ, LRM, word joiner), Mn (combining diacriticals, CGJ
+		// U+034F), Me (enclosing marks). None contribute pixels on
+		// screen so they cannot defeat the header pattern.
+		if isInvisibleRune(r) {
 			continue
 		}
 		if dashes < 3 {
@@ -382,23 +403,22 @@ func lineLooksLikeBlockHeader(line string) bool {
 	return unicode.IsSpace(firstAfter)
 }
 
+// isInvisibleRune reports whether a rune is visually absent and therefore
+// safe to ignore while scanning the canonical header pattern.
+func isInvisibleRune(r rune) bool {
+	return unicode.Is(unicode.Cf, r) ||
+		unicode.Is(unicode.Mn, r) ||
+		unicode.Is(unicode.Me, r)
+}
+
 // isDashLike reports whether a rune is a dash or hyphen variant that Gemini
-// may visually render identically to the ASCII hyphen-minus. The list is
-// drawn from Unicode's Dash_Punctuation + MINUS SIGN.
+// may visually render identically to the ASCII hyphen-minus. We use the
+// Unicode Pd (Dash_Punctuation) category as the authoritative source, plus
+// U+2212 MINUS SIGN which lives in Sm (Symbol, Math) for historical
+// reasons but renders as a hyphen.
 func isDashLike(r rune) bool {
-	switch r {
-	case '-', // U+002D HYPHEN-MINUS
-		'\u2010', // HYPHEN
-		'\u2011', // NON-BREAKING HYPHEN
-		'\u2012', // FIGURE DASH
-		'\u2013', // EN DASH
-		'\u2014', // EM DASH
-		'\u2015', // HORIZONTAL BAR
-		'\u2212', // MINUS SIGN
-		'\ufe58', // SMALL EM DASH
-		'\ufe63', // SMALL HYPHEN-MINUS
-		'\uff0d': // FULLWIDTH HYPHEN-MINUS
+	if r == '\u2212' {
 		return true
 	}
-	return false
+	return unicode.Is(unicode.Pd, r)
 }
