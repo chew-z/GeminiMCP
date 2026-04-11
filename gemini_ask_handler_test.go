@@ -92,7 +92,7 @@ func TestGeminiAskHandlerFileSourceBehavior(t *testing.T) {
 				"github_files": []any{"README.md"},
 				"github_repo":  "owner/repo",
 			},
-			wantErrorText: "Cannot use both 'file_paths' and 'github_files'",
+			wantErrorText: "'file_paths' cannot be combined with any 'github_*' parameter",
 		},
 		{
 			name: "rejects github_files without github_repo",

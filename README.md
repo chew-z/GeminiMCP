@@ -250,6 +250,86 @@ File attachments with GitHub integration:
 }
 ```
 
+#### Rich GitHub context: PRs, commits, diffs
+
+All GitHub-sourced context parameters are **independent, optional peers** —
+`github_files`, `github_pr`, `github_commits`, and the `github_diff_base` /
+`github_diff_head` pair can be combined freely in a single call. The server
+fetches each present source, merges everything into a stable order
+(`commits → diff → PR → files → query`) to maximise implicit caching, and
+appends a small descriptive addendum to the system prompt describing which
+blocks were attached. The server **does not** rewrite your query or inject
+review instructions — the intent stays in your `query`.
+
+Review a pull request:
+
+```json
+{
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Review this pull request and flag any regressions.",
+        "github_repo": "owner/repo",
+        "github_pr": 42
+    }
+}
+```
+
+Explain a series of commits:
+
+```json
+{
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Walk me through this commit series and why each step is needed.",
+        "github_repo": "owner/repo",
+        "github_commits": ["abc1234", "def5678"]
+    }
+}
+```
+
+Compare two refs:
+
+```json
+{
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Summarize what changed between release v1.2 and main.",
+        "github_repo": "owner/repo",
+        "github_diff_base": "v1.2",
+        "github_diff_head": "main"
+    }
+}
+```
+
+Mix everything in one call:
+
+```json
+{
+    "name": "gemini_ask",
+    "arguments": {
+        "query": "Given this PR and these related commits, does the new helper in utils.go belong here?",
+        "github_repo": "owner/repo",
+        "github_pr": 42,
+        "github_commits": ["abc1234"],
+        "github_files": ["utils.go"]
+    }
+}
+```
+
+**Discoverable shortcuts via MCP Prompts.** Weaker clients can invoke the
+`review_pr`, `explain_commit`, `compare_refs`, or `inspect_files` prompts to
+get a pre-filled `gemini_ask` invocation. The prompts are discoverable
+shortcuts only — they are not a hierarchy, and the tool schema treats every
+github_* parameter as an independent, optional peer.
+
+**Size and rate limits.** All new fetchers respect a shared diff size cap
+(`GEMINI_MAX_GITHUB_DIFF_BYTES`, default 500 KB) and truncate at hunk
+boundaries when necessary. `GEMINI_MAX_GITHUB_COMMITS` (default 10) caps the
+number of commits per call, and `GEMINI_MAX_GITHUB_PR_REVIEW_COMMENTS`
+(default 50) caps the number of review comments fetched per PR. The same
+`GEMINI_GITHUB_TOKEN` is used for all GitHub endpoints; private repos
+require a token with `repo` scope.
+
 #### 2. **`gemini_search`**
 
 Provides grounded answers using Google Search integration with enhanced model capabilities.
@@ -320,7 +400,7 @@ The server leverages Gemini's automatic implicit caching for cost savings:
 
 Robust file processing with:
 
-- **GitHub Integration**: Fetch files directly from a GitHub repository using the `github_repo`, `github_ref`, and `github_files` arguments. `github_repo` is required when `github_files` is provided.
+- **GitHub Integration**: Fetch files (`github_files`), a pull request bundle (`github_pr`), per-commit patches (`github_commits`), or an arbitrary ref comparison (`github_diff_base` / `github_diff_head`) directly from a GitHub repository. All four are independent, optional peers and can be mixed freely in a single `gemini_ask` call. `github_repo` is required whenever any of them is used.
 - **Local File Access (stdio only)**: The `file_paths` argument can be used to access local files, but only when the server is running in `stdio` mode. This method is deprecated for `http` transport due to security concerns.
 - **Automatic Validation**: Size checking, MIME type detection, and content validation
 - **Wide Format Support**: Handles 60+ code, text, config, and document formats

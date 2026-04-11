@@ -57,15 +57,19 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 		return createErrorResult(err.Error()), nil
 	}
 
-	// --- File Handling Logic ---
-	logger.Info("Starting file handling logic")
-	uploads, warnings, errResult := s.gatherFileUploads(ctx, req)
-	if errResult != nil {
+	// Early mutual-exclusion check: local file_paths is not compatible with
+	// any github_* parameter. This check runs BEFORE any HTTP fetches so the
+	// client gets a fast, deterministic error instead of a timeout/partial
+	// result driven by unrelated GitHub failures.
+	if errResult := validateNoLocalPathsWithGitHub(req); errResult != nil {
 		return errResult, nil
 	}
 
-	// Surface partial file failures to the model so it doesn't hallucinate about missing files
-	query = appendFileWarningNote(query, warnings)
+	ghContextParts, uploads, inventory, allWarnings, errResult := s.gatherAllContext(ctx, req)
+	if errResult != nil {
+		return errResult, nil
+	}
+	query = appendFileWarningNote(query, allWarnings)
 
 	// Validate client and models before proceeding
 	if s.client == nil || s.client.Models == nil {
@@ -73,17 +77,291 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 		return createErrorResult("Internal error: Gemini client not properly initialized"), nil
 	}
 
-	// Process with files if provided
-	if len(uploads) > 0 {
-		return s.processWithFiles(ctx, query, uploads, modelName, config)
+	// If any GitHub context is attached, append a descriptive addendum to the
+	// system instruction so Gemini can cite the correct block headers.
+	applyContextInventory(config, &inventory)
+
+	// Process with context if anything was attached
+	if len(ghContextParts) > 0 || len(uploads) > 0 {
+		return s.processWithFiles(ctx, query, ghContextParts, uploads, modelName, config)
 	}
 	return s.processWithoutFiles(ctx, query, modelName, config)
 }
 
+// gatherAllContext runs the two independent context-gathering paths (GitHub
+// PR/commits/diff and files) and merges their warnings and inventory state.
+func (s *GeminiServer) gatherAllContext(
+	ctx context.Context, req mcp.CallToolRequest,
+) ([]*genai.Part, []*FileUploadRequest, contextInventory, []string, *mcp.CallToolResult) {
+	logger := getLoggerFromContext(ctx)
+
+	ghContextParts, inventory, ghWarnings, errResult := s.gatherGitHubContext(ctx, req)
+	if errResult != nil {
+		return nil, nil, inventory, nil, errResult
+	}
+
+	logger.Info("Starting file handling logic")
+	uploads, fileWarnings, errResult := s.gatherFileUploads(ctx, req, inventory.HasAny())
+	if errResult != nil {
+		return nil, nil, inventory, nil, errResult
+	}
+	if len(uploads) > 0 {
+		inventory.Files.Count = len(uploads)
+		inventory.Files.Ref = extractArgumentString(req, "github_ref", "")
+		if inventory.Repo == "" {
+			inventory.Repo = extractArgumentString(req, "github_repo", "")
+		}
+	}
+
+	allWarnings := append([]string{}, ghWarnings...)
+	allWarnings = append(allWarnings, fileWarnings...)
+	return ghContextParts, uploads, inventory, allWarnings, nil
+}
+
+// validateNoLocalPathsWithGitHub rejects requests that mix local file_paths
+// with any github_* parameter. Returns a CallToolResult error on violation,
+// or nil if the combination is safe.
+func validateNoLocalPathsWithGitHub(req mcp.CallToolRequest) *mcp.CallToolResult {
+	filePaths := extractArgumentStringArray(req, "file_paths")
+	if len(filePaths) == 0 {
+		return nil
+	}
+	githubFiles := extractArgumentStringArray(req, "github_files")
+	_, hasPR := extractArgumentInt(req, "github_pr")
+	commits := extractArgumentStringArray(req, "github_commits")
+	diffBase := extractArgumentString(req, "github_diff_base", "")
+	diffHead := extractArgumentString(req, "github_diff_head", "")
+	if len(githubFiles) > 0 || hasPR || len(commits) > 0 || diffBase != "" || diffHead != "" {
+		return createErrorResult("'file_paths' cannot be combined with any 'github_*' parameter.")
+	}
+	return nil
+}
+
+// gatherGitHubContext fetches the github_pr / github_commits / github_diff
+// parameters (independently and in parallel-friendly order) and returns the
+// resulting genai Parts in the stable merge order:
+//
+//	[commits] → [diff] → [PR bundle]
+//
+// Files are intentionally NOT handled here — they're fetched by
+// gatherFileUploads so the existing xor-with-local-file_paths logic stays put.
+func (s *GeminiServer) gatherGitHubContext(
+	ctx context.Context, req mcp.CallToolRequest,
+) ([]*genai.Part, contextInventory, []string, *mcp.CallToolResult) {
+	var inv contextInventory
+
+	spec := parseGitHubContextSpec(req)
+	if !spec.any() {
+		return nil, inv, nil, nil
+	}
+
+	githubRepo := extractArgumentString(req, "github_repo", "")
+	if githubRepo == "" {
+		return nil, inv, nil, createErrorResult(
+			"'github_repo' is required when using 'github_pr', 'github_commits', or 'github_diff_base'/'github_diff_head'.")
+	}
+	owner, repo, err := parseGitHubRepo(githubRepo)
+	if err != nil {
+		return nil, inv, nil, createErrorResult(err.Error())
+	}
+	inv.Repo = owner + "/" + repo
+
+	if spec.wantsDiff && (spec.diffBase == "" || spec.diffHead == "") {
+		return nil, inv, nil, createErrorResult("'github_diff_base' and 'github_diff_head' must both be provided.")
+	}
+
+	parts, warnings, errResult := s.fetchGitHubContextSources(ctx, owner, repo, spec, &inv)
+	if errResult != nil {
+		return nil, inv, nil, errResult
+	}
+
+	// Hard fail only if every requested source failed.
+	if len(parts) == 0 {
+		return nil, inv, nil, createErrorResult(fmt.Sprintf(
+			"Failed to fetch any of the requested GitHub context (pr=%v, commits=%d, diff=%v). Warnings: %s",
+			spec.hasPR, len(spec.commits), spec.wantsDiff, strings.Join(warnings, "; ")))
+	}
+	return parts, inv, warnings, nil
+}
+
+// githubContextSpec describes which github_* sources the client requested.
+type githubContextSpec struct {
+	hasPR     bool
+	prNumber  int
+	commits   []string
+	wantsDiff bool
+	diffBase  string
+	diffHead  string
+}
+
+func (g githubContextSpec) any() bool {
+	return g.hasPR || len(g.commits) > 0 || g.wantsDiff
+}
+
+func parseGitHubContextSpec(req mcp.CallToolRequest) githubContextSpec {
+	prNumber, hasPR := extractArgumentInt(req, "github_pr")
+	diffBase := extractArgumentString(req, "github_diff_base", "")
+	diffHead := extractArgumentString(req, "github_diff_head", "")
+	return githubContextSpec{
+		hasPR:     hasPR,
+		prNumber:  prNumber,
+		commits:   extractArgumentStringArray(req, "github_commits"),
+		wantsDiff: diffBase != "" || diffHead != "",
+		diffBase:  diffBase,
+		diffHead:  diffHead,
+	}
+}
+
+// fetchGitHubContextSources runs the actual fetches in stable merge order
+// (commits → diff → PR) and accumulates parts, warnings, and inventory state.
+func (s *GeminiServer) fetchGitHubContextSources(
+	ctx context.Context, owner, repo string, spec githubContextSpec, inv *contextInventory,
+) ([]*genai.Part, []string, *mcp.CallToolResult) {
+	logger := getLoggerFromContext(ctx)
+	var parts []*genai.Part
+	var warnings []string
+
+	if len(spec.commits) > 0 {
+		commitParts, commitInv, commitWarnings, err := s.gatherCommits(ctx, owner, repo, spec.commits)
+		if err != nil {
+			logger.Error("Commits fetch failed: %v", err)
+			return nil, nil, createErrorResult(err.Error())
+		}
+		parts = append(parts, commitParts...)
+		inv.Commits = commitInv
+		warnings = append(warnings, commitWarnings...)
+	}
+
+	if spec.wantsDiff {
+		diffParts, diffInv, err := s.gatherCompareDiff(ctx, owner, repo, spec.diffBase, spec.diffHead)
+		if err != nil {
+			logger.Error("Compare diff fetch failed: %v", err)
+			warnings = append(warnings, fmt.Sprintf("github_diff %s..%s: %v", spec.diffBase, spec.diffHead, err))
+		} else {
+			parts = append(parts, diffParts...)
+			inv.Diff = diffInv
+		}
+	}
+
+	if spec.hasPR {
+		prParts, prInv, prWarnings, err := s.gatherPullRequest(ctx, owner, repo, spec.prNumber)
+		if err != nil {
+			logger.Error("PR fetch failed: %v", err)
+			warnings = append(warnings, fmt.Sprintf("github_pr #%d: %v", spec.prNumber, err))
+		} else {
+			parts = append(parts, prParts...)
+			inv.PR = prInv
+			warnings = append(warnings, prWarnings...)
+		}
+	}
+
+	return parts, warnings, nil
+}
+
+// buildContextInventoryAddendum renders a deterministic, descriptive (not
+// instructional) summary of every attached context block, suitable for
+// appending to the system prompt.
+func buildContextInventoryAddendum(inv *contextInventory) string {
+	if inv == nil || !inv.HasAny() {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\nYou have been provided with the following context blocks")
+	if inv.Repo != "" {
+		fmt.Fprintf(&b, " from github.com/%s", inv.Repo)
+	}
+	b.WriteString(":\n")
+
+	writeFilesInventory(&b, inv.Files)
+	writeCommitsInventory(&b, inv.Commits)
+	writeDiffInventory(&b, inv.Diff)
+	writePRInventory(&b, inv.PR)
+
+	b.WriteString("\nUse these blocks to answer the user's query. When you cite code, reference the block header and file path.")
+	return b.String()
+}
+
+func writeFilesInventory(b *strings.Builder, f fileInventory) {
+	if f.Count == 0 {
+		return
+	}
+	if f.Ref != "" {
+		fmt.Fprintf(b, "- %d source file(s) (ref %s), each in a block headed \"--- File: <path> ---\"\n", f.Count, f.Ref)
+		return
+	}
+	fmt.Fprintf(b, "- %d source file(s), each in a block headed \"--- File: <path> ---\"\n", f.Count)
+}
+
+func writeCommitsInventory(b *strings.Builder, commits []commitInventory) {
+	if len(commits) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "- %d commit patch(es), each in a block headed \"--- Commit <sha> ... ---\"\n", len(commits))
+}
+
+func writeDiffInventory(b *strings.Builder, d *diffInventory) {
+	if d == nil {
+		return
+	}
+	suffix := ""
+	if d.Truncated {
+		suffix = " (diff was truncated at size limit)"
+	}
+	fmt.Fprintf(b, "- A comparison between %s and %s, in a block headed \"--- Diff ... %s..%s ---\"%s\n",
+		d.Base, d.Head, d.Base, d.Head, suffix)
+}
+
+func writePRInventory(b *strings.Builder, pr *prInventory) {
+	if pr == nil {
+		return
+	}
+	suffix := ""
+	if pr.DiffTruncated {
+		suffix = " (diff was truncated at size limit)"
+	}
+	fmt.Fprintf(b, "- Pull request #%d (%q), with description, unified diff, and %d review comment(s), "+
+		"in blocks headed \"--- PR #%d ... ---\"%s\n",
+		pr.Number, pr.Title, pr.ReviewCount, pr.Number, suffix)
+}
+
+// applyContextInventory appends the inventory addendum to the existing system
+// instruction on the config. It never rewrites the client-supplied system
+// prompt — it only adds descriptive trailing text.
+func applyContextInventory(config *genai.GenerateContentConfig, inv *contextInventory) {
+	if config == nil || !inv.HasAny() {
+		return
+	}
+	addendum := buildContextInventoryAddendum(inv)
+	if addendum == "" {
+		return
+	}
+	var existing strings.Builder
+	if config.SystemInstruction != nil {
+		for _, part := range config.SystemInstruction.Parts {
+			if part != nil && part.Text != "" {
+				existing.WriteString(part.Text)
+			}
+		}
+	}
+	existing.WriteString(addendum)
+	config.SystemInstruction = genai.NewContentFromText(existing.String(), "")
+}
+
 // gatherFileUploads handles the logic of selecting, validating, and fetching files
-// from either local paths or a GitHub repository.
-// Returns uploads, warning messages for files that failed, and an optional error result.
-func (s *GeminiServer) gatherFileUploads(ctx context.Context, req mcp.CallToolRequest) ([]*FileUploadRequest, []string, *mcp.CallToolResult) {
+// from either local paths or a GitHub repository. The github-family parameters
+// (github_pr / github_commits / github_diff_*) are orthogonal peers handled
+// separately by gatherGitHubContext; this function only deals with file attachments.
+//
+// Local file_paths remains exclusive with github_files (and by extension, any
+// other github_* parameter is also exclusive with local file_paths).
+//
+// The otherGitHubContextPresent flag relaxes the "files requested but none
+// gathered" hard-fail when another github-sourced context block was already
+// successfully attached — in that case the request has useful content and
+// the failed files become warnings.
+func (s *GeminiServer) gatherFileUploads(
+	ctx context.Context, req mcp.CallToolRequest, otherGitHubContextPresent bool,
+) ([]*FileUploadRequest, []string, *mcp.CallToolResult) {
 	logger := getLoggerFromContext(ctx)
 
 	filePaths := extractArgumentStringArray(req, "file_paths")
@@ -91,36 +369,55 @@ func (s *GeminiServer) gatherFileUploads(ctx context.Context, req mcp.CallToolRe
 
 	logger.Info("Extracted file parameters - local files: %d, github files: %d", len(filePaths), len(githubFiles))
 
-	// Validation: Cannot use both file_paths and github_files
-	if len(filePaths) > 0 && len(githubFiles) > 0 {
-		logger.Error("Invalid request: both local and GitHub files specified")
-		return nil, nil, createErrorResult("Cannot use both 'file_paths' and 'github_files' in the same request.")
-	}
-
-	filesRequested := len(filePaths) > 0 || len(githubFiles) > 0
-
-	// Handle file sources
-	var uploads []*FileUploadRequest
-	var warnings []string
-	var errResult *mcp.CallToolResult
-	if len(githubFiles) > 0 {
-		uploads, warnings, errResult = s.gatherGitHubFiles(ctx, req, githubFiles)
-	} else if len(filePaths) > 0 {
-		uploads, warnings, errResult = s.gatherLocalFiles(ctx, filePaths)
-	}
-
+	uploads, warnings, errResult := s.fetchFileUploadsBySource(ctx, req, filePaths, githubFiles)
 	if errResult != nil {
-		return nil, nil, errResult
+		return s.handleFileUploadError(errResult, warnings, githubFiles, otherGitHubContextPresent)
 	}
 
 	// Guard: if files were explicitly requested but none were gathered,
-	// return an error instead of silently falling through to processWithoutFiles.
+	// return an error instead of silently falling through to processWithoutFiles —
+	// unless other github context was attached successfully, in which case
+	// this is a partial failure that should surface as warnings.
+	filesRequested := len(filePaths) > 0 || len(githubFiles) > 0
 	if filesRequested && len(uploads) == 0 {
+		if otherGitHubContextPresent {
+			logger.Warn("files requested but none gathered; other GitHub context present, continuing")
+			return nil, warnings, nil
+		}
 		logger.Error("Files were requested but none could be gathered")
 		return nil, nil, createErrorResult("Failed to retrieve any of the requested files. Cannot proceed without file context.")
 	}
 
 	return uploads, warnings, nil
+}
+
+// fetchFileUploadsBySource dispatches to the github_files or local file_paths
+// fetcher, returning (uploads, warnings, errResult).
+func (s *GeminiServer) fetchFileUploadsBySource(
+	ctx context.Context, req mcp.CallToolRequest, filePaths, githubFiles []string,
+) ([]*FileUploadRequest, []string, *mcp.CallToolResult) {
+	if len(githubFiles) > 0 {
+		return s.gatherGitHubFiles(ctx, req, githubFiles)
+	}
+	if len(filePaths) > 0 {
+		return s.gatherLocalFiles(ctx, filePaths)
+	}
+	return nil, nil, nil
+}
+
+// handleFileUploadError softens a hard-fail from the github_files fetcher into
+// warnings when other github context was already successfully attached,
+// allowing the caller to proceed with partial context.
+func (s *GeminiServer) handleFileUploadError(
+	errResult *mcp.CallToolResult, warnings, githubFiles []string, otherGitHubContextPresent bool,
+) ([]*FileUploadRequest, []string, *mcp.CallToolResult) {
+	if otherGitHubContextPresent && len(githubFiles) > 0 {
+		for _, f := range githubFiles {
+			warnings = append(warnings, fmt.Sprintf("%s: could not be fetched from GitHub", f))
+		}
+		return nil, warnings, nil
+	}
+	return nil, nil, errResult
 }
 
 // gatherGitHubFiles fetches files from a GitHub repository.
@@ -279,19 +576,33 @@ func readLocalFiles(ctx context.Context, filePaths []string, config *Config) ([]
 	return uploads, warnings, nil
 }
 
-// processWithFiles handles a Gemini API request with file attachments.
-// Files are placed BEFORE the query to maximize implicit caching — Gemini caches
-// the shared prefix of repeated requests, so stable file content at the front
-// gets cached automatically across calls.
-func (s *GeminiServer) processWithFiles(ctx context.Context, query string, uploads []*FileUploadRequest,
+// processWithFiles handles a Gemini API request with any combination of
+// pre-built github-context text parts (commits / diff / PR bundle) and file
+// attachments. Everything is placed BEFORE the query to maximise implicit
+// caching — Gemini caches the shared prefix of repeated requests, so stable
+// content at the front gets cached automatically across calls.
+//
+// The stable merge order is:
+//
+//	[commits] → [diff] → [PR bundle] → [files] → [query]
+//
+// contextParts MUST already be in the above order when passed in.
+func (s *GeminiServer) processWithFiles(ctx context.Context, query string,
+	contextParts []*genai.Part, uploads []*FileUploadRequest,
 	modelName string, config *genai.GenerateContentConfig) (*mcp.CallToolResult, error) {
 
 	logger := getLoggerFromContext(ctx)
 
-	// Build parts: files first (cacheable prefix), then query last (variable suffix).
-	// All parts must be in a single Content object — separate Content objects with the
-	// same role are treated as distinct conversation turns and file context is dropped.
+	// Build parts: context + files first (cacheable prefix), then query last.
+	// All parts must be in a single Content object — separate Content objects
+	// with the same role are treated as distinct conversation turns and file
+	// context is dropped.
 	var parts []*genai.Part
+
+	if len(contextParts) > 0 {
+		logger.Info("Processing %d github-context part(s) for inline injection", len(contextParts))
+		parts = append(parts, contextParts...)
+	}
 
 	logger.Info("Processing %d file(s) for inline injection", len(uploads))
 	for _, upload := range uploads {

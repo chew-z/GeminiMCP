@@ -32,9 +32,12 @@ If the search results don't contain enough information to fully answer the query
 	defaultMaxFileSize = int64(10 * 1024 * 1024) // 10MB explicitly as int64
 
 	// GitHub settings defaults
-	defaultGitHubAPIBaseURL  = "https://api.github.com"
-	defaultMaxGitHubFiles    = 20
-	defaultMaxGitHubFileSize = int64(1 * 1024 * 1024) // 1MB
+	defaultGitHubAPIBaseURL          = "https://api.github.com"
+	defaultMaxGitHubFiles            = 20
+	defaultMaxGitHubFileSize         = int64(1 * 1024 * 1024) // 1MB
+	defaultMaxGitHubDiffBytes        = int64(500 * 1024)      // 500KB for any single diff payload
+	defaultMaxGitHubCommits          = 10                     // max commits per github_commits call
+	defaultMaxGitHubPRReviewComments = 50                     // max PR review comments fetched
 
 	// HTTP transport defaults
 	defaultEnableHTTP      = false
@@ -210,6 +213,21 @@ func NewConfig(logger Logger) (*Config, error) {
 		logger.Warnf("GEMINI_MAX_GITHUB_FILE_SIZE must be positive. Using default: %d", defaultMaxGitHubFileSize)
 		maxGitHubFileSize = defaultMaxGitHubFileSize
 	}
+	maxGitHubDiffBytes := int64(parseEnvVarInt("GEMINI_MAX_GITHUB_DIFF_BYTES", int(defaultMaxGitHubDiffBytes), logger))
+	if maxGitHubDiffBytes <= 0 {
+		logger.Warnf("GEMINI_MAX_GITHUB_DIFF_BYTES must be positive. Using default: %d", defaultMaxGitHubDiffBytes)
+		maxGitHubDiffBytes = defaultMaxGitHubDiffBytes
+	}
+	maxGitHubCommits := parseEnvVarInt("GEMINI_MAX_GITHUB_COMMITS", defaultMaxGitHubCommits, logger)
+	if maxGitHubCommits <= 0 {
+		logger.Warnf("GEMINI_MAX_GITHUB_COMMITS must be positive. Using default: %d", defaultMaxGitHubCommits)
+		maxGitHubCommits = defaultMaxGitHubCommits
+	}
+	maxGitHubPRReviewComments := parseEnvVarInt("GEMINI_MAX_GITHUB_PR_REVIEW_COMMENTS", defaultMaxGitHubPRReviewComments, logger)
+	if maxGitHubPRReviewComments < 0 {
+		logger.Warnf("GEMINI_MAX_GITHUB_PR_REVIEW_COMMENTS must be non-negative. Using default: %d", defaultMaxGitHubPRReviewComments)
+		maxGitHubPRReviewComments = defaultMaxGitHubPRReviewComments
+	}
 
 	// Thinking settings
 	enableThinking := parseEnvVarBool("GEMINI_ENABLE_THINKING", defaultEnableThinking, logger)
@@ -296,10 +314,13 @@ func NewConfig(logger Logger) (*Config, error) {
 			FileReadBaseDir:          fileReadBaseDir,
 
 			// GitHub settings
-			GitHubToken:       githubToken,
-			GitHubAPIBaseURL:  githubAPIBaseURL,
-			MaxGitHubFiles:    maxGitHubFiles,
-			MaxGitHubFileSize: maxGitHubFileSize,
+			GitHubToken:               githubToken,
+			GitHubAPIBaseURL:          githubAPIBaseURL,
+			MaxGitHubFiles:            maxGitHubFiles,
+			MaxGitHubFileSize:         maxGitHubFileSize,
+			MaxGitHubDiffBytes:        maxGitHubDiffBytes,
+			MaxGitHubCommits:          maxGitHubCommits,
+			MaxGitHubPRReviewComments: maxGitHubPRReviewComments,
 
 			EnableThinking:      enableThinking,
 			ThinkingLevel:       thinkingLevel,

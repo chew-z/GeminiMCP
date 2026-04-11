@@ -9,11 +9,23 @@ import (
 	"google.golang.org/genai"
 )
 
-// PromptDefinition defines the structure for a prompt with its system prompt
+// PromptDefinition defines the structure for a prompt with its system prompt.
+//
+// HandlerFactory is optional. When nil, the default generic handler
+// (promptHandler) is used — which expects a "problem_statement" argument and
+// emits a gemini_ask call wrapped around the system prompt. When non-nil, the
+// factory is invoked with the live GeminiServer to produce a custom handler;
+// this is the hook used by the github-workflow prompts (review_pr,
+// explain_commit, compare_refs, inspect_files) that need bespoke arguments.
 type PromptDefinition struct {
 	*mcp.Prompt
-	SystemPrompt SystemPromptProvider
+	SystemPrompt   SystemPromptProvider
+	HandlerFactory func(s *GeminiServer) mcpPromptHandlerFunc
 }
+
+// mcpPromptHandlerFunc mirrors server.PromptHandlerFunc without pulling the
+// import into structs.go. The real type alias lives in server_handlers.go.
+type mcpPromptHandlerFunc func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error)
 
 // SystemPromptProvider is an interface for providing system prompts
 type SystemPromptProvider interface {
@@ -109,10 +121,13 @@ type Config struct {
 	FileReadBaseDir string // Base directory for local file reads
 
 	// GitHub settings
-	GitHubToken       string // Token for private repo access
-	GitHubAPIBaseURL  string // For GitHub Enterprise
-	MaxGitHubFiles    int    // Max number of files per call
-	MaxGitHubFileSize int64  // Max size per file in bytes
+	GitHubToken               string // Token for private repo access
+	GitHubAPIBaseURL          string // For GitHub Enterprise
+	MaxGitHubFiles            int    // Max number of files per call
+	MaxGitHubFileSize         int64  // Max size per file in bytes
+	MaxGitHubDiffBytes        int64  // Max bytes of a single unified diff payload (PR / commit / compare)
+	MaxGitHubCommits          int    // Max number of commits accepted via github_commits
+	MaxGitHubPRReviewComments int    // Max number of PR review comments fetched
 
 	// Thinking settings
 	EnableThinking      bool   // Enable/disable thinking mode for supported models
@@ -146,6 +161,55 @@ type FileUploadRequest struct {
 	MimeType    string `json:"mime_type"`
 	Content     []byte `json:"content"`
 	DisplayName string `json:"display_name,omitempty"`
+}
+
+// contextInventory records which GitHub-sourced context blocks were attached
+// to a gemini_ask request so the server can generate a small, deterministic
+// descriptive addendum for the system prompt. It is intentionally descriptive
+// only — it never injects task instructions.
+type contextInventory struct {
+	Repo     string // "owner/repo" (empty if no GitHub context was used)
+	Files    fileInventory
+	PR       *prInventory
+	Commits  []commitInventory
+	Diff     *diffInventory
+	Warnings []string // non-fatal warnings accumulated while fetching
+}
+
+// fileInventory describes the file blocks attached to the request.
+type fileInventory struct {
+	Count int
+	Ref   string
+}
+
+// prInventory describes a PR bundle attached to the request.
+type prInventory struct {
+	Number        int
+	Title         string
+	ReviewCount   int
+	DiffTruncated bool
+}
+
+// commitInventory describes a single commit patch attached to the request.
+type commitInventory struct {
+	SHA       string
+	Subject   string
+	Truncated bool
+}
+
+// diffInventory describes a compare-refs diff attached to the request.
+type diffInventory struct {
+	Base      string
+	Head      string
+	Truncated bool
+}
+
+// HasAny reports whether any GitHub-sourced context was attached.
+func (ci *contextInventory) HasAny() bool {
+	if ci == nil {
+		return false
+	}
+	return ci.Files.Count > 0 || ci.PR != nil || len(ci.Commits) > 0 || ci.Diff != nil
 }
 
 // GeminiServer implements the ToolHandler interface to provide research capabilities

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -87,6 +88,210 @@ func createSearchInstructions(problemStatement string) string {
 		"Your response should be the following tool call:\n"+
 		"'gemini_search(query='most popular movies of 2023', start_time='2023-01-01T00:00:00Z', end_time='2023-12-31T23:59:59Z')\n"+
 		"Now, generate the best 'gemini_search' tool call to answer the user's question.", sanitizedProblemStatement)
+}
+
+// --- GitHub workflow prompt handler builders ---
+//
+// Each builder returns a handler that emits instructions for the MCP client
+// to invoke `gemini_ask` with the appropriate github_* parameters pre-filled.
+// The prompts are discoverable shortcuts, not a hierarchy — the tool schema
+// still treats every context parameter as an independent, optional peer.
+
+// requiredPromptArg fetches a required GetPromptRequest argument; returns an
+// error if missing or blank.
+func requiredPromptArg(req mcp.GetPromptRequest, name string) (string, error) {
+	v, ok := req.Params.Arguments[name]
+	if !ok || strings.TrimSpace(v) == "" {
+		return "", fmt.Errorf("missing required argument: %s", name)
+	}
+	return v, nil
+}
+
+// promptMessage wraps a plain text instruction as a GetPromptResult suitable
+// for returning from a prompt handler.
+func promptMessage(name, text string) *mcp.GetPromptResult {
+	return mcp.NewGetPromptResult(
+		name,
+		[]mcp.PromptMessage{
+			mcp.NewPromptMessage(mcp.RoleAssistant, mcp.NewTextContent(text)),
+		},
+	)
+}
+
+// buildReviewPRHandler returns a handler for the review_pr prompt.
+func buildReviewPRHandler(_ *GeminiServer) mcpPromptHandlerFunc {
+	return func(_ context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		owner, err := requiredPromptArg(req, "owner")
+		if err != nil {
+			return nil, err
+		}
+		repo, err := requiredPromptArg(req, "repo")
+		if err != nil {
+			return nil, err
+		}
+		prNumber, err := requiredPromptArg(req, "pr_number")
+		if err != nil {
+			return nil, err
+		}
+		focus := strings.TrimSpace(req.Params.Arguments["focus"])
+
+		query := fmt.Sprintf("Review pull request #%s in %s/%s.", prNumber, owner, repo)
+		if focus != "" {
+			query += " Focus on: " + focus + "."
+		}
+
+		instructions := fmt.Sprintf(
+			"You MUST NOW call the `gemini_ask` tool with the following arguments:\n"+
+				"- `github_repo`: %q\n"+
+				"- `github_pr`: %s\n"+
+				"- `query`: %q\n\n"+
+				"The server will fetch the PR description, unified diff, and review comments "+
+				"and attach them as context blocks. You may combine github_pr with other "+
+				"github_* parameters (github_files, github_commits, github_diff_*) if additional "+
+				"context is useful.",
+			owner+"/"+repo, prNumber, html.EscapeString(query),
+		)
+		return promptMessage(req.Params.Name, instructions), nil
+	}
+}
+
+// buildExplainCommitHandler returns a handler for the explain_commit prompt.
+func buildExplainCommitHandler(_ *GeminiServer) mcpPromptHandlerFunc {
+	return func(_ context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		owner, err := requiredPromptArg(req, "owner")
+		if err != nil {
+			return nil, err
+		}
+		repo, err := requiredPromptArg(req, "repo")
+		if err != nil {
+			return nil, err
+		}
+		sha, err := requiredPromptArg(req, "sha")
+		if err != nil {
+			return nil, err
+		}
+		question := strings.TrimSpace(req.Params.Arguments["question"])
+
+		query := fmt.Sprintf("Explain what commit %s in %s/%s does and why.", sha, owner, repo)
+		if question != "" {
+			query += " " + question
+		}
+
+		instructions := fmt.Sprintf(
+			"You MUST NOW call the `gemini_ask` tool with the following arguments:\n"+
+				"- `github_repo`: %q\n"+
+				"- `github_commits`: [%q]\n"+
+				"- `query`: %q\n\n"+
+				"The server will fetch the commit patch and attach it as a labelled context block. "+
+				"You may combine github_commits with other github_* parameters if additional "+
+				"context is useful.",
+			owner+"/"+repo, sha, html.EscapeString(query),
+		)
+		return promptMessage(req.Params.Name, instructions), nil
+	}
+}
+
+// buildCompareRefsHandler returns a handler for the compare_refs prompt.
+func buildCompareRefsHandler(_ *GeminiServer) mcpPromptHandlerFunc {
+	return func(_ context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		owner, err := requiredPromptArg(req, "owner")
+		if err != nil {
+			return nil, err
+		}
+		repo, err := requiredPromptArg(req, "repo")
+		if err != nil {
+			return nil, err
+		}
+		base, err := requiredPromptArg(req, "base")
+		if err != nil {
+			return nil, err
+		}
+		head, err := requiredPromptArg(req, "head")
+		if err != nil {
+			return nil, err
+		}
+		question := strings.TrimSpace(req.Params.Arguments["question"])
+
+		query := fmt.Sprintf("Summarize the changes between %s and %s in %s/%s.", base, head, owner, repo)
+		if question != "" {
+			query += " " + question
+		}
+
+		instructions := fmt.Sprintf(
+			"You MUST NOW call the `gemini_ask` tool with the following arguments:\n"+
+				"- `github_repo`: %q\n"+
+				"- `github_diff_base`: %q\n"+
+				"- `github_diff_head`: %q\n"+
+				"- `query`: %q\n\n"+
+				"The server will fetch the compare diff and attach it as a labelled context block. "+
+				"If the compare range is too large, consider passing explicit commits via "+
+				"`github_commits` instead.",
+			owner+"/"+repo, base, head, html.EscapeString(query),
+		)
+		return promptMessage(req.Params.Name, instructions), nil
+	}
+}
+
+// buildInspectFilesHandler returns a handler for the inspect_files prompt.
+func buildInspectFilesHandler(_ *GeminiServer) mcpPromptHandlerFunc {
+	return func(_ context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		owner, err := requiredPromptArg(req, "owner")
+		if err != nil {
+			return nil, err
+		}
+		repo, err := requiredPromptArg(req, "repo")
+		if err != nil {
+			return nil, err
+		}
+		pathsStr, err := requiredPromptArg(req, "paths")
+		if err != nil {
+			return nil, err
+		}
+		question, err := requiredPromptArg(req, "question")
+		if err != nil {
+			return nil, err
+		}
+		ref := strings.TrimSpace(req.Params.Arguments["ref"])
+
+		paths := splitAndTrim(pathsStr, ",")
+		if len(paths) == 0 {
+			return nil, fmt.Errorf("argument 'paths' must contain at least one file path")
+		}
+		// Quote each path for the instructions list.
+		quoted := make([]string, 0, len(paths))
+		for _, p := range paths {
+			quoted = append(quoted, fmt.Sprintf("%q", p))
+		}
+
+		refLine := ""
+		if ref != "" {
+			refLine = fmt.Sprintf("- `github_ref`: %q\n", ref)
+		}
+		instructions := fmt.Sprintf(
+			"You MUST NOW call the `gemini_ask` tool with the following arguments:\n"+
+				"- `github_repo`: %q\n"+
+				"- `github_files`: [%s]\n"+
+				"%s"+
+				"- `query`: %q\n\n"+
+				"The server will fetch each file and attach it as a labelled context block. "+
+				"You may combine github_files with other github_* parameters if additional "+
+				"context is useful.",
+			owner+"/"+repo, strings.Join(quoted, ", "), refLine, html.EscapeString(question),
+		)
+		return promptMessage(req.Params.Name, instructions), nil
+	}
+}
+
+// splitAndTrim splits s on sep and trims whitespace from each piece,
+// dropping empty entries.
+func splitAndTrim(s, sep string) []string {
+	var out []string
+	for _, p := range strings.Split(s, sep) {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // promptHandler is the generic handler for all prompts

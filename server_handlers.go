@@ -35,12 +35,7 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(geminiSvc.GeminiSearchHandler, "gemini_search", logger))
 	logger.Info("Registered tool: gemini_search")
 
-	// Register all prompts from the definitions
-	for _, p := range Prompts {
-		handler := geminiSvc.promptHandler(p)
-		mcpServer.AddPrompt(*p.Prompt, wrapPromptHandlerWithLogger(handler, p.Name, logger))
-		logger.Info("Registered prompt: %s", p.Name)
-	}
+	registerPrompts(mcpServer, geminiSvc, logger)
 
 	// Log file handling configuration
 	logger.Info("File handling: max size %s", humanReadableSize(config.MaxFileSize))
@@ -107,6 +102,22 @@ func handleStartupError(ctx context.Context, err error) {
 
 // Define the expected handler signature for tools
 type MCPToolHandlerFunc = server.ToolHandlerFunc
+
+// registerPrompts wires every PromptDefinition into the MCP server. Prompts
+// with a HandlerFactory get a custom handler (used by the github-workflow
+// prompts); all others fall back to the generic problem_statement handler.
+func registerPrompts(mcpServer *server.MCPServer, geminiSvc *GeminiServer, logger Logger) {
+	for _, p := range Prompts {
+		var handler server.PromptHandlerFunc
+		if p.HandlerFactory != nil {
+			handler = server.PromptHandlerFunc(p.HandlerFactory(geminiSvc))
+		} else {
+			handler = geminiSvc.promptHandler(p)
+		}
+		mcpServer.AddPrompt(*p.Prompt, wrapPromptHandlerWithLogger(handler, p.Name, logger))
+		logger.Info("Registered prompt: %s", p.Name)
+	}
+}
 
 // enforceHTTPAuth checks for authentication on HTTP requests and logs user info.
 // It returns an error if authentication fails.

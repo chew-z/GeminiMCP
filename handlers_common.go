@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,6 +47,32 @@ func extractArgumentString(req mcp.CallToolRequest, name string, defaultValue st
 		return val
 	}
 	return defaultValue
+}
+
+// extractArgumentInt extracts an integer argument from the request parameters.
+// MCP clients typically send numeric fields as JSON numbers (float64) or strings
+// depending on the transport; we accept both forms. Returns (value, ok) where
+// ok is false if the parameter is missing, empty, or not parseable.
+func extractArgumentInt(req mcp.CallToolRequest, name string) (int, bool) {
+	args := req.GetArguments()
+	switch v := args[name].(type) {
+	case float64:
+		return int(v), true
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
+	case string:
+		if v == "" {
+			return 0, false
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			return 0, false
+		}
+		return n, true
+	}
+	return 0, false
 }
 
 // extractArgumentBool extracts a boolean argument from the request parameters
