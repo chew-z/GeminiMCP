@@ -41,7 +41,7 @@ If the search results don't contain enough information to fully answer the query
 	defaultHTTPAddress     = ":8080"
 	defaultHTTPPath        = "/mcp"
 	defaultHTTPStateless   = false
-	defaultHTTPHeartbeat   = 0 * time.Second // No heartbeat by default
+	defaultHTTPHeartbeat   = 20 * time.Second // Keeps nginx proxy_read_timeout and client idle timers quiet on long pro-tier requests.
 	defaultHTTPCORSEnabled = true
 
 	// Authentication defaults
@@ -173,7 +173,7 @@ func NewConfig(logger Logger) (*Config, error) {
 	}
 
 	// Use helper functions to parse environment variables
-	timeout := parseEnvVarDuration("GEMINI_TIMEOUT", 90*time.Second, logger)
+	timeout := parseEnvVarDuration("GEMINI_TIMEOUT", 300*time.Second, logger)
 	maxRetries := parseEnvVarInt("GEMINI_MAX_RETRIES", 2, logger)
 	initialBackoff := parseEnvVarDuration("GEMINI_INITIAL_BACKOFF", 1*time.Second, logger)
 	maxBackoff := parseEnvVarDuration("GEMINI_MAX_BACKOFF", 10*time.Second, logger)

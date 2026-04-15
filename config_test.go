@@ -75,7 +75,7 @@ func TestNewConfig(t *testing.T) {
 			check: func(t *testing.T, cfg *Config) {
 				assert.Equal(t, "test-key", cfg.GeminiAPIKey)
 				assert.Equal(t, defaultGeminiModel, cfg.GeminiModel)
-				assert.Equal(t, 90*time.Second, cfg.HTTPTimeout)
+				assert.Equal(t, 300*time.Second, cfg.HTTPTimeout)
 				assert.Equal(t, 2, cfg.MaxRetries)
 				assert.Equal(t, defaultThinkingLevel, cfg.ThinkingLevel)
 			},

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -209,6 +210,87 @@ func TestProcessSearchResponse(t *testing.T) {
 		_ = processSearchResponse(resp, &sources, &queries, seenURLs)
 		assert.Equal(t, []string{"existing query"}, queries)
 	})
+}
+
+func TestConvertGenaiResponseToMCPResult(t *testing.T) {
+	logger := NewLogger(LevelError)
+
+	tests := []struct {
+		name         string
+		resp         *genai.GenerateContentResponse
+		wantIsError  bool
+		wantPrefix   string
+		wantContains string
+	}{
+		{
+			name:        "nil response returns error",
+			resp:        nil,
+			wantIsError: true,
+		},
+		{
+			name: "finish reason STOP has no warning prefix",
+			resp: &genai.GenerateContentResponse{
+				Candidates: []*genai.Candidate{{
+					Content:      genai.NewContentFromText("all good", genai.RoleModel),
+					FinishReason: genai.FinishReasonStop,
+				}},
+			},
+			wantContains: "all good",
+		},
+		{
+			name: "finish reason MAX_TOKENS is surfaced as prefix",
+			resp: &genai.GenerateContentResponse{
+				Candidates: []*genai.Candidate{{
+					Content:      genai.NewContentFromText("truncated answer", genai.RoleModel),
+					FinishReason: genai.FinishReasonMaxTokens,
+				}},
+			},
+			wantPrefix:   "[WARN finish_reason=MAX_TOKENS]\n",
+			wantContains: "truncated answer",
+		},
+		{
+			name: "finish reason SAFETY is surfaced as prefix",
+			resp: &genai.GenerateContentResponse{
+				Candidates: []*genai.Candidate{{
+					Content:      genai.NewContentFromText("redacted", genai.RoleModel),
+					FinishReason: genai.FinishReasonSafety,
+				}},
+			},
+			wantPrefix:   "[WARN finish_reason=SAFETY]\n",
+			wantContains: "redacted",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := convertGenaiResponseToMCPResult(tc.resp, logger)
+			require.NotNil(t, result)
+			if tc.wantIsError {
+				assert.True(t, result.IsError)
+				return
+			}
+			text := toolResultText(t, result)
+			if tc.wantPrefix != "" {
+				assert.True(t, strings.HasPrefix(text, tc.wantPrefix),
+					"expected prefix %q, got %q", tc.wantPrefix, text)
+			} else {
+				assert.False(t, strings.HasPrefix(text, "[WARN"),
+					"unexpected WARN prefix in %q", text)
+			}
+			if tc.wantContains != "" {
+				assert.Contains(t, text, tc.wantContains)
+			}
+		})
+	}
+}
+
+func TestTierDefaultThinkingLevel(t *testing.T) {
+	seedModelStateForTest(t, testModelCatalog())
+
+	assert.Equal(t, "medium", tierDefaultThinkingLevel("gemini-3.1-pro-preview", "fallback"))
+	assert.Equal(t, "medium", tierDefaultThinkingLevel("gemini-3-flash-preview", "fallback"))
+	assert.Equal(t, "low", tierDefaultThinkingLevel("gemini-3.1-flash-lite-preview", "fallback"))
+	assert.Equal(t, "fallback", tierDefaultThinkingLevel("not-a-gemini-model", "fallback"))
 }
 
 func TestSafeWriter(t *testing.T) {

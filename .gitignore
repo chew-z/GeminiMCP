@@ -5,6 +5,9 @@ bin/**
 
 .env
 
+logs/
+docs/reports/
+
 AGENTS.md
 GOLANG.md
 GODOC.md

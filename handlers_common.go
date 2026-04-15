@@ -151,6 +151,27 @@ func resolveAndValidateModel(ctx context.Context, modelName string) (string, err
 	return modelName, nil
 }
 
+// tierDefaultThinkingLevel returns the server-picked thinking_level default
+// for a given model. pro+high has been the dominant failure mode in
+// production; pro and flash default to medium, flash-lite to low. Falls back
+// to the provided fallback (typically the operator-configured global default)
+// if the tier cannot be inferred.
+func tierDefaultThinkingLevel(modelName, fallback string) string {
+	tier, ok := inferModelTier(modelName)
+	if !ok {
+		return fallback
+	}
+	switch tier {
+	case tierPro:
+		return "medium"
+	case tierFlash:
+		return "medium"
+	case tierFlashLite:
+		return "low"
+	}
+	return fallback
+}
+
 // configureThinking sets up thinking configuration on a GenerateContentConfig
 // if the model supports it and thinking is requested.
 func configureThinking(ctx context.Context, req mcp.CallToolRequest, config *genai.GenerateContentConfig,
@@ -224,8 +245,12 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 	}
 	contentConfig.ServiceTier = serviceTierFromString(config.ServiceTier)
 
-	// Configure thinking if supported
-	configureThinking(ctx, req, contentConfig, config.EnableThinking, config.ThinkingLevel, modelInfo, modelName)
+	// Configure thinking if supported. Per CLAUDE.md principle #3 the server
+	// picks tier-aware defaults; pro+high was brittle in production, so pro and
+	// flash default to medium while flash-lite stays at low. Clients can still
+	// override via thinking_level in the request.
+	defaultLevel := tierDefaultThinkingLevel(modelName, config.ThinkingLevel)
+	configureThinking(ctx, req, contentConfig, config.EnableThinking, defaultLevel, modelInfo, modelName)
 
 	// Configure max tokens with default ratio of context window
 	configureMaxTokensOutput(ctx, contentConfig, req, modelInfo, 0.75)
@@ -233,7 +258,10 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 	return contentConfig, modelName, nil
 }
 
-// configureMaxTokensOutput configures the maximum output tokens for the request
+// configureMaxTokensOutput configures the maximum output tokens for the request.
+// Per CLAUDE.md principle #1 the server owns token limits: the client cannot
+// set this. We always use the model's advertised MaxOutputTokens, falling back
+// to a ratio of the context window only if the catalog entry is missing it.
 func configureMaxTokensOutput(
 	ctx context.Context,
 	config *genai.GenerateContentConfig,
@@ -241,35 +269,25 @@ func configureMaxTokensOutput(
 	modelInfo *GeminiModelInfo,
 	defaultRatio float64,
 ) {
+	_ = req // kept in the signature for symmetry with other configure* helpers
 	logger := getLoggerFromContext(ctx)
 
-	// Check if max_tokens parameter was provided
-	args := req.GetArguments()
-	if maxTokensRaw, ok := args["max_tokens"].(float64); ok && maxTokensRaw > 0 {
-		maxTokens := int(maxTokensRaw)
-
-		// Warn if tokens exceed the model's context window
-		if modelInfo != nil && maxTokens > modelInfo.ContextWindowSize {
-			logger.Warn("Requested max_tokens (%d) exceeds model's context window size (%d)",
-				maxTokens, modelInfo.ContextWindowSize)
-		}
-
-		// Set the maximum output token limit
-		config.MaxOutputTokens = int32(maxTokens)
-		logger.Info("Setting max output tokens to %d", maxTokens)
-	} else if modelInfo != nil {
-		// Prefer the model's actual output token limit from the API
-		if modelInfo.MaxOutputTokens > 0 {
-			config.MaxOutputTokens = int32(modelInfo.MaxOutputTokens)
-			logger.Debug("Using model's max output tokens: %d", modelInfo.MaxOutputTokens)
-		} else {
-			// Fallback: ratio of context window if output limit unknown
-			safeTokenLimit := int32(float64(modelInfo.ContextWindowSize) * defaultRatio)
-			config.MaxOutputTokens = safeTokenLimit
-			logger.Debug("Using default max output tokens: %d (%.0f%% of context window)",
-				safeTokenLimit, defaultRatio*100)
-		}
+	if modelInfo == nil {
+		return
 	}
+
+	// Prefer the model's actual output token limit from the API
+	if modelInfo.MaxOutputTokens > 0 {
+		config.MaxOutputTokens = int32(modelInfo.MaxOutputTokens)
+		logger.Debug("Using model's max output tokens: %d", modelInfo.MaxOutputTokens)
+		return
+	}
+
+	// Fallback: ratio of context window if output limit unknown
+	safeTokenLimit := int32(float64(modelInfo.ContextWindowSize) * defaultRatio)
+	config.MaxOutputTokens = safeTokenLimit
+	logger.Debug("Using default max output tokens: %d (%.0f%% of context window)",
+		safeTokenLimit, defaultRatio*100)
 }
 
 // createErrorResult creates a standardized error result for mcp.CallToolResult
@@ -277,18 +295,36 @@ func createErrorResult(message string) *mcp.CallToolResult {
 	return mcp.NewToolResultError(message)
 }
 
-// convertGenaiResponseToMCPResult converts a Gemini API response to an MCP result
-func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse) *mcp.CallToolResult {
+// convertGenaiResponseToMCPResult converts a Gemini API response to an MCP result.
+// It also surfaces an abnormal FinishReason as a visible prefix on the returned
+// text and logs finish_reason / model_version and any cache hit metrics so the
+// operator can verify caching is landing and detect silent truncation.
+func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse, logger Logger) *mcp.CallToolResult {
 	// Check for empty response
 	if resp == nil || len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
 		return mcp.NewToolResultError("Gemini API returned an empty response")
 	}
+
+	cand := resp.Candidates[0]
 
 	// Get the text from the response
 	text := resp.Text()
 	if text == "" {
 		text = "The Gemini model returned an empty response. This might indicate that the model " +
 			"couldn't generate an appropriate response for your query. Please try rephrasing your question or providing more context."
+	}
+
+	// Surface abnormal finish reasons (truncation, safety, etc.) as a visible
+	// prefix on the returned text so the client cannot miss them.
+	if cand.FinishReason != "" && cand.FinishReason != genai.FinishReasonStop {
+		text = fmt.Sprintf("[WARN finish_reason=%s]\n", cand.FinishReason) + text
+	}
+
+	if logger != nil {
+		logger.Info("gemini response: finish_reason=%s model=%s", cand.FinishReason, resp.ModelVersion)
+		if u := resp.UsageMetadata; u != nil && u.CachedContentTokenCount > 0 {
+			logger.Info("cache hit: %d/%d prompt tokens cached", u.CachedContentTokenCount, u.PromptTokenCount)
+		}
 	}
 
 	// The 'thinking' field is not directly available in the Go client library.

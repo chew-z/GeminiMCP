@@ -45,8 +45,7 @@ parameters are **independent, optional peers** — mix and match freely in one c
 | `model` | string | No | Override default model (tier alias or explicit model ID) |
 | `systemPrompt` | string | No | Override default system prompt for this call |
 | `enable_thinking` | boolean | No | Enable extended thinking mode |
-| `thinking_level` | string | No | `low`, `medium`, `high` (default: `high`) |
-| `max_tokens` | number | No | Override maximum response token limit |
+| `thinking_level` | string | No | `low`, `medium`, `high`. Default is tier-aware: `medium` for pro and flash, `low` for flash-lite. |
 | `github_repo` | string | No* | Repository in `owner/repo` format — **required when any `github_*` param is used** |
 | `github_ref` | string | No | Git branch, tag, or SHA — applies to `github_files` only |
 | `github_files` | string[] | No | File paths in the repo to attach as inline context |
@@ -178,7 +177,6 @@ a structured JSON response containing the answer and cited sources.
 | `systemPrompt` | string | No | Override system prompt |
 | `enable_thinking` | boolean | No | Enable extended thinking (when model supports it) |
 | `thinking_level` | string | No | `minimal`, `low`, `medium`, `high` (default: `low`) |
-| `max_tokens` | number | No | Override token limit |
 | `start_time` | string | No | RFC3339 lower bound for search result dates (must pair with `end_time`) |
 | `end_time` | string | No | RFC3339 upper bound for search result dates (must pair with `start_time`) |
 

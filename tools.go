@@ -39,8 +39,7 @@ var GeminiAskTool = mcp.NewTool(
 		"Optional: head ref for a GitHub compare diff (branch, tag, or SHA). "+
 			"Must be paired with github_diff_base.")),
 	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process")),
-	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (low, medium, high). Default is 'high'")),
-	mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
+	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (low, medium, high). Default depends on model tier.")),
 )
 
 // GeminiSearchTool defines the gemini_search tool specification
@@ -51,7 +50,6 @@ var GeminiSearchTool = mcp.NewTool(
 	mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
 	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (when supported)")),
 	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (minimal, low, medium, high). Default is 'low' for search")),
-	mcp.WithNumber("max_tokens", mcp.Description("Optional: Maximum token limit for the response. Default is determined by the model")),
 	mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
 	mcp.WithString("start_time", mcp.Description(
 		"Optional: Filter search results to those published after this time "+

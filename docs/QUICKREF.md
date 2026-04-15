@@ -29,8 +29,7 @@ query*          string    The question or task (required)
 model           string    Tier alias or explicit model ID
 systemPrompt    string    Override system prompt
 enable_thinking bool      Enable extended thinking
-thinking_level  string    low | medium | high  (default: high)
-max_tokens      number    Override token limit
+thinking_level  string    low | medium | high  (default: tier-aware — medium for pro/flash, low for flash-lite)
 ```
 
 ### GitHub context (all optional, all combinable)
@@ -57,7 +56,6 @@ model         string    Override model
 systemPrompt  string    Override system prompt
 enable_thinking bool
 thinking_level  string  minimal | low | medium | high  (default: low)
-max_tokens    number
 start_time    string    RFC3339 — both or neither
 end_time      string    RFC3339 — both or neither
 ```

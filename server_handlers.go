@@ -152,9 +152,12 @@ func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logg
 		// Call the actual handler
 		resp, err := handler(ctx, req)
 
-		if err != nil {
+		switch {
+		case err != nil:
 			logger.Error("Tool '%s' failed: %v", toolName, err)
-		} else {
+		case resp != nil && resp.IsError:
+			logger.Warn("Tool '%s' returned an error result", toolName)
+		default:
 			logger.Info("Tool '%s' completed successfully", toolName)
 		}
 

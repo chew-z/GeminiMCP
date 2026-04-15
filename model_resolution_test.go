@@ -115,18 +115,7 @@ func TestCreateModelConfig(t *testing.T) {
 			wantModelName: "gemini-3.1-pro-preview-0507",
 			wantMaxTokens: 8192,
 			wantThinking:  true,
-			wantLevel:     "high",
-		},
-		{
-			name: "max_tokens argument overrides model limit",
-			args: map[string]interface{}{
-				"max_tokens": float64(1234),
-			},
-			defaultModel:  "gemini-3.1-pro-preview",
-			wantModelName: "gemini-3.1-pro-preview-0507",
-			wantMaxTokens: 1234,
-			wantThinking:  true,
-			wantLevel:     "high",
+			wantLevel:     "medium",
 		},
 		{
 			name: "unknown gemini model redirects by tier",
@@ -137,7 +126,7 @@ func TestCreateModelConfig(t *testing.T) {
 			wantModelName: "gemini-3-flash-preview",
 			wantMaxTokens: 4096,
 			wantThinking:  true,
-			wantLevel:     "high",
+			wantLevel:     "medium",
 		},
 		{
 			// Foolproof tool: deprecated 2.x input resolves forward to the
@@ -150,7 +139,7 @@ func TestCreateModelConfig(t *testing.T) {
 			wantModelName: "gemini-3-flash-preview",
 			wantMaxTokens: 4096,
 			wantThinking:  true,
-			wantLevel:     "high",
+			wantLevel:     "medium",
 		},
 		{
 			name: "invalid thinking_level falls back to default",
@@ -161,7 +150,7 @@ func TestCreateModelConfig(t *testing.T) {
 			wantModelName: "gemini-3.1-pro-preview-0507",
 			wantMaxTokens: 8192,
 			wantThinking:  true,
-			wantLevel:     "high",
+			wantLevel:     "medium",
 		},
 		{
 			name: "model without thinking support skips thinking config",

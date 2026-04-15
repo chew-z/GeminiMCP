@@ -547,7 +547,7 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string,
 	}
 
 	checkModelStatus(ctx, response, modelName)
-	return convertGenaiResponseToMCPResult(response), nil
+	return convertGenaiResponseToMCPResult(response, logger), nil
 }
 
 // processWithoutFiles handles a Gemini API request without file attachments
@@ -571,5 +571,5 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
 	}
 
 	checkModelStatus(ctx, response, modelName)
-	return convertGenaiResponseToMCPResult(response), nil
+	return convertGenaiResponseToMCPResult(response, logger), nil
 }
