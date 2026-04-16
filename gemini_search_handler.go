@@ -29,7 +29,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	if err != nil {
 		return createErrorResult(err.Error()), nil
 	}
-	logger.Info("Using %s model for Google Search integration", modelName)
+	logger.Info("Using %s model for web search", modelName)
 
 	// Get model information for context window and thinking capability
 	modelInfo := GetModelByID(modelName)

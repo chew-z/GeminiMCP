@@ -122,7 +122,7 @@ For each vulnerability you identify, provide:
 	),
 	NewPromptDefinition(
 		"research_question",
-		"Research current information and trends using Google Search integration",
+		"Research current information and trends using web search",
 		"", // Use default search system prompt from config
 	),
 	// --- GitHub-workflow shortcut prompts ---
