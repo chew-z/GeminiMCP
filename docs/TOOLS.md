@@ -1,6 +1,7 @@
 # GeminiMCP — Tools & Prompts Reference
 
 > Generated 2026-04-11 via Codanna semantic analysis.
+> See [PROMPTS.md](PROMPTS.md) for the full prompt-system reference (categories, pre-qualification flow, extension points).
 
 ---
 

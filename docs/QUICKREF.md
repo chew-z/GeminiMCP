@@ -1,6 +1,6 @@
 # GeminiMCP — Quick Reference
 
-> Cheat sheet. Full docs: [TOOLS.md](TOOLS.md) · [USAGE.md](USAGE.md) · [ARCHITECTURE OVERVIEW.md](ARCHITECTURE%20OVERVIEW.md)
+> Cheat sheet. Full docs: [TOOLS.md](TOOLS.md) · [PROMPTS.md](PROMPTS.md) · [USAGE.md](USAGE.md) · [ARCHITECTURE OVERVIEW.md](ARCHITECTURE%20OVERVIEW.md)
 
 ---
 
