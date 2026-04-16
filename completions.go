@@ -14,7 +14,12 @@ var validThinkingLevels = []string{"minimal", "low", "medium", "high"}
 type GeminiCompletionProvider struct{}
 
 // CompletePromptArgument returns completion suggestions for the given prompt argument.
-func (p *GeminiCompletionProvider) CompletePromptArgument(_ context.Context, _ string, argument mcp.CompleteArgument, _ mcp.CompleteContext) (*mcp.Completion, error) {
+func (p *GeminiCompletionProvider) CompletePromptArgument(
+	_ context.Context,
+	_ string,
+	argument mcp.CompleteArgument,
+	_ mcp.CompleteContext,
+) (*mcp.Completion, error) {
 	switch argument.Name {
 	case "model":
 		return completeModel(argument.Value), nil

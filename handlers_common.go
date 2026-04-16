@@ -50,13 +50,13 @@ func extractArgumentString(req mcp.CallToolRequest, name string, defaultValue st
 	return defaultValue
 }
 
-// extractArgumentInt extracts an integer argument from the request parameters.
+// extractGitHubPRNumber extracts the github_pr integer argument from the request.
 // MCP clients typically send numeric fields as JSON numbers (float64) or strings
 // depending on the transport; we accept both forms. Returns (value, ok) where
 // ok is false if the parameter is missing, empty, or not parseable.
-func extractArgumentInt(req mcp.CallToolRequest, name string) (int, bool) {
+func extractGitHubPRNumber(req mcp.CallToolRequest) (int, bool) {
 	args := req.GetArguments()
-	switch v := args[name].(type) {
+	switch v := args["github_pr"].(type) {
 	case float64:
 		return int(v), true
 	case int:
@@ -470,37 +470,42 @@ func buildSearchResponse(responseText string, sources []SourceInfo, searchQuerie
 	}, nil
 }
 
-// processSearchResponse processes grounding metadata from a search response
-func processSearchResponse(resp *genai.GenerateContentResponse, sources *[]SourceInfo, searchQueries *[]string, seenURLs map[string]bool) string {
-	responseText := ""
-
-	if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
-		responseText = resp.Text()
-		if metadata := resp.Candidates[0].GroundingMetadata; metadata != nil {
-			if len(metadata.WebSearchQueries) > 0 && len(*searchQueries) == 0 {
-				*searchQueries = metadata.WebSearchQueries
+// collectGroundingSources extracts web and retrieved-context sources from a
+// candidate's grounding metadata, appending unique entries to sources and
+// recording queries into searchQueries when none have been captured yet.
+func collectGroundingSources(metadata *genai.GroundingMetadata, sources *[]SourceInfo, searchQueries *[]string, seenURLs map[string]bool) {
+	if metadata == nil {
+		return
+	}
+	if len(metadata.WebSearchQueries) > 0 && len(*searchQueries) == 0 {
+		*searchQueries = metadata.WebSearchQueries
+	}
+	for _, chunk := range metadata.GroundingChunks {
+		var source SourceInfo
+		if web := chunk.Web; web != nil {
+			if seenURLs[web.URI] {
+				continue
 			}
-			for _, chunk := range metadata.GroundingChunks {
-				var source SourceInfo
-				if web := chunk.Web; web != nil {
-					if seenURLs[web.URI] {
-						continue
-					}
-					source = SourceInfo{Title: web.Title, Type: "web"}
-					seenURLs[web.URI] = true
-				} else if retrievedCtx := chunk.RetrievedContext; retrievedCtx != nil {
-					if seenURLs[retrievedCtx.URI] {
-						continue
-					}
-					source = SourceInfo{Title: retrievedCtx.Title, Type: "retrieved_context"}
-					seenURLs[retrievedCtx.URI] = true
-				}
-				if source.Title != "" {
-					*sources = append(*sources, source)
-				}
+			source = SourceInfo{Title: web.Title, Type: "web"}
+			seenURLs[web.URI] = true
+		} else if retrievedCtx := chunk.RetrievedContext; retrievedCtx != nil {
+			if seenURLs[retrievedCtx.URI] {
+				continue
 			}
+			source = SourceInfo{Title: retrievedCtx.Title, Type: "retrieved_context"}
+			seenURLs[retrievedCtx.URI] = true
+		}
+		if source.Title != "" {
+			*sources = append(*sources, source)
 		}
 	}
+}
 
-	return responseText
+// processSearchResponse processes grounding metadata from a search response
+func processSearchResponse(resp *genai.GenerateContentResponse, sources *[]SourceInfo, searchQueries *[]string, seenURLs map[string]bool) string {
+	if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
+		return ""
+	}
+	collectGroundingSources(resp.Candidates[0].GroundingMetadata, sources, searchQueries, seenURLs)
+	return resp.Text()
 }

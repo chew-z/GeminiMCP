@@ -222,7 +222,7 @@ func (g githubContextSpec) any() bool {
 }
 
 func parseGitHubContextSpec(req mcp.CallToolRequest) githubContextSpec {
-	prNumber, hasPR := extractArgumentInt(req, "github_pr")
+	prNumber, hasPR := extractGitHubPRNumber(req)
 	diffBase := extractArgumentString(req, "github_diff_base", "")
 	diffHead := extractArgumentString(req, "github_diff_head", "")
 	return githubContextSpec{

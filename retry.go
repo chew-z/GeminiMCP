@@ -76,40 +76,23 @@ func computeBackoff(cfg *Config, attempt int) time.Duration {
 	return time.Duration(float64(d) * jitter)
 }
 
-// isRetryableError determines whether an error is transient.
-func isRetryableError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	// Context cancellation/deadline are not retryable here
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false
-	}
-
-	// Network-level temporary/timeout errors
-	var nerr net.Error
-	if errors.As(err, &nerr) {
-		if nerr.Timeout() {
-			return true
-		}
-		// Some net.Error implement Temporary()
-		type temporary interface{ Temporary() bool }
-		if t, ok := any(nerr).(temporary); ok && t.Temporary() {
-			return true
-		}
-	}
-
-	// Google API HTTP errors (429 and 5xx)
+// isRetryableGoogleAPIError reports whether err is a *googleapi.Error with a
+// retryable status code. The second return value is true when the error was a
+// Google API error (so the caller should stop checking other heuristics).
+func isRetryableGoogleAPIError(err error) (retryable, matched bool) {
 	var gerr *googleapi.Error
-	if errors.As(err, &gerr) {
-		if gerr.Code == 429 || (gerr.Code >= 500 && gerr.Code <= 599) {
-			return true
-		}
-		return false
+	if !errors.As(err, &gerr) {
+		return false, false
 	}
+	if gerr.Code == 429 || (gerr.Code >= 500 && gerr.Code <= 599) {
+		return true, true
+	}
+	return false, true
+}
 
-	// Fallback heuristics on error strings (best-effort)
+// isRetryableByMessage applies best-effort string heuristics to detect
+// transient failures that aren't surfaced through typed errors.
+func isRetryableByMessage(err error) bool {
 	msg := strings.ToLower(err.Error())
 	switch {
 	case strings.Contains(msg, "429"),
@@ -125,4 +108,31 @@ func isRetryableError(err error) bool {
 	default:
 		return false
 	}
+}
+
+// isRetryableError determines whether an error is transient.
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	var nerr net.Error
+	if errors.As(err, &nerr) {
+		if nerr.Timeout() {
+			return true
+		}
+		type temporary interface{ Temporary() bool }
+		if t, ok := any(nerr).(temporary); ok && t.Temporary() {
+			return true
+		}
+	}
+
+	if retryable, matched := isRetryableGoogleAPIError(err); matched {
+		return retryable
+	}
+
+	return isRetryableByMessage(err)
 }

@@ -59,144 +59,172 @@ func main() {
 	}
 }
 
-func runMain(args []string) int {
-	flagSet := flag.NewFlagSet("GeminiMCP", flag.ContinueOnError)
-	flagSet.SetOutput(io.Discard)
+// cliFlags captures the parsed command-line flags for runMain.
+type cliFlags struct {
+	geminiModel       string
+	geminiTemperature float64
+	serviceTier       string
+	transport         string
 
-	// Define command-line flags for configuration override
-	geminiModelFlag := flagSet.String("gemini-model", "", "Gemini model name (overrides env var)")
-	geminiTemperatureFlag := flagSet.Float64("gemini-temperature", -1, "Temperature setting (0.0-1.0, overrides env var)")
-	serviceTierFlag := flagSet.String("service-tier", "", "Service tier: flex, standard, priority (overrides env var)")
-	transportFlag := flagSet.String("transport", "stdio", "Transport mode: 'stdio' (default) or 'http'")
+	authEnabled     bool
+	generateToken   bool
+	tokenUserID     string
+	tokenUsername   string
+	tokenRole       string
+	tokenExpiration int
+}
 
-	// Authentication flags
-	authEnabledFlag := flagSet.Bool("auth-enabled", false, "Enable JWT authentication for HTTP transport (overrides env var)")
-	generateTokenFlag := flagSet.Bool("generate-token", false, "Generate a JWT token and exit")
-	tokenUserIDFlag := flagSet.String("token-user-id", "user1", "User ID for token generation")
-	tokenUsernameFlag := flagSet.String("token-username", "admin", "Username for token generation")
-	tokenRoleFlag := flagSet.String("token-role", "admin", "Role for token generation")
-	tokenExpirationFlag := flagSet.Int("token-expiration", 744, "Token expiration in hours (default: 744 = 31 days)")
-
-	if err := flagSet.Parse(args); err != nil {
-		return 1
-	}
-
-	// Handle token generation if requested
-	if *generateTokenFlag {
-		secretKey := getEnvFn("GEMINI_AUTH_SECRET_KEY")
-		createTokenCommandFn(secretKey, *tokenUserIDFlag, *tokenUsernameFlag, *tokenRoleFlag, *tokenExpirationFlag)
-		return 0
-	}
-
-	// Create application context with logger
-	logger := newLoggerFn(LevelInfo)
-	config, err := newConfigFn(logger)
-	if err != nil {
-		// Create a temporary context just for this error
-		ctx := context.WithValue(context.Background(), loggerKey, logger)
-		handleStartupErrorFn(ctx, err)
-		return 0
-	}
-
-	// Now create the main context with everything it needs
-	ctx := context.WithValue(context.Background(), loggerKey, logger)
-	ctx = context.WithValue(ctx, configKey, config)
-
-	// Override temperature if provided and valid
-	if *geminiTemperatureFlag >= 0 {
-		// Validate temperature is within range
-		if *geminiTemperatureFlag > 1.0 {
-			logger.Error("Invalid temperature value: %v. Must be between 0.0 and 1.0", *geminiTemperatureFlag)
-			handleStartupErrorFn(ctx, fmt.Errorf("invalid temperature: %v", *geminiTemperatureFlag))
-			return 0
+// applyCLIOverrides applies temperature, service-tier, and auth overrides from
+// the command line to the loaded config. The returned error signals a
+// recoverable startup failure (the caller should enter degraded mode).
+func applyCLIOverrides(flags *cliFlags, config *Config, logger Logger) error {
+	if flags.geminiTemperature >= 0 {
+		if flags.geminiTemperature > 1.0 {
+			logger.Error("Invalid temperature value: %v. Must be between 0.0 and 1.0", flags.geminiTemperature)
+			return fmt.Errorf("invalid temperature: %v", flags.geminiTemperature)
 		}
-		logger.Info("Overriding Gemini temperature with flag value: %v", *geminiTemperatureFlag)
-		config.GeminiTemperature = *geminiTemperatureFlag
+		logger.Info("Overriding Gemini temperature with flag value: %v", flags.geminiTemperature)
+		config.GeminiTemperature = flags.geminiTemperature
 	}
 
-	// Override service tier if flag is provided
-	if *serviceTierFlag != "" {
-		config.ServiceTier = *serviceTierFlag
+	if flags.serviceTier != "" {
+		config.ServiceTier = flags.serviceTier
 		logger.Info("Service tier overridden to: %s", config.ServiceTier)
 	}
 	logger.Info("Service tier: %s", config.ServiceTier)
 
-	// Override authentication if flag is provided
-	if *authEnabledFlag {
+	if flags.authEnabled {
 		config.AuthEnabled = true
 		logger.Info("Authentication feature enabled via command line flag")
 	}
+	return nil
+}
 
-	// Final validation of authentication configuration after all overrides
-	if config.AuthEnabled && config.AuthSecretKey == "" {
-		// This is a critical security failure.
-		// We must exit immediately and not enter degraded mode.
-		logger.Error("CRITICAL: Authentication is enabled, but GEMINI_AUTH_SECRET_KEY is not set. Server is shutting down.")
+// applyModelFlag validates and applies the --gemini-model flag. It must run
+// after the model catalog is populated.
+func applyModelFlag(modelFlag string, config *Config, logger Logger) error {
+	if modelFlag == "" {
+		return nil
+	}
+	validatedID, redirected, err := validateModelIDFn(modelFlag)
+	if err != nil {
+		logger.Error("Invalid --gemini-model: %v", err)
+		return err
+	}
+	if redirected {
+		logger.Warn("Custom model '%s' redirected to '%s'", modelFlag, validatedID)
+	} else {
+		logger.Info("Using known model: %s", validatedID)
+	}
+	config.GeminiModel = validatedID
+	return nil
+}
+
+// resolveDefaultModels maps tier-level model aliases (gemini-pro, gemini-flash,
+// …) to concrete IDs against the populated catalog.
+func resolveDefaultModels(ctx context.Context, config *Config) error {
+	var err error
+	if config.GeminiModel, err = resolveModelFn(ctx, config.GeminiModel); err != nil {
+		return err
+	}
+	if config.GeminiSearchModel, err = resolveModelFn(ctx, config.GeminiSearchModel); err != nil {
+		return err
+	}
+	return nil
+}
+
+// runTransport starts the requested transport and returns the process exit code.
+func runTransport(ctx context.Context, mcpServer *server.MCPServer, config *Config, logger Logger, transport string) int {
+	if transport != "stdio" && transport != "http" {
+		logger.Error("Invalid transport mode: %s. Must be 'stdio' or 'http'", transport)
 		return 1
 	}
 
-	// Create MCP server
-	mcpServer := newMCPServerFn(config, logger)
-	logServerCapabilities(logger, config)
-
-	// Create and register the Gemini server tools (populates model catalog)
-	if err := setupGeminiServerFn(ctx, mcpServer, config); err != nil {
-		handleStartupErrorFn(ctx, err)
-		return 0
-	}
-
-	// Resolve default model names against the now-populated catalog.
-	// Tier-level defaults like "gemini-pro" get mapped to actual model IDs.
-	var resolveErr error
-	config.GeminiModel, resolveErr = resolveModelFn(ctx, config.GeminiModel)
-	if resolveErr != nil {
-		handleStartupErrorFn(ctx, resolveErr)
-		return 0
-	}
-	config.GeminiSearchModel, resolveErr = resolveModelFn(ctx, config.GeminiSearchModel)
-	if resolveErr != nil {
-		handleStartupErrorFn(ctx, resolveErr)
-		return 0
-	}
-
-	// Override model AFTER catalog is populated so ValidateModelID works correctly
-	if *geminiModelFlag != "" {
-		validatedID, redirected, flagErr := validateModelIDFn(*geminiModelFlag)
-		if flagErr != nil {
-			logger.Error("Invalid --gemini-model: %v", flagErr)
-			handleStartupErrorFn(ctx, flagErr)
-			return 0
-		}
-		if redirected {
-			logger.Warn("Custom model '%s' redirected to '%s'", *geminiModelFlag, validatedID)
-		} else {
-			logger.Info("Using known model: %s", validatedID)
-		}
-		config.GeminiModel = validatedID
-	}
-
-	// Validate transport flag
-	if *transportFlag != "stdio" && *transportFlag != "http" {
-		logger.Error("Invalid transport mode: %s. Must be 'stdio' or 'http'", *transportFlag)
-		return 1
-	}
-
-	// Start the appropriate transport based on command-line flag or config
-	if *transportFlag == "http" || (config.EnableHTTP && *transportFlag == "stdio") {
+	if transport == "http" || (config.EnableHTTP && transport == "stdio") {
 		logger.Info("Starting Gemini MCP server with HTTP transport on %s%s", config.HTTPAddress, config.HTTPPath)
 		if err := startHTTPServerFn(ctx, mcpServer, config, logger); err != nil {
 			logger.Error("HTTP server error: %v", err)
 			return 1
 		}
-	} else {
-		logger.Info("Starting Gemini MCP server with stdio transport")
-		if err := serveStdioFn(mcpServer); err != nil {
-			logger.Error("Server error: %v", err)
-			return 1
-		}
+		return 0
 	}
 
+	logger.Info("Starting Gemini MCP server with stdio transport")
+	if err := serveStdioFn(mcpServer); err != nil {
+		logger.Error("Server error: %v", err)
+		return 1
+	}
 	return 0
+}
+
+func runMain(args []string) int {
+	flagSet := flag.NewFlagSet("GeminiMCP", flag.ContinueOnError)
+	flagSet.SetOutput(io.Discard)
+
+	flags := &cliFlags{}
+	flagSet.StringVar(&flags.geminiModel, "gemini-model", "", "Gemini model name (overrides env var)")
+	flagSet.Float64Var(&flags.geminiTemperature, "gemini-temperature", -1, "Temperature setting (0.0-1.0, overrides env var)")
+	flagSet.StringVar(&flags.serviceTier, "service-tier", "", "Service tier: flex, standard, priority (overrides env var)")
+	flagSet.StringVar(&flags.transport, "transport", "stdio", "Transport mode: 'stdio' (default) or 'http'")
+	flagSet.BoolVar(&flags.authEnabled, "auth-enabled", false, "Enable JWT authentication for HTTP transport (overrides env var)")
+	flagSet.BoolVar(&flags.generateToken, "generate-token", false, "Generate a JWT token and exit")
+	flagSet.StringVar(&flags.tokenUserID, "token-user-id", "user1", "User ID for token generation")
+	flagSet.StringVar(&flags.tokenUsername, "token-username", "admin", "Username for token generation")
+	flagSet.StringVar(&flags.tokenRole, "token-role", "admin", "Role for token generation")
+	flagSet.IntVar(&flags.tokenExpiration, "token-expiration", 744, "Token expiration in hours (default: 744 = 31 days)")
+
+	if err := flagSet.Parse(args); err != nil {
+		return 1
+	}
+
+	if flags.generateToken {
+		secretKey := getEnvFn("GEMINI_AUTH_SECRET_KEY")
+		createTokenCommandFn(secretKey, flags.tokenUserID, flags.tokenUsername, flags.tokenRole, flags.tokenExpiration)
+		return 0
+	}
+
+	logger := newLoggerFn(LevelInfo)
+	config, err := newConfigFn(logger)
+	if err != nil {
+		ctx := context.WithValue(context.Background(), loggerKey, logger)
+		handleStartupErrorFn(ctx, err)
+		return 0
+	}
+
+	ctx := context.WithValue(context.Background(), loggerKey, logger)
+	ctx = context.WithValue(ctx, configKey, config)
+
+	if err := applyCLIOverrides(flags, config, logger); err != nil {
+		handleStartupErrorFn(ctx, err)
+		return 0
+	}
+
+	// Fatal post-override check: authentication demands a secret key; we must
+	// never enter degraded mode while advertising auth.
+	if config.AuthEnabled && config.AuthSecretKey == "" {
+		logger.Error("CRITICAL: Authentication is enabled, but GEMINI_AUTH_SECRET_KEY is not set. Server is shutting down.")
+		return 1
+	}
+
+	mcpServer := newMCPServerFn(config, logger)
+	logServerCapabilities(logger, config)
+
+	if err := setupGeminiServerFn(ctx, mcpServer, config); err != nil {
+		handleStartupErrorFn(ctx, err)
+		return 0
+	}
+
+	if err := resolveDefaultModels(ctx, config); err != nil {
+		handleStartupErrorFn(ctx, err)
+		return 0
+	}
+
+	if err := applyModelFlag(flags.geminiModel, config, logger); err != nil {
+		handleStartupErrorFn(ctx, err)
+		return 0
+	}
+
+	return runTransport(ctx, mcpServer, config, logger, flags.transport)
 }
 
 // Helper function to get feature status as a string

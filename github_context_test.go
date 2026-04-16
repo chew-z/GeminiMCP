@@ -323,9 +323,9 @@ func TestGeminiAskHandlerGitHubDiffRequiresBothRefs(t *testing.T) {
 	assert.Contains(t, toolResultText(t, result), "must both be provided")
 }
 
-// --- extractArgumentInt coverage ---
+// --- extractGitHubPRNumber coverage ---
 
-func TestExtractArgumentInt(t *testing.T) {
+func TestExtractGitHubPRNumber(t *testing.T) {
 	cases := []struct {
 		name string
 		in   any
@@ -351,7 +351,7 @@ func TestExtractArgumentInt(t *testing.T) {
 			if tc.in != nil {
 				req.Params.Arguments.(map[string]any)["github_pr"] = tc.in
 			}
-			got, ok := extractArgumentInt(req, "github_pr")
+			got, ok := extractGitHubPRNumber(req)
 			assert.Equal(t, tc.ok, ok)
 			assert.Equal(t, tc.want, got)
 		})

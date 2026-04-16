@@ -41,7 +41,45 @@ func parseGitHubRepo(repoStr string) (owner string, repo string, err error) {
 	return parts[0], parts[1], nil
 }
 
-// fetchFromGitHub fetches files from a GitHub repository.
+// buildHTTPClient creates a reusable HTTP client with the configured timeout.
+func buildHTTPClient(cfg *Config) *http.Client {
+	return &http.Client{Timeout: cfg.HTTPTimeout}
+}
+
+// drainResults collects values from the fan-out channels into ordered slices.
+func drainResults(uploadsChan <-chan *FileUploadRequest, errChannel <-chan error) ([]*FileUploadRequest, []error) {
+	var uploads []*FileUploadRequest
+	var errs []error
+	for err := range errChannel {
+		errs = append(errs, err)
+	}
+	for upload := range uploadsChan {
+		uploads = append(uploads, upload)
+	}
+	return uploads, errs
+}
+
+// logFetchSummary logs the per-file outcome of a batch fetch.
+func logFetchSummary(logger Logger, uploads []*FileUploadRequest, errs []error) {
+	logger.Info("GitHub file fetch operation completed")
+	logger.Info("Successfully fetched files: %d", len(uploads))
+	logger.Info("Errors encountered: %d", len(errs))
+
+	if len(uploads) > 0 {
+		logger.Info("Successfully fetched files:")
+		for _, upload := range uploads {
+			logger.Info("  - %s (%d bytes, %s)", upload.FileName, len(upload.Content), upload.MimeType)
+		}
+	}
+
+	if len(errs) > 0 {
+		logger.Error("Errors during fetch operation:")
+		for i, err := range errs {
+			logger.Error("  %d. %v", i+1, err)
+		}
+	}
+}
+
 // fetchFromGitHub fetches files from a GitHub repository.
 func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, files []string) ([]*FileUploadRequest, []error) {
 	logger := getLoggerFromContext(ctx)
@@ -66,19 +104,13 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 	logger.Info("GitHub API configuration - Token available: %t", s.config.GitHubToken != "")
 	logger.Info("GitHub API configuration - Max file size: %d bytes", s.config.MaxGitHubFileSize)
 
-	var uploads []*FileUploadRequest
 	var wg sync.WaitGroup
 	errChannel := make(chan error, len(files))
 	uploadsChan := make(chan *FileUploadRequest, len(files))
 
-	// Create a semaphore to limit concurrency
-	concurrencyLimit := 4 // Limit to 4 concurrent downloads
+	concurrencyLimit := 4
 	semaphore := make(chan struct{}, concurrencyLimit)
-
-	// Create a reusable HTTP client with a timeout
-	httpClient := &http.Client{
-		Timeout: s.config.HTTPTimeout,
-	}
+	httpClient := buildHTTPClient(s.config)
 
 	logger.Info("Starting concurrent file fetch for %d files with a limit of %d", len(files), concurrencyLimit)
 
@@ -86,8 +118,6 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 		wg.Add(1)
 		go func(filePath string) {
 			defer wg.Done()
-
-			// Acquire semaphore
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
@@ -105,14 +135,7 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 	close(errChannel)
 	close(uploadsChan)
 
-	var combinedErrs []error
-	for err := range errChannel {
-		combinedErrs = append(combinedErrs, err)
-	}
-
-	for upload := range uploadsChan {
-		uploads = append(uploads, upload)
-	}
+	uploads, combinedErrs := drainResults(uploadsChan, errChannel)
 
 	// Sort uploads by filename to ensure deterministic ordering.
 	// Concurrent fetches return in completion order, but implicit caching
@@ -121,25 +144,238 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 		return uploads[i].FileName < uploads[j].FileName
 	})
 
-	logger.Info("GitHub file fetch operation completed")
-	logger.Info("Successfully fetched files: %d", len(uploads))
-	logger.Info("Errors encountered: %d", len(combinedErrs))
-
-	if len(uploads) > 0 {
-		logger.Info("Successfully fetched files:")
-		for _, upload := range uploads {
-			logger.Info("  - %s (%d bytes, %s)", upload.FileName, len(upload.Content), upload.MimeType)
-		}
-	}
-
-	if len(combinedErrs) > 0 {
-		logger.Error("Errors during fetch operation:")
-		for i, err := range combinedErrs {
-			logger.Error("  %d. %v", i+1, err)
-		}
-	}
-
+	logFetchSummary(logger, uploads, combinedErrs)
 	return uploads, combinedErrs
+}
+
+// handleRateLimitResponse inspects a 403/429 response. It always closes resp.Body.
+// Returns:
+//   - ctxErr != nil when the context was cancelled while waiting; caller should return it.
+//   - retryErr != nil when the caller should set lastErr=retryErr and continue the retry loop.
+//   - both nil when the response was not actually rate-limited or the reset window has elapsed;
+//     caller falls through to the status-code check (body is already closed).
+func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Logger, filePath string) (ctxErr, retryErr error) {
+	remaining := resp.Header.Get("X-RateLimit-Remaining")
+	if remaining != "0" && resp.StatusCode != http.StatusTooManyRequests {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			logger.Debug("[%s] Error closing response body when no rate limit issue: %v", filePath, closeErr)
+		}
+		return nil, nil
+	}
+
+	resetTimeStr := resp.Header.Get("X-RateLimit-Reset")
+	resetTime, parseErr := strconv.ParseInt(resetTimeStr, 10, 64)
+	if parseErr != nil {
+		resetTime = time.Now().Add(5 * time.Minute).Unix()
+		logger.Debug("[%s] Failed to parse reset time '%s': %v, using fallback", filePath, resetTimeStr, parseErr)
+	}
+	waitTime := time.Until(time.Unix(resetTime, 0))
+
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		logger.Debug("[%s] Error closing response body during rate limit handling: %v", filePath, closeErr)
+	}
+
+	if waitTime <= 0 {
+		return nil, nil
+	}
+
+	logger.Warn("[%s] Rate limit exceeded. Reset in %v", filePath, waitTime)
+	if waitTime <= 2*time.Minute {
+		select {
+		case <-ctx.Done():
+			return ctx.Err(), nil
+		case <-time.After(waitTime):
+			return nil, fmt.Errorf("rate limit exceeded")
+		}
+	}
+	return nil, fmt.Errorf("rate limit exceeded")
+}
+
+// readErrorBody reads and closes resp.Body, returning its contents as a string
+// suitable for logging. On failure it returns a diagnostic message instead.
+func readErrorBody(resp *http.Response, logger Logger, filePath string) string {
+	body, readErr := io.ReadAll(resp.Body)
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		logger.Debug("[%s] Error closing response body after error status %d: %v", filePath, resp.StatusCode, closeErr)
+	}
+	if readErr != nil {
+		logger.Debug("[%s] Error reading response body for status %d: %v", filePath, resp.StatusCode, readErr)
+		return fmt.Sprintf("failed to read error body: %v", readErr)
+	}
+	return string(body)
+}
+
+// mapNonOKStatus converts a non-OK GitHub response into a user-facing error.
+// Returns (err, retryable). When retryable is true the caller should set
+// lastErr=err and continue the retry loop; otherwise it is a terminal error.
+func mapNonOKStatus(statusCode int, owner, repo, filePath, ref string, tokenSet bool) (err error, retryable bool) {
+	if statusCode >= 500 {
+		return fmt.Errorf("server error %d", statusCode), true
+	}
+
+	var userMsg string
+	switch statusCode {
+	case http.StatusNotFound:
+		if !tokenSet {
+			userMsg = fmt.Sprintf("repository '%s/%s' not found or private (no GitHub token configured)", owner, repo)
+		} else {
+			userMsg = fmt.Sprintf("file '%s' not found in repository '%s/%s' (ref: %s)", filePath, owner, repo, ref)
+		}
+	case http.StatusUnauthorized:
+		userMsg = "authentication failed - check GitHub token permissions"
+	case http.StatusForbidden:
+		userMsg = fmt.Sprintf("access denied to '%s/%s'", owner, repo)
+	default:
+		userMsg = fmt.Sprintf("GitHub API error: status %d", statusCode)
+	}
+	return fmt.Errorf("%s", userMsg), false
+}
+
+// fetchAttemptOutcome captures the result of a single fetch attempt. Exactly
+// one of upload / retryErr / fatalErr is set.
+type fetchAttemptOutcome struct {
+	upload   *FileUploadRequest
+	retryErr error
+	fatalErr error
+}
+
+// fetchAttemptParams groups the immutable request context for a single fetch attempt.
+type fetchAttemptParams struct {
+	s         *GeminiServer
+	client    *http.Client
+	apiURL    string
+	owner     string
+	repo      string
+	filePath  string
+	ref       string
+	startTime time.Time
+}
+
+func performFetchRequest(ctx context.Context, p fetchAttemptParams) (*http.Response, fetchAttemptOutcome) {
+	logger := getLoggerFromContext(ctx)
+	req, err := http.NewRequestWithContext(ctx, "GET", p.apiURL, nil)
+	if err != nil {
+		return nil, fetchAttemptOutcome{fatalErr: fmt.Errorf("failed to create request for %s: %w", p.filePath, err)}
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3.raw")
+	if p.s.config.GitHubToken != "" {
+		req.Header.Set("Authorization", "token "+p.s.config.GitHubToken)
+	}
+	resp, err := p.client.Do(req)
+	if err != nil {
+		logger.Warn("[%s] Request failed: %v", p.filePath, err)
+		return nil, fetchAttemptOutcome{retryErr: fmt.Errorf("HTTP request failed: %w", err)}
+	}
+	return resp, fetchAttemptOutcome{}
+}
+
+func consumeFetchBody(ctx context.Context, resp *http.Response, p fetchAttemptParams) fetchAttemptOutcome {
+	logger := getLoggerFromContext(ctx)
+
+	if resp.ContentLength > p.s.config.MaxGitHubFileSize {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			logger.Debug("[%s] Error closing response body for oversized file: %v", p.filePath, closeErr)
+		}
+		return fetchAttemptOutcome{fatalErr: fmt.Errorf(
+			"file %s is too large: %d bytes, limit is %d",
+			p.filePath, resp.ContentLength, p.s.config.MaxGitHubFileSize,
+		)}
+	}
+
+	content, readErr := io.ReadAll(io.LimitReader(resp.Body, p.s.config.MaxGitHubFileSize+1))
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		logger.Debug("[%s] Error closing response body after reading content: %v", p.filePath, closeErr)
+	}
+	if readErr != nil {
+		return fetchAttemptOutcome{retryErr: fmt.Errorf("failed to read content: %w", readErr)}
+	}
+
+	if int64(len(content)) > p.s.config.MaxGitHubFileSize {
+		return fetchAttemptOutcome{fatalErr: fmt.Errorf(
+			"file %s is too large (read %d bytes), limit is %d",
+			p.filePath, len(content), p.s.config.MaxGitHubFileSize,
+		)}
+	}
+
+	if len(content) == 0 {
+		logger.Warn("[%s] File fetched successfully but content is empty (0 bytes)", p.filePath)
+	}
+
+	totalTime := time.Since(p.startTime)
+	logger.Info("[%s] Successfully fetched file (%d bytes) in %v", p.filePath, len(content), totalTime)
+
+	return fetchAttemptOutcome{upload: &FileUploadRequest{
+		FileName: p.filePath,
+		MimeType: getMimeTypeFromPath(p.filePath),
+		Content:  content,
+	}}
+}
+
+// fetchAttempt performs a single HTTP fetch for a file, returning one of a
+// successful upload, a retryable error, or a fatal error.
+func fetchAttempt(ctx context.Context, p fetchAttemptParams) fetchAttemptOutcome {
+	logger := getLoggerFromContext(ctx)
+
+	resp, pre := performFetchRequest(ctx, p)
+	if resp == nil {
+		return pre
+	}
+
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
+		ctxErr, retryErr := handleRateLimitResponse(ctx, resp, logger, p.filePath)
+		if ctxErr != nil {
+			return fetchAttemptOutcome{fatalErr: ctxErr}
+		}
+		if retryErr != nil {
+			return fetchAttemptOutcome{retryErr: retryErr}
+		}
+		// Rate-limit headers said "not actually limited"; body is closed,
+		// so the status-code check below will be responsible for deciding
+		// whether the bare 403 is fatal.
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		bodyMsg := readErrorBody(resp, logger, p.filePath)
+		logger.Error("[%s] HTTP error %d: %s", p.filePath, resp.StatusCode, bodyMsg)
+
+		userErr, retryable := mapNonOKStatus(resp.StatusCode, p.owner, p.repo, p.filePath, p.ref, p.s.config.GitHubToken != "")
+		if retryable {
+			return fetchAttemptOutcome{retryErr: userErr}
+		}
+		return fetchAttemptOutcome{fatalErr: userErr}
+	}
+
+	return consumeFetchBody(ctx, resp, p)
+}
+
+// waitBeforeRetry sleeps for the exponential-backoff-plus-jitter interval for
+// the given attempt. Returns ctx.Err() if the context is cancelled.
+func waitBeforeRetry(ctx context.Context, logger Logger, filePath string, attempt, maxRetries int) error {
+	backoff := time.Duration(1<<uint(attempt)) * time.Second
+	jitter := time.Duration(rand.Int63n(int64(500 * time.Millisecond)))
+	sleepTime := backoff + jitter
+	logger.Info("[%s] Retry attempt %d/%d. Sleeping for %v", filePath, attempt, maxRetries, sleepTime)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(sleepTime):
+		return nil
+	}
+}
+
+// buildContentsAPIURL builds the raw-content endpoint URL for a file path.
+func buildContentsAPIURL(baseURL, owner, repo, filePath, ref string) string {
+	// URL-escape individual path segments to handle filenames with spaces or
+	// special chars, while preserving the directory separator slashes.
+	segments := strings.Split(filePath, "/")
+	for i, seg := range segments {
+		segments[i] = url.PathEscape(seg)
+	}
+	apiURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s", baseURL, owner, repo, strings.Join(segments, "/"))
+	if ref != "" {
+		apiURL += "?ref=" + url.QueryEscape(ref)
+	}
+	return apiURL
 }
 
 // fetchSingleFile fetches a single file from GitHub with retries and rate limit handling.
@@ -148,167 +384,38 @@ func fetchSingleFile(ctx context.Context, s *GeminiServer, client *http.Client, 
 	startTime := time.Now()
 	logger.Info("[%s] Starting fetch at %s", filePath, startTime.Format(time.RFC3339))
 
-	// URL-escape individual path segments to handle filenames with spaces or special chars,
-	// while preserving the directory separator slashes.
-	segments := strings.Split(filePath, "/")
-	for i, seg := range segments {
-		segments[i] = url.PathEscape(seg)
-	}
-	encodedPath := strings.Join(segments, "/")
-	apiURL := fmt.Sprintf("%s/repos/%s/%s/contents/%s", s.config.GitHubAPIBaseURL, owner, repo, encodedPath)
-	if ref != "" {
-		apiURL += "?ref=" + url.QueryEscape(ref)
-	}
+	apiURL := buildContentsAPIURL(s.config.GitHubAPIBaseURL, owner, repo, filePath, ref)
 	logger.Info("[%s] Constructed API URL: %s", filePath, apiURL)
+
+	params := fetchAttemptParams{
+		s:         s,
+		client:    client,
+		apiURL:    apiURL,
+		owner:     owner,
+		repo:      repo,
+		filePath:  filePath,
+		ref:       ref,
+		startTime: startTime,
+	}
 
 	var lastErr error
 	maxRetries := 3
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
-			// Exponential backoff with jitter
-			backoff := time.Duration(1<<uint(attempt)) * time.Second
-			jitter := time.Duration(rand.Int63n(int64(500 * time.Millisecond)))
-			sleepTime := backoff + jitter
-			logger.Info("[%s] Retry attempt %d/%d. Sleeping for %v", filePath, attempt, maxRetries, sleepTime)
-
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(sleepTime):
+			if err := waitBeforeRetry(ctx, logger, filePath, attempt, maxRetries); err != nil {
+				return nil, err
 			}
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create request for %s: %w", filePath, err)
+		outcome := fetchAttempt(ctx, params)
+		if outcome.fatalErr != nil {
+			return nil, outcome.fatalErr
 		}
-
-		// Use raw content type to get the file content directly
-		req.Header.Set("Accept", "application/vnd.github.v3.raw")
-		if s.config.GitHubToken != "" {
-			req.Header.Set("Authorization", "token "+s.config.GitHubToken)
+		if outcome.upload != nil {
+			return outcome.upload, nil
 		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			lastErr = fmt.Errorf("HTTP request failed: %w", err)
-			logger.Warn("[%s] Request failed: %v", filePath, err)
-			continue
-		}
-
-		// Handle Rate Limits
-		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-			remaining := resp.Header.Get("X-RateLimit-Remaining")
-			if remaining == "0" || resp.StatusCode == http.StatusTooManyRequests {
-				resetTimeStr := resp.Header.Get("X-RateLimit-Reset")
-				resetTime, err := strconv.ParseInt(resetTimeStr, 10, 64)
-				if err != nil {
-					// Fallback to current time plus default wait if parsing fails
-					resetTime = time.Now().Add(5 * time.Minute).Unix()
-					logger.Debug("[%s] Failed to parse reset time '%s': %v, using fallback", filePath, resetTimeStr, err)
-				}
-				waitTime := time.Until(time.Unix(resetTime, 0))
-
-				// Close response body before handling rate limit
-				if err := resp.Body.Close(); err != nil {
-					logger.Debug("[%s] Error closing response body during rate limit handling: %v", filePath, err)
-				}
-
-				if waitTime > 0 {
-					logger.Warn("[%s] Rate limit exceeded. Reset in %v", filePath, waitTime)
-					// If wait time is reasonable (< 2 minutes), sleep for the reset time
-					// Otherwise, treat as retryable error with exponential backoff
-					if waitTime <= 2*time.Minute {
-						select {
-						case <-ctx.Done():
-							return nil, ctx.Err()
-						case <-time.After(waitTime):
-							lastErr = fmt.Errorf("rate limit exceeded")
-							continue
-						}
-					}
-					lastErr = fmt.Errorf("rate limit exceeded")
-					continue
-				}
-			} else {
-				if err := resp.Body.Close(); err != nil {
-					logger.Debug("[%s] Error closing response body when no rate limit issue: %v", filePath, err)
-				}
-			}
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			// Read body for error message and close response
-			body, err := io.ReadAll(resp.Body)
-			if err := resp.Body.Close(); err != nil {
-				logger.Debug("[%s] Error closing response body after error status %d: %v", filePath, resp.StatusCode, err)
-			}
-			if err != nil {
-				logger.Debug("[%s] Error reading response body for status %d: %v", filePath, resp.StatusCode, err)
-				body = []byte(fmt.Sprintf("failed to read error body: %v", err))
-			}
-			bodyMsg := string(body)
-			logger.Error("[%s] HTTP error %d: %s", filePath, resp.StatusCode, bodyMsg)
-
-			if resp.StatusCode >= 500 {
-				lastErr = fmt.Errorf("server error %d", resp.StatusCode)
-				continue
-			}
-
-			// Non-retryable errors
-			var userMsg string
-			switch resp.StatusCode {
-			case http.StatusNotFound:
-				if s.config.GitHubToken == "" {
-					userMsg = fmt.Sprintf("repository '%s/%s' not found or private (no GitHub token configured)", owner, repo)
-				} else {
-					userMsg = fmt.Sprintf("file '%s' not found in repository '%s/%s' (ref: %s)", filePath, owner, repo, ref)
-				}
-			case http.StatusUnauthorized:
-				userMsg = "authentication failed - check GitHub token permissions"
-			case http.StatusForbidden:
-				userMsg = fmt.Sprintf("access denied to '%s/%s'", owner, repo)
-			default:
-				userMsg = fmt.Sprintf("GitHub API error: status %d", resp.StatusCode)
-			}
-			return nil, fmt.Errorf("%s", userMsg)
-		}
-
-		// Check content length if available
-		if resp.ContentLength > s.config.MaxGitHubFileSize {
-			if err := resp.Body.Close(); err != nil {
-				logger.Debug("[%s] Error closing response body for oversized file: %v", filePath, err)
-			}
-			return nil, fmt.Errorf("file %s is too large: %d bytes, limit is %d", filePath, resp.ContentLength, s.config.MaxGitHubFileSize)
-		}
-
-		// Read content
-		content, err := io.ReadAll(io.LimitReader(resp.Body, s.config.MaxGitHubFileSize+1))
-		if err := resp.Body.Close(); err != nil {
-			logger.Debug("[%s] Error closing response body after reading content: %v", filePath, err)
-		}
-		if err != nil {
-			lastErr = fmt.Errorf("failed to read content: %w", err)
-			continue
-		}
-
-		if int64(len(content)) > s.config.MaxGitHubFileSize {
-			return nil, fmt.Errorf("file %s is too large (read %d bytes), limit is %d", filePath, len(content), s.config.MaxGitHubFileSize)
-		}
-
-		if len(content) == 0 {
-			logger.Warn("[%s] File fetched successfully but content is empty (0 bytes)", filePath)
-		}
-
-		totalTime := time.Since(startTime)
-		logger.Info("[%s] Successfully fetched file (%d bytes) in %v", filePath, len(content), totalTime)
-
-		return &FileUploadRequest{
-			FileName: filePath,
-			MimeType: getMimeTypeFromPath(filePath),
-			Content:  content,
-		}, nil
+		lastErr = outcome.retryErr
 	}
 
 	return nil, fmt.Errorf("failed to fetch %s after %d retries: %v", filePath, maxRetries, lastErr)

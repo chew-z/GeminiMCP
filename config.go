@@ -130,81 +130,87 @@ func parseEnvVarBool(key string, defaultValue bool, logger Logger) bool {
 	return defaultValue
 }
 
-// NewConfig creates a new configuration from environment variables
-func NewConfig(logger Logger) (*Config, error) {
-	// No longer validating default model at startup - will be checked when needed
-	// This allows for new models not in our hardcoded list
-	// Get Gemini API key - required
-	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
-	if geminiAPIKey == "" {
-		return nil, errors.New("GEMINI_API_KEY environment variable is required")
+// httpTransportConfig captures HTTP-transport env values.
+type httpTransportConfig struct {
+	enableHTTP       bool
+	address          string
+	path             string
+	stateless        bool
+	heartbeat        time.Duration
+	corsEnabled      bool
+	corsOrigins      []string
+	progressInterval time.Duration
+}
+
+func loadHTTPConfig(logger Logger) httpTransportConfig {
+	enableHTTP := parseEnvVarBool("GEMINI_ENABLE_HTTP", defaultEnableHTTP, logger)
+	address := os.Getenv("GEMINI_HTTP_ADDRESS")
+	if address == "" {
+		address = defaultHTTPAddress
+	}
+	path := os.Getenv("GEMINI_HTTP_PATH")
+	if path == "" {
+		path = defaultHTTPPath
+	}
+	stateless := parseEnvVarBool("GEMINI_HTTP_STATELESS", defaultHTTPStateless, logger)
+	heartbeat := parseEnvVarDuration("GEMINI_HTTP_HEARTBEAT", defaultHTTPHeartbeat, logger)
+	if heartbeat < 0 {
+		logger.Warnf("GEMINI_HTTP_HEARTBEAT must be non-negative. Using default: %s", defaultHTTPHeartbeat.String())
+		heartbeat = defaultHTTPHeartbeat
+	}
+	corsEnabled := parseEnvVarBool("GEMINI_HTTP_CORS_ENABLED", defaultHTTPCORSEnabled, logger)
+
+	var corsOrigins []string
+	if originsStr := os.Getenv("GEMINI_HTTP_CORS_ORIGINS"); originsStr != "" {
+		for _, p := range strings.Split(originsStr, ",") {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				corsOrigins = append(corsOrigins, trimmed)
+			}
+		}
+	}
+	if len(corsOrigins) == 0 {
+		corsOrigins = []string{"*"}
 	}
 
-	// Get Gemini model - optional with default
-	geminiModel := os.Getenv("GEMINI_MODEL")
-	if geminiModel == "" {
-		geminiModel = defaultGeminiModel // Default model if not specified
+	return httpTransportConfig{
+		enableHTTP:       enableHTTP,
+		address:          address,
+		path:             path,
+		stateless:        stateless,
+		heartbeat:        heartbeat,
+		corsEnabled:      corsEnabled,
+		corsOrigins:      corsOrigins,
+		progressInterval: parseEnvVarDuration("GEMINI_PROGRESS_INTERVAL", defaultProgressInterval, logger),
 	}
-	// Note: We no longer validate the model here to allow for new models
-	// and preview versions not in our hardcoded list
+}
 
-	// Get Gemini search model - optional with default
-	geminiSearchModel := os.Getenv("GEMINI_SEARCH_MODEL")
-	if geminiSearchModel == "" {
-		geminiSearchModel = defaultGeminiSearchModel // Default search model if not specified
-	}
-	// Note: We also don't validate the search model here
+// authConfig captures authentication env values.
+type authConfig struct {
+	enabled   bool
+	secretKey string
+}
 
-	// Use helper functions to parse environment variables
-	timeout := parseEnvVarDuration("GEMINI_TIMEOUT", 300*time.Second, logger)
-	maxRetries := parseEnvVarInt("GEMINI_MAX_RETRIES", 2, logger)
-	initialBackoff := parseEnvVarDuration("GEMINI_INITIAL_BACKOFF", 1*time.Second, logger)
-	maxBackoff := parseEnvVarDuration("GEMINI_MAX_BACKOFF", 10*time.Second, logger)
+func loadAuthConfig(logger Logger) (authConfig, error) {
+	enabled := parseEnvVarBool("GEMINI_AUTH_ENABLED", defaultAuthEnabled, logger)
+	secretKey := os.Getenv("GEMINI_AUTH_SECRET_KEY")
 
-	// Set default temperature or override with environment variable
-	geminiTemperature := parseEnvVarFloat("GEMINI_TEMPERATURE", defaultGeminiTemperature, logger)
-	// Specific validation for temperature range, as it's a critical parameter
-	if geminiTemperature < 0.0 || geminiTemperature > 1.0 {
-		return nil, fmt.Errorf("GEMINI_TEMPERATURE must be between 0.0 and 1.0, got %v", geminiTemperature)
+	if enabled && secretKey == "" {
+		return authConfig{}, fmt.Errorf("GEMINI_AUTH_SECRET_KEY is required when GEMINI_AUTH_ENABLED=true")
 	}
+	if enabled && len(secretKey) < 32 {
+		logger.Warnf("GEMINI_AUTH_SECRET_KEY should be at least 32 characters for security")
+	}
+	return authConfig{enabled: enabled, secretKey: secretKey}, nil
+}
 
-	// GitHub settings
-	githubToken := os.Getenv("GEMINI_GITHUB_TOKEN")
-	githubAPIBaseURL := os.Getenv("GEMINI_GITHUB_API_BASE_URL")
-	if githubAPIBaseURL == "" {
-		githubAPIBaseURL = defaultGitHubAPIBaseURL
-	}
-	maxGitHubFiles := parseEnvVarInt("GEMINI_MAX_GITHUB_FILES", defaultMaxGitHubFiles, logger)
-	if maxGitHubFiles <= 0 {
-		logger.Warnf("GEMINI_MAX_GITHUB_FILES must be positive. Using default: %d", defaultMaxGitHubFiles)
-		maxGitHubFiles = defaultMaxGitHubFiles
-	}
-	maxGitHubFileSize := int64(parseEnvVarInt("GEMINI_MAX_GITHUB_FILE_SIZE", int(defaultMaxGitHubFileSize), logger))
-	if maxGitHubFileSize <= 0 {
-		logger.Warnf("GEMINI_MAX_GITHUB_FILE_SIZE must be positive. Using default: %d", defaultMaxGitHubFileSize)
-		maxGitHubFileSize = defaultMaxGitHubFileSize
-	}
-	maxGitHubDiffBytes := int64(parseEnvVarInt("GEMINI_MAX_GITHUB_DIFF_BYTES", int(defaultMaxGitHubDiffBytes), logger))
-	if maxGitHubDiffBytes <= 0 {
-		logger.Warnf("GEMINI_MAX_GITHUB_DIFF_BYTES must be positive. Using default: %d", defaultMaxGitHubDiffBytes)
-		maxGitHubDiffBytes = defaultMaxGitHubDiffBytes
-	}
-	maxGitHubCommits := parseEnvVarInt("GEMINI_MAX_GITHUB_COMMITS", defaultMaxGitHubCommits, logger)
-	if maxGitHubCommits <= 0 {
-		logger.Warnf("GEMINI_MAX_GITHUB_COMMITS must be positive. Using default: %d", defaultMaxGitHubCommits)
-		maxGitHubCommits = defaultMaxGitHubCommits
-	}
-	maxGitHubPRReviewComments := parseEnvVarInt("GEMINI_MAX_GITHUB_PR_REVIEW_COMMENTS", defaultMaxGitHubPRReviewComments, logger)
-	if maxGitHubPRReviewComments < 0 {
-		logger.Warnf("GEMINI_MAX_GITHUB_PR_REVIEW_COMMENTS must be non-negative. Using default: %d", defaultMaxGitHubPRReviewComments)
-		maxGitHubPRReviewComments = defaultMaxGitHubPRReviewComments
-	}
+// thinkingAndTierConfig captures thinking levels and service tier.
+type thinkingAndTierConfig struct {
+	thinkingLevel       string
+	searchThinkingLevel string
+	serviceTier         string
+}
 
-	// Thinking levels
-	thinkingLevel := parseThinkingLevelEnv("GEMINI_THINKING_LEVEL", defaultThinkingLevel, logger)
-	searchThinkingLevel := parseThinkingLevelEnv("GEMINI_SEARCH_THINKING_LEVEL", defaultSearchThinkingLevel, logger)
-
-	// Service tier
+func loadThinkingConfig(logger Logger) thinkingAndTierConfig {
 	serviceTier := defaultServiceTier
 	if tierStr := os.Getenv("GEMINI_SERVICE_TIER"); tierStr != "" {
 		if validateServiceTier(strings.ToLower(tierStr)) {
@@ -213,100 +219,162 @@ func NewConfig(logger Logger) (*Config, error) {
 			logger.Warnf("Invalid GEMINI_SERVICE_TIER '%s' (valid: flex, standard, priority). Using default: %s", tierStr, defaultServiceTier)
 		}
 	}
+	return thinkingAndTierConfig{
+		thinkingLevel:       parseThinkingLevelEnv("GEMINI_THINKING_LEVEL", defaultThinkingLevel, logger),
+		searchThinkingLevel: parseThinkingLevelEnv("GEMINI_SEARCH_THINKING_LEVEL", defaultSearchThinkingLevel, logger),
+		serviceTier:         serviceTier,
+	}
+}
 
-	// Pre-qualification settings
-	prequalify := parseEnvVarBool("GEMINI_PREQUALIFY", defaultPrequalify, logger)
+// taskExecConfig captures task-augmented execution env values (concurrency +
+// pre-qualification classifier).
+type taskExecConfig struct {
+	maxConcurrentTasks      int
+	prequalify              bool
+	prequalifyModel         string
+	prequalifyThinkingLevel string
+}
+
+func loadTaskConfig(logger Logger) taskExecConfig {
 	prequalifyModel := os.Getenv("GEMINI_PREQUALIFY_MODEL")
 	if prequalifyModel == "" {
 		prequalifyModel = defaultPrequalifyModel
 	}
-	prequalifyThinkingLevel := parseThinkingLevelEnv("GEMINI_PREQUALIFY_THINKING", defaultPrequalifyThinkingLevel, logger)
+	return taskExecConfig{
+		maxConcurrentTasks:      parseEnvVarInt("GEMINI_MAX_CONCURRENT_TASKS", defaultMaxConcurrentTasks, logger),
+		prequalify:              parseEnvVarBool("GEMINI_PREQUALIFY", defaultPrequalify, logger),
+		prequalifyModel:         prequalifyModel,
+		prequalifyThinkingLevel: parseThinkingLevelEnv("GEMINI_PREQUALIFY_THINKING", defaultPrequalifyThinkingLevel, logger),
+	}
+}
 
-	// HTTP transport settings
-	enableHTTP := parseEnvVarBool("GEMINI_ENABLE_HTTP", defaultEnableHTTP, logger)
-	httpAddress := os.Getenv("GEMINI_HTTP_ADDRESS")
-	if httpAddress == "" {
-		httpAddress = defaultHTTPAddress
-	}
-	httpPath := os.Getenv("GEMINI_HTTP_PATH")
-	if httpPath == "" {
-		httpPath = defaultHTTPPath
-	}
-	httpStateless := parseEnvVarBool("GEMINI_HTTP_STATELESS", defaultHTTPStateless, logger)
-	httpHeartbeat := parseEnvVarDuration("GEMINI_HTTP_HEARTBEAT", defaultHTTPHeartbeat, logger)
-	if httpHeartbeat < 0 {
-		logger.Warnf("GEMINI_HTTP_HEARTBEAT must be non-negative. Using default: %s", defaultHTTPHeartbeat.String())
-		httpHeartbeat = defaultHTTPHeartbeat
-	}
-	progressInterval := parseEnvVarDuration("GEMINI_PROGRESS_INTERVAL", defaultProgressInterval, logger)
-	maxConcurrentTasks := parseEnvVarInt("GEMINI_MAX_CONCURRENT_TASKS", defaultMaxConcurrentTasks, logger)
-	httpCORSEnabled := parseEnvVarBool("GEMINI_HTTP_CORS_ENABLED", defaultHTTPCORSEnabled, logger)
-	var httpCORSOrigins []string
-	if originsStr := os.Getenv("GEMINI_HTTP_CORS_ORIGINS"); originsStr != "" {
-		parts := strings.Split(originsStr, ",")
-		for _, p := range parts {
-			if trimmed := strings.TrimSpace(p); trimmed != "" {
-				httpCORSOrigins = append(httpCORSOrigins, trimmed)
-			}
-		}
-	}
-	if len(httpCORSOrigins) == 0 {
-		httpCORSOrigins = []string{"*"} // Default allow all origins
+// githubSettings captures GitHub-integration env values.
+type githubSettings struct {
+	token                     string
+	apiBaseURL                string
+	maxGitHubFiles            int
+	maxGitHubFileSize         int64
+	maxGitHubDiffBytes        int64
+	maxGitHubCommits          int
+	maxGitHubPRReviewComments int
+}
+
+func loadGitHubConfig(logger Logger) githubSettings {
+	apiBaseURL := os.Getenv("GEMINI_GITHUB_API_BASE_URL")
+	if apiBaseURL == "" {
+		apiBaseURL = defaultGitHubAPIBaseURL
 	}
 
-	// Authentication settings
-	authEnabled := parseEnvVarBool("GEMINI_AUTH_ENABLED", defaultAuthEnabled, logger)
-	authSecretKey := os.Getenv("GEMINI_AUTH_SECRET_KEY")
-
-	// If authentication is enabled, require secret key
-	if authEnabled && authSecretKey == "" {
-		return nil, fmt.Errorf("GEMINI_AUTH_SECRET_KEY is required when GEMINI_AUTH_ENABLED=true")
+	maxFiles := parseEnvVarInt("GEMINI_MAX_GITHUB_FILES", defaultMaxGitHubFiles, logger)
+	if maxFiles <= 0 {
+		logger.Warnf("GEMINI_MAX_GITHUB_FILES must be positive. Using default: %d", defaultMaxGitHubFiles)
+		maxFiles = defaultMaxGitHubFiles
+	}
+	maxFileSize := int64(parseEnvVarInt("GEMINI_MAX_GITHUB_FILE_SIZE", int(defaultMaxGitHubFileSize), logger))
+	if maxFileSize <= 0 {
+		logger.Warnf("GEMINI_MAX_GITHUB_FILE_SIZE must be positive. Using default: %d", defaultMaxGitHubFileSize)
+		maxFileSize = defaultMaxGitHubFileSize
+	}
+	maxDiffBytes := int64(parseEnvVarInt("GEMINI_MAX_GITHUB_DIFF_BYTES", int(defaultMaxGitHubDiffBytes), logger))
+	if maxDiffBytes <= 0 {
+		logger.Warnf("GEMINI_MAX_GITHUB_DIFF_BYTES must be positive. Using default: %d", defaultMaxGitHubDiffBytes)
+		maxDiffBytes = defaultMaxGitHubDiffBytes
+	}
+	maxCommits := parseEnvVarInt("GEMINI_MAX_GITHUB_COMMITS", defaultMaxGitHubCommits, logger)
+	if maxCommits <= 0 {
+		logger.Warnf("GEMINI_MAX_GITHUB_COMMITS must be positive. Using default: %d", defaultMaxGitHubCommits)
+		maxCommits = defaultMaxGitHubCommits
+	}
+	maxPRReviewComments := parseEnvVarInt("GEMINI_MAX_GITHUB_PR_REVIEW_COMMENTS", defaultMaxGitHubPRReviewComments, logger)
+	if maxPRReviewComments < 0 {
+		logger.Warnf("GEMINI_MAX_GITHUB_PR_REVIEW_COMMENTS must be non-negative. Using default: %d", defaultMaxGitHubPRReviewComments)
+		maxPRReviewComments = defaultMaxGitHubPRReviewComments
 	}
 
-	// Warn if secret key is too short (for security)
-	if authEnabled && len(authSecretKey) < 32 {
-		logger.Warnf("GEMINI_AUTH_SECRET_KEY should be at least 32 characters for security")
+	return githubSettings{
+		token:                     os.Getenv("GEMINI_GITHUB_TOKEN"),
+		apiBaseURL:                apiBaseURL,
+		maxGitHubFiles:            maxFiles,
+		maxGitHubFileSize:         maxFileSize,
+		maxGitHubDiffBytes:        maxDiffBytes,
+		maxGitHubCommits:          maxCommits,
+		maxGitHubPRReviewComments: maxPRReviewComments,
+	}
+}
+
+// NewConfig creates a new configuration from environment variables
+func NewConfig(logger Logger) (*Config, error) {
+	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
+	if geminiAPIKey == "" {
+		return nil, errors.New("GEMINI_API_KEY environment variable is required")
+	}
+
+	geminiModel := os.Getenv("GEMINI_MODEL")
+	if geminiModel == "" {
+		geminiModel = defaultGeminiModel
+	}
+
+	geminiSearchModel := os.Getenv("GEMINI_SEARCH_MODEL")
+	if geminiSearchModel == "" {
+		geminiSearchModel = defaultGeminiSearchModel
+	}
+
+	geminiTemperature := parseEnvVarFloat("GEMINI_TEMPERATURE", defaultGeminiTemperature, logger)
+	if geminiTemperature < 0.0 || geminiTemperature > 1.0 {
+		return nil, fmt.Errorf("GEMINI_TEMPERATURE must be between 0.0 and 1.0, got %v", geminiTemperature)
+	}
+
+	timeout := parseEnvVarDuration("GEMINI_TIMEOUT", 300*time.Second, logger)
+	maxRetries := parseEnvVarInt("GEMINI_MAX_RETRIES", 2, logger)
+	initialBackoff := parseEnvVarDuration("GEMINI_INITIAL_BACKOFF", 1*time.Second, logger)
+	maxBackoff := parseEnvVarDuration("GEMINI_MAX_BACKOFF", 10*time.Second, logger)
+
+	github := loadGitHubConfig(logger)
+	thinking := loadThinkingConfig(logger)
+	task := loadTaskConfig(logger)
+	httpCfg := loadHTTPConfig(logger)
+	auth, err := loadAuthConfig(logger)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Config{
-			GeminiAPIKey:      geminiAPIKey,
-			GeminiModel:       geminiModel,
-			GeminiSearchModel: geminiSearchModel, // Assign the read value
-			GeminiTemperature: geminiTemperature,
-			HTTPTimeout:       timeout,
-			EnableHTTP:        enableHTTP,
-			HTTPAddress:       httpAddress,
-			HTTPPath:          httpPath,
-			HTTPStateless:     httpStateless,
-			HTTPHeartbeat:     httpHeartbeat,
-			HTTPCORSEnabled:   httpCORSEnabled,
-			HTTPCORSOrigins:   httpCORSOrigins,
-			ProgressInterval:  progressInterval,
+		GeminiAPIKey:      geminiAPIKey,
+		GeminiModel:       geminiModel,
+		GeminiSearchModel: geminiSearchModel,
+		GeminiTemperature: geminiTemperature,
+		HTTPTimeout:       timeout,
+		EnableHTTP:        httpCfg.enableHTTP,
+		HTTPAddress:       httpCfg.address,
+		HTTPPath:          httpCfg.path,
+		HTTPStateless:     httpCfg.stateless,
+		HTTPHeartbeat:     httpCfg.heartbeat,
+		HTTPCORSEnabled:   httpCfg.corsEnabled,
+		HTTPCORSOrigins:   httpCfg.corsOrigins,
+		ProgressInterval:  httpCfg.progressInterval,
 
-			MaxConcurrentTasks: maxConcurrentTasks,
+		MaxConcurrentTasks: task.maxConcurrentTasks,
 
-			AuthEnabled:    authEnabled,
-			AuthSecretKey:  authSecretKey,
-			MaxRetries:     maxRetries,
-			InitialBackoff: initialBackoff,
-			MaxBackoff:     maxBackoff,
+		AuthEnabled:    auth.enabled,
+		AuthSecretKey:  auth.secretKey,
+		MaxRetries:     maxRetries,
+		InitialBackoff: initialBackoff,
+		MaxBackoff:     maxBackoff,
 
-			// GitHub settings
-			GitHubToken:               githubToken,
-			GitHubAPIBaseURL:          githubAPIBaseURL,
-			MaxGitHubFiles:            maxGitHubFiles,
-			MaxGitHubFileSize:         maxGitHubFileSize,
-			MaxGitHubDiffBytes:        maxGitHubDiffBytes,
-			MaxGitHubCommits:          maxGitHubCommits,
-			MaxGitHubPRReviewComments: maxGitHubPRReviewComments,
+		GitHubToken:               github.token,
+		GitHubAPIBaseURL:          github.apiBaseURL,
+		MaxGitHubFiles:            github.maxGitHubFiles,
+		MaxGitHubFileSize:         github.maxGitHubFileSize,
+		MaxGitHubDiffBytes:        github.maxGitHubDiffBytes,
+		MaxGitHubCommits:          github.maxGitHubCommits,
+		MaxGitHubPRReviewComments: github.maxGitHubPRReviewComments,
 
-			ThinkingLevel:       thinkingLevel,
-			SearchThinkingLevel: searchThinkingLevel,
-			ServiceTier:         serviceTier,
+		ThinkingLevel:       thinking.thinkingLevel,
+		SearchThinkingLevel: thinking.searchThinkingLevel,
+		ServiceTier:         thinking.serviceTier,
 
-			Prequalify:              prequalify,
-			PrequalifyModel:         prequalifyModel,
-			PrequalifyThinkingLevel: prequalifyThinkingLevel,
-		},
-		nil
+		Prequalify:              task.prequalify,
+		PrequalifyModel:         task.prequalifyModel,
+		PrequalifyThinkingLevel: task.prequalifyThinkingLevel,
+	}, nil
 }

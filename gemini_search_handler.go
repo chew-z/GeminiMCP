@@ -9,46 +9,25 @@ import (
 	"google.golang.org/genai"
 )
 
-// GeminiSearchHandler is a handler for the gemini_search tool that uses mcp-go types directly
-func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// buildSearchConfig assembles the Gemini search generation config from the
+// request and model metadata.
+func buildSearchConfig(
+	ctx context.Context,
+	s *GeminiServer,
+	req mcp.CallToolRequest,
+	modelName string,
+	modelInfo *GeminiModelInfo,
+) (*genai.GenerateContentConfig, error) {
 	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling gemini_search request with direct handler")
-
-	// Extract and validate query parameter (required)
-	query, err := validateRequiredString(req, "query")
-	if err != nil {
-		return createErrorResult(err.Error()), nil
-	}
-
-	// Extract optional model parameter - use search-specific model as default
-	modelName := extractArgumentString(req, "model", s.config.GeminiSearchModel)
-	modelName, err = resolveAndValidateModel(ctx, modelName)
-	if err != nil {
-		return createErrorResult(err.Error()), nil
-	}
-	logger.Info("Using %s model for web search", modelName)
-
-	// Get model information for context window and thinking capability
-	modelInfo := GetModelByID(modelName)
-	if modelInfo == nil {
-		logger.Warn("Model information not found for %s, using default parameters", modelName)
-	}
-
-	// Create the generate content configuration
 	googleSearch := &genai.GoogleSearch{}
 
-	// Extract and validate time range filter parameters
 	startTimeStr := extractArgumentString(req, "start_time", "")
 	endTimeStr := extractArgumentString(req, "end_time", "")
-
 	startTime, endTime, err := validateTimeRange(startTimeStr, endTimeStr)
 	if err != nil {
-		return createErrorResult(err.Error()), nil
+		return nil, err
 	}
-
-	// If both time parameters are provided, create the time range filter
 	if startTime != nil && endTime != nil {
-		// Create the time range filter
 		googleSearch.TimeRangeFilter = &genai.Interval{
 			StartTime: *startTime,
 			EndTime:   *endTime,
@@ -60,20 +39,43 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 		SystemInstruction: genai.NewContentFromText(systemPromptSearch, ""),
 		Temperature:       genai.Ptr(float32(s.config.GeminiTemperature)),
 		Tools: []*genai.Tool{
-			{
-				GoogleSearch: googleSearch,
-			},
+			{GoogleSearch: googleSearch},
 		},
 	}
 	config.ServiceTier = serviceTierFromString(s.config.ServiceTier)
 
-	// Configure thinking if supported
 	configureThinking(ctx, req, config, s.config.SearchThinkingLevel, modelInfo, modelName)
-
-	// Configure max tokens (50% of context window by default for search)
 	configureMaxTokensOutput(ctx, config, req, modelInfo, 0.5)
+	return config, nil
+}
 
-	// Create content with the query
+// GeminiSearchHandler is a handler for the gemini_search tool that uses mcp-go types directly
+func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	logger := getLoggerFromContext(ctx)
+	logger.Info("Handling gemini_search request with direct handler")
+
+	query, err := validateRequiredString(req, "query")
+	if err != nil {
+		return createErrorResult(err.Error()), nil
+	}
+
+	modelName := extractArgumentString(req, "model", s.config.GeminiSearchModel)
+	modelName, err = resolveAndValidateModel(ctx, modelName)
+	if err != nil {
+		return createErrorResult(err.Error()), nil
+	}
+	logger.Info("Using %s model for web search", modelName)
+
+	modelInfo := GetModelByID(modelName)
+	if modelInfo == nil {
+		logger.Warn("Model information not found for %s, using default parameters", modelName)
+	}
+
+	config, err := buildSearchConfig(ctx, s, req, modelName, modelInfo)
+	if err != nil {
+		return createErrorResult(err.Error()), nil
+	}
+
 	contents := []*genai.Content{
 		genai.NewContentFromText(query, genai.RoleUser),
 	}

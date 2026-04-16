@@ -149,7 +149,7 @@ func buildContextSummary(req mcp.CallToolRequest) string {
 
 	repo := extractArgumentString(req, "github_repo", "")
 
-	if prNum, hasPR := extractArgumentInt(req, "github_pr"); hasPR {
+	if prNum, hasPR := extractGitHubPRNumber(req); hasPR {
 		parts = append(parts, fmt.Sprintf("PR #%d", prNum))
 	}
 
@@ -185,7 +185,7 @@ func hasGitHubContext(req mcp.CallToolRequest) bool {
 	if extractArgumentString(req, "github_repo", "") != "" {
 		return true
 	}
-	if _, hasPR := extractArgumentInt(req, "github_pr"); hasPR {
+	if _, hasPR := extractGitHubPRNumber(req); hasPR {
 		return true
 	}
 	if len(extractArgumentStringArray(req, "github_commits")) > 0 {
