@@ -148,18 +148,14 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 	return uploads, combinedErrs
 }
 
-// handleRateLimitResponse inspects a 403/429 response. It always closes resp.Body.
-// Returns:
-//   - ctxErr != nil when the context was cancelled while waiting; caller should return it.
-//   - retryErr != nil when the caller should set lastErr=retryErr and continue the retry loop.
+// handleRateLimitResponse inspects a 403/429 response. Returns:
+//   - ctxErr != nil when the context was cancelled while waiting; body has been closed.
+//   - retryErr != nil when the caller should set lastErr=retryErr and continue the retry loop; body has been closed.
 //   - both nil when the response was not actually rate-limited or the reset window has elapsed;
-//     caller falls through to the status-code check (body is already closed).
+//     body is left OPEN so the caller's status-code handler can read the genuine GitHub error payload.
 func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Logger, filePath string) (ctxErr, retryErr error) {
 	remaining := resp.Header.Get("X-RateLimit-Remaining")
 	if remaining != "0" && resp.StatusCode != http.StatusTooManyRequests {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			logger.Debug("[%s] Error closing response body when no rate limit issue: %v", filePath, closeErr)
-		}
 		return nil, nil
 	}
 
@@ -171,12 +167,13 @@ func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Lo
 	}
 	waitTime := time.Until(time.Unix(resetTime, 0))
 
-	if closeErr := resp.Body.Close(); closeErr != nil {
-		logger.Debug("[%s] Error closing response body during rate limit handling: %v", filePath, closeErr)
-	}
-
 	if waitTime <= 0 {
 		return nil, nil
+	}
+
+	// We're about to wait/retry — discard the response body now.
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		logger.Debug("[%s] Error closing response body during rate limit handling: %v", filePath, closeErr)
 	}
 
 	logger.Warn("[%s] Rate limit exceeded. Reset in %v", filePath, waitTime)

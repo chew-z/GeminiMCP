@@ -77,9 +77,10 @@ func computeBackoff(cfg *Config, attempt int) time.Duration {
 }
 
 // isRetryableGoogleAPIError reports whether err is a *googleapi.Error with a
-// retryable status code. The second return value is true when the error was a
-// Google API error (so the caller should stop checking other heuristics).
-func isRetryableGoogleAPIError(err error) (retryable, matched bool) {
+// retryable status code. The second return value (ok) is true when the error
+// was a Google API error, signalling the caller to stop checking other
+// heuristics.
+func isRetryableGoogleAPIError(err error) (retryable, ok bool) {
 	var gerr *googleapi.Error
 	if !errors.As(err, &gerr) {
 		return false, false
@@ -130,7 +131,7 @@ func isRetryableError(err error) bool {
 		}
 	}
 
-	if retryable, matched := isRetryableGoogleAPIError(err); matched {
+	if retryable, ok := isRetryableGoogleAPIError(err); ok {
 		return retryable
 	}
 
