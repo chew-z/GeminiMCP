@@ -17,7 +17,7 @@ var GeminiAskTool = mcp.NewTool(
 	mcp.WithDestructiveHintAnnotation(false),
 	mcp.WithIdempotentHintAnnotation(true),
 	mcp.WithOpenWorldHintAnnotation(true),
-	mcp.WithString("query", mcp.Required(), mcp.Description("The question, task, or prompt for Gemini")),
+	mcp.WithString("query", mcp.Required(), mcp.Description("The coding question or task for Gemini")),
 	mcp.WithString("model", mcp.Description(
 		"Optional: gemini-pro, gemini-flash, or gemini-flash-lite "+
 			"(resolved to latest version), or an explicit model ID. "+
