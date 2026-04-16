@@ -30,6 +30,13 @@ var (
 		return server.NewMCPServer(
 			"gemini",
 			"1.0.0",
+			server.WithTitle("Gemini MCP"),
+			server.WithDescription("Gemini LLM for analysis, reasoning and research"),
+			server.WithInstructions(`gemini_ask: send a prompt to Gemini, optionally with GitHub repository context.
+gemini_search: answer questions using web search with source citations.
+
+Defaults are optimized per model tier. Override parameters exist but are rarely needed.
+github_repo is required when using any github_* parameter. github_files requires github_ref.`),
 			server.WithCompletions(),
 			server.WithPromptCompletionProvider(&GeminiCompletionProvider{}),
 		)
@@ -53,7 +60,6 @@ func runMain(args []string) int {
 	geminiModelFlag := flagSet.String("gemini-model", "", "Gemini model name (overrides env var)")
 	geminiSystemPromptFlag := flagSet.String("gemini-system-prompt", "", "System prompt (overrides env var)")
 	geminiTemperatureFlag := flagSet.Float64("gemini-temperature", -1, "Temperature setting (0.0-1.0, overrides env var)")
-	enableThinkingFlag := flagSet.Bool("enable-thinking", true, "Enable thinking mode for supported models (overrides env var)")
 	serviceTierFlag := flagSet.String("service-tier", "", "Service tier: flex, standard, priority (overrides env var)")
 	transportFlag := flagSet.String("transport", "stdio", "Transport mode: 'stdio' (default) or 'http'")
 
@@ -107,10 +113,6 @@ func runMain(args []string) int {
 		logger.Info("Overriding Gemini temperature with flag value: %v", *geminiTemperatureFlag)
 		config.GeminiTemperature = *geminiTemperatureFlag
 	}
-
-	// Override enable thinking if flag is provided
-	config.EnableThinking = *enableThinkingFlag
-	logger.Info("Thinking feature is %s", getFeatureStatusStr(config.EnableThinking))
 
 	// Override service tier if flag is provided
 	if *serviceTierFlag != "" {

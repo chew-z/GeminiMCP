@@ -10,11 +10,18 @@ import "github.com/mark3labs/mcp-go/mcp"
 // merges them into a stable order before handing off to Gemini.
 var GeminiAskTool = mcp.NewTool(
 	"gemini_ask",
-	mcp.WithDescription("Use Google's Gemini AI model to ask about complex coding problems. "+
-		"Attach GitHub context via any combination of github_files, github_pr, github_commits, "+
-		"and github_diff_base/github_diff_head — all are optional and can be mixed in one call."),
-	mcp.WithString("query", mcp.Required(), mcp.Description("The coding problem that we are asking Gemini AI to work on [question + code]")),
-	mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
+	mcp.WithDescription("Send a prompt to Gemini, optionally enriched with GitHub repository context "+
+		"(files, PRs, commits, diffs). All github_* parameters are independent and combinable."),
+	mcp.WithTitleAnnotation("Ask Gemini a Question"),
+	mcp.WithReadOnlyHintAnnotation(true),
+	mcp.WithDestructiveHintAnnotation(false),
+	mcp.WithIdempotentHintAnnotation(true),
+	mcp.WithOpenWorldHintAnnotation(true),
+	mcp.WithString("query", mcp.Required(), mcp.Description("The question, task, or prompt for Gemini")),
+	mcp.WithString("model", mcp.Description(
+		"Optional: gemini-pro, gemini-flash, or gemini-flash-lite "+
+			"(resolved to latest version), or an explicit model ID. "+
+			"Recommended: omit to use sensible default.")),
 	mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
 	mcp.WithString("github_repo", mcp.Description(
 		"Required. Must be always provided when any github_* context parameter is used!")),
@@ -38,19 +45,25 @@ var GeminiAskTool = mcp.NewTool(
 	mcp.WithString("github_diff_head", mcp.Description(
 		"Optional: head ref for a GitHub compare diff (branch, tag, or SHA). "+
 			"Must be paired with github_diff_base.")),
-	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process")),
 	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (low, medium, high). Default depends on model tier.")),
 )
 
 // GeminiSearchTool defines the gemini_search tool specification
 var GeminiSearchTool = mcp.NewTool(
 	"gemini_search",
-	mcp.WithDescription("Use Google's Gemini AI model with Google Search to answer questions with grounded information"),
-	mcp.WithString("query", mcp.Required(), mcp.Description("The question to ask Gemini using Google Search for grounding")),
+	mcp.WithDescription("Answer questions using Gemini with web search results and source citations."),
+	mcp.WithTitleAnnotation("Search the Web via Gemini"),
+	mcp.WithReadOnlyHintAnnotation(true),
+	mcp.WithDestructiveHintAnnotation(false),
+	mcp.WithIdempotentHintAnnotation(true),
+	mcp.WithOpenWorldHintAnnotation(true),
+	mcp.WithString("query", mcp.Required(), mcp.Description("The question to research via web search")),
 	mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
-	mcp.WithBoolean("enable_thinking", mcp.Description("Optional: Enable thinking mode to see model's reasoning process (when supported)")),
 	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (minimal, low, medium, high). Default is 'low' for search")),
-	mcp.WithString("model", mcp.Description("Optional: Specific Gemini model to use (overrides default configuration)")),
+	mcp.WithString("model", mcp.Description(
+		"Optional: gemini-pro, gemini-flash, or gemini-flash-lite "+
+			"(resolved to latest version), or an explicit model ID. "+
+			"Recommended: omit to use sensible default.")),
 	mcp.WithString("start_time", mcp.Description(
 		"Optional: Filter search results to those published after this time "+
 			"(RFC3339 format, e.g. '2024-01-01T00:00:00Z'). If provided, end_time must also be provided.",

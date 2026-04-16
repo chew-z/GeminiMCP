@@ -411,7 +411,6 @@ func TestRunMainModelFlagValidation(t *testing.T) {
 		code := runMain([]string{
 			"-gemini-system-prompt=override",
 			"-gemini-temperature=0.6",
-			"-enable-thinking=false",
 			"-service-tier=priority",
 			"-auth-enabled",
 			"-gemini-model=gemini-known",
@@ -420,7 +419,6 @@ func TestRunMainModelFlagValidation(t *testing.T) {
 		assert.Equal(t, 0, code)
 		assert.Equal(t, "override", cfg.GeminiSystemPrompt)
 		assert.Equal(t, 0.6, cfg.GeminiTemperature)
-		assert.False(t, cfg.EnableThinking)
 		assert.Equal(t, "priority", cfg.ServiceTier)
 		assert.True(t, cfg.AuthEnabled)
 		assert.Equal(t, "gemini-known", cfg.GeminiModel)

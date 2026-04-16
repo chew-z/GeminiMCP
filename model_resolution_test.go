@@ -93,7 +93,6 @@ func TestCreateModelConfig(t *testing.T) {
 		GeminiModel:        "gemini-3.1-pro-preview",
 		GeminiSystemPrompt: "system prompt",
 		GeminiTemperature:  0.2,
-		EnableThinking:     true,
 		ThinkingLevel:      "high",
 		ServiceTier:        "standard",
 	}
@@ -115,7 +114,7 @@ func TestCreateModelConfig(t *testing.T) {
 			wantModelName: "gemini-3.1-pro-preview-0507",
 			wantMaxTokens: 8192,
 			wantThinking:  true,
-			wantLevel:     "medium",
+			wantLevel:     "high",
 		},
 		{
 			name: "unknown gemini model redirects by tier",
@@ -150,7 +149,7 @@ func TestCreateModelConfig(t *testing.T) {
 			wantModelName: "gemini-3.1-pro-preview-0507",
 			wantMaxTokens: 8192,
 			wantThinking:  true,
-			wantLevel:     "medium",
+			wantLevel:     "high",
 		},
 		{
 			name: "model without thinking support skips thinking config",

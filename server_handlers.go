@@ -39,8 +39,8 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 
 	// Log thinking configuration if enabled
 	model := GetModelByID(config.GeminiModel)
-	if config.EnableThinking && model != nil && model.SupportsThinking {
-		logger.Info("Thinking mode enabled for model %s with context window size %d tokens",
+	if model != nil && model.SupportsThinking {
+		logger.Info("Thinking enabled for model %s (context window: %d tokens)",
 			config.GeminiModel, model.ContextWindowSize)
 	}
 

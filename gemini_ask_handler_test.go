@@ -62,7 +62,7 @@ func TestGeminiAskHandlerFileSourceBehavior(t *testing.T) {
 			GeminiModel:        "gemini-pro",
 			GeminiSystemPrompt: "system prompt",
 			GeminiTemperature:  0.3,
-			EnableThinking:     true,
+
 			ThinkingLevel:      "high",
 			ServiceTier:        "standard",
 			MaxGitHubFiles:     10,
@@ -155,7 +155,7 @@ func TestGeminiAskHandlerGitHubWarningTruncationInOutboundQuery(t *testing.T) {
 			GeminiModel:        "gemini-pro",
 			GeminiSystemPrompt: "system prompt",
 			GeminiTemperature:  0.3,
-			EnableThinking:     true,
+
 			ThinkingLevel:      "high",
 			ServiceTier:        "standard",
 			MaxRetries:         0,
@@ -265,7 +265,7 @@ func TestGeminiAskHandlerWithoutFilesUsesProcessWithoutFiles(t *testing.T) {
 			GeminiModel:        "gemini-pro",
 			GeminiSystemPrompt: "system prompt",
 			GeminiTemperature:  0.3,
-			EnableThinking:     true,
+
 			ThinkingLevel:      "high",
 			ServiceTier:        "standard",
 			MaxRetries:         0,
@@ -405,7 +405,7 @@ func TestParseAskRequest(t *testing.T) {
 			GeminiModel:        "gemini-pro",
 			GeminiSystemPrompt: "system prompt",
 			GeminiTemperature:  0.3,
-			EnableThinking:     true,
+
 			ThinkingLevel:      "high",
 			ServiceTier:        "standard",
 		},

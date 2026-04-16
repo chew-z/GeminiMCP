@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/joho/godotenv v1.5.1
-	github.com/mark3labs/mcp-go v0.47.0
+	github.com/mark3labs/mcp-go v0.48.0
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/api v0.267.0
 	google.golang.org/genai v1.53.0

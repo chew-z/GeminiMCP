@@ -48,7 +48,6 @@ If the search results don't contain enough information to fully answer the query
 	defaultAuthEnabled = false // Authentication disabled by default
 
 	// Thinking settings
-	defaultEnableThinking      = true
 	defaultThinkingLevel       = "high" // Default thinking level for gemini_ask
 	defaultSearchThinkingLevel = "low"  // Default thinking level for gemini_search
 
@@ -217,9 +216,6 @@ func NewConfig(logger Logger) (*Config, error) {
 		maxGitHubPRReviewComments = defaultMaxGitHubPRReviewComments
 	}
 
-	// Thinking settings
-	enableThinking := parseEnvVarBool("GEMINI_ENABLE_THINKING", defaultEnableThinking, logger)
-
 	// Thinking levels
 	thinkingLevel := parseThinkingLevelEnv("GEMINI_THINKING_LEVEL", defaultThinkingLevel, logger)
 	searchThinkingLevel := parseThinkingLevelEnv("GEMINI_SEARCH_THINKING_LEVEL", defaultSearchThinkingLevel, logger)
@@ -308,7 +304,6 @@ func NewConfig(logger Logger) (*Config, error) {
 			MaxGitHubCommits:          maxGitHubCommits,
 			MaxGitHubPRReviewComments: maxGitHubPRReviewComments,
 
-			EnableThinking:      enableThinking,
 			ThinkingLevel:       thinkingLevel,
 			SearchThinkingLevel: searchThinkingLevel,
 			ServiceTier:         serviceTier,

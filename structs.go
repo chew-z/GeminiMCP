@@ -126,7 +126,6 @@ type Config struct {
 	MaxGitHubPRReviewComments int    // Max number of PR review comments fetched
 
 	// Thinking settings
-	EnableThinking      bool   // Enable/disable thinking mode for supported models
 	ThinkingLevel       string // Thinking level for gemini_ask: minimal, low, medium, high
 	SearchThinkingLevel string // Thinking level for gemini_search: minimal, low, medium, high
 

@@ -44,8 +44,7 @@ parameters are **independent, optional peers** — mix and match freely in one c
 | `query` | string | **Yes** | The coding question or task |
 | `model` | string | No | Override default model (tier alias or explicit model ID) |
 | `systemPrompt` | string | No | Override default system prompt for this call |
-| `enable_thinking` | boolean | No | Enable extended thinking mode |
-| `thinking_level` | string | No | `low`, `medium`, `high`. Default is tier-aware: `medium` for pro and flash, `low` for flash-lite. |
+| `thinking_level` | string | No | `low`, `medium`, `high`. Default is tier-aware: `high` for pro, `medium` for flash and flash-lite. |
 | `github_repo` | string | No* | Repository in `owner/repo` format — **required when any `github_*` param is used** |
 | `github_ref` | string | No | Git branch, tag, or SHA — applies to `github_files` only |
 | `github_files` | string[] | No | File paths in the repo to attach as inline context |
@@ -94,9 +93,9 @@ Pass a tier alias or an explicit model ID:
 
 | Alias | Resolves to |
 |-------|------------|
-| `pro` / `gemini-pro` | Latest `gemini-2.5-pro-*` |
-| `flash` / `gemini-flash` | Latest `gemini-2.5-flash-*` |
-| `flash-lite` / `gemini-flash-lite` | Latest `gemini-2.0-flash-lite-*` |
+| `gemini-pro` | Latest Gemini Pro |
+| `gemini-flash` | Latest Gemini Flash |
+| `gemini-flash-lite` | Latest Gemini Flash Lite |
 
 The catalog is populated from the live Gemini API at server startup.
 
@@ -175,7 +174,6 @@ a structured JSON response containing the answer and cited sources.
 | `query` | string | **Yes** | The question to research |
 | `model` | string | No | Override model (default: `GEMINI_SEARCH_MODEL`, typically `gemini-flash-lite`) |
 | `systemPrompt` | string | No | Override system prompt |
-| `enable_thinking` | boolean | No | Enable extended thinking (when model supports it) |
 | `thinking_level` | string | No | `minimal`, `low`, `medium`, `high` (default: `low`) |
 | `start_time` | string | No | RFC3339 lower bound for search result dates (must pair with `end_time`) |
 | `end_time` | string | No | RFC3339 upper bound for search result dates (must pair with `start_time`) |

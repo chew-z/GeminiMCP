@@ -69,7 +69,7 @@ func TestGeminiSearchHandlerSuccess(t *testing.T) {
 			GeminiSearchSystemPrompt: "search system prompt",
 			GeminiSearchModel:        "gemini-3-flash-preview",
 			GeminiTemperature:        0.3,
-			EnableThinking:           true,
+
 			SearchThinkingLevel:      "medium",
 			ServiceTier:              "standard",
 			MaxRetries:               0,
@@ -132,7 +132,7 @@ func TestGeminiSearchHandlerValidationAndClientErrors(t *testing.T) {
 			GeminiSearchSystemPrompt: "search system prompt",
 			GeminiSearchModel:        "gemini-3-flash-preview",
 			GeminiTemperature:        0.3,
-			EnableThinking:           true,
+
 			SearchThinkingLevel:      "medium",
 			ServiceTier:              "standard",
 		},
@@ -213,7 +213,7 @@ func TestGeminiSearchHandlerAPIError(t *testing.T) {
 			GeminiSearchSystemPrompt: "search system prompt",
 			GeminiSearchModel:        "gemini-3-flash-preview",
 			GeminiTemperature:        0.3,
-			EnableThinking:           true,
+
 			SearchThinkingLevel:      "medium",
 			ServiceTier:              "standard",
 			MaxRetries:               0,

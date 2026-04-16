@@ -75,15 +75,6 @@ func extractArgumentInt(req mcp.CallToolRequest, name string) (int, bool) {
 	return 0, false
 }
 
-// extractArgumentBool extracts a boolean argument from the request parameters
-func extractArgumentBool(req mcp.CallToolRequest, name string, defaultValue bool) bool {
-	args := req.GetArguments()
-	if val, ok := args[name].(bool); ok {
-		return val
-	}
-	return defaultValue
-}
-
 // extractArgumentStringArray extracts a string array argument from the request parameters.
 // It handles three input forms:
 //   - []interface{} (JSON array from proper MCP clients)
@@ -152,10 +143,9 @@ func resolveAndValidateModel(ctx context.Context, modelName string) (string, err
 }
 
 // tierDefaultThinkingLevel returns the server-picked thinking_level default
-// for a given model. pro+high has been the dominant failure mode in
-// production; pro and flash default to medium, flash-lite to low. Falls back
-// to the provided fallback (typically the operator-configured global default)
-// if the tier cannot be inferred.
+// for a given model. pro defaults to high, flash and flash-lite to medium.
+// Falls back to the provided fallback (typically the operator-configured
+// global default) if the tier cannot be inferred.
 func tierDefaultThinkingLevel(modelName, fallback string) string {
 	tier, ok := inferModelTier(modelName)
 	if !ok {
@@ -163,56 +153,58 @@ func tierDefaultThinkingLevel(modelName, fallback string) string {
 	}
 	switch tier {
 	case tierPro:
-		return "medium"
+		return "high"
 	case tierFlash:
 		return "medium"
 	case tierFlashLite:
-		return "low"
+		return "medium"
 	}
 	return fallback
 }
 
 // configureThinking sets up thinking configuration on a GenerateContentConfig
-// if the model supports it and thinking is requested.
+// when the model supports it. Thinking is always enabled for supported models;
+// the server picks tier-aware defaults and the client can override via thinking_level.
 func configureThinking(ctx context.Context, req mcp.CallToolRequest, config *genai.GenerateContentConfig,
-	enableByDefault bool, defaultLevel string, modelInfo *GeminiModelInfo, modelName string) {
+	defaultLevel string, modelInfo *GeminiModelInfo, modelName string) {
 
 	logger := getLoggerFromContext(ctx)
-	enableThinking := extractArgumentBool(req, "enable_thinking", enableByDefault)
 
-	if enableThinking && modelInfo != nil && modelInfo.SupportsThinking {
-		thinkingLevel := defaultLevel
+	if modelInfo == nil {
+		logger.Warn("Model info not available for %s — skipping thinking config", modelName)
+		return
+	}
 
-		// Check for thinking_level parameter in request
-		if levelStr, ok := req.GetArguments()["thinking_level"].(string); ok && levelStr != "" {
-			if validateThinkingLevel(levelStr) {
-				thinkingLevel = strings.ToLower(levelStr)
-				logger.Info("Setting thinking level to: %s", thinkingLevel)
-			} else {
-				logger.Warn("Invalid thinking_level '%s' (valid: minimal, low, medium, high). Using default: %s", levelStr, defaultLevel)
-			}
-		}
+	if !modelInfo.SupportsThinking {
+		logger.Debug("Model %s does not support thinking", modelName)
+		return
+	}
 
-		// Upgrade "minimal" to "low" for Pro models — the API rejects minimal there.
-		if thinkingLevel == "minimal" {
-			if tier, ok := inferModelTier(modelName); ok && tier == tierPro {
-				logger.Warn("thinking_level 'minimal' is not supported by Pro models — upgrading to 'low'")
-				thinkingLevel = "low"
-			}
-		}
+	thinkingLevel := defaultLevel
 
-		config.ThinkingConfig = &genai.ThinkingConfig{
-			IncludeThoughts: true,
-			ThinkingLevel:   genai.ThinkingLevel(thinkingLevel),
-		}
-		logger.Info("Thinking mode enabled with level '%s' for model %s", thinkingLevel, modelName)
-	} else if enableThinking {
-		if modelInfo != nil {
-			logger.Warn("Thinking mode requested but model %s doesn't support it", modelName)
+	// Check for thinking_level parameter in request
+	if levelStr, ok := req.GetArguments()["thinking_level"].(string); ok && levelStr != "" {
+		if validateThinkingLevel(levelStr) {
+			thinkingLevel = strings.ToLower(levelStr)
+			logger.Info("Setting thinking level to: %s", thinkingLevel)
 		} else {
-			logger.Warn("Thinking mode requested but unknown if model supports it")
+			logger.Warn("Invalid thinking_level '%s' (valid: minimal, low, medium, high). Using default: %s", levelStr, defaultLevel)
 		}
 	}
+
+	// Upgrade "minimal" to "low" for Pro models — the API rejects minimal there.
+	if thinkingLevel == "minimal" {
+		if tier, ok := inferModelTier(modelName); ok && tier == tierPro {
+			logger.Warn("thinking_level 'minimal' is not supported by Pro models — upgrading to 'low'")
+			thinkingLevel = "low"
+		}
+	}
+
+	config.ThinkingConfig = &genai.ThinkingConfig{
+		IncludeThoughts: true,
+		ThinkingLevel:   genai.ThinkingLevel(thinkingLevel),
+	}
+	logger.Info("Thinking mode enabled with level '%s' for model %s", thinkingLevel, modelName)
 }
 
 // createModelConfig creates a GenerateContentConfig for Gemini API based on request parameters
@@ -246,11 +238,10 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 	contentConfig.ServiceTier = serviceTierFromString(config.ServiceTier)
 
 	// Configure thinking if supported. Per CLAUDE.md principle #3 the server
-	// picks tier-aware defaults; pro+high was brittle in production, so pro and
-	// flash default to medium while flash-lite stays at low. Clients can still
-	// override via thinking_level in the request.
+	// picks tier-aware defaults: pro → high, flash → medium, flash-lite → medium.
+	// Clients can still override via thinking_level in the request.
 	defaultLevel := tierDefaultThinkingLevel(modelName, config.ThinkingLevel)
-	configureThinking(ctx, req, contentConfig, config.EnableThinking, defaultLevel, modelInfo, modelName)
+	configureThinking(ctx, req, contentConfig, defaultLevel, modelInfo, modelName)
 
 	// Configure max tokens with default ratio of context window
 	configureMaxTokensOutput(ctx, contentConfig, req, modelInfo, 0.75)

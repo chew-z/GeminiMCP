@@ -287,9 +287,9 @@ func TestConvertGenaiResponseToMCPResult(t *testing.T) {
 func TestTierDefaultThinkingLevel(t *testing.T) {
 	seedModelStateForTest(t, testModelCatalog())
 
-	assert.Equal(t, "medium", tierDefaultThinkingLevel("gemini-3.1-pro-preview", "fallback"))
+	assert.Equal(t, "high", tierDefaultThinkingLevel("gemini-3.1-pro-preview", "fallback"))
 	assert.Equal(t, "medium", tierDefaultThinkingLevel("gemini-3-flash-preview", "fallback"))
-	assert.Equal(t, "low", tierDefaultThinkingLevel("gemini-3.1-flash-lite-preview", "fallback"))
+	assert.Equal(t, "medium", tierDefaultThinkingLevel("gemini-3.1-flash-lite-preview", "fallback"))
 	assert.Equal(t, "fallback", tierDefaultThinkingLevel("not-a-gemini-model", "fallback"))
 }
 

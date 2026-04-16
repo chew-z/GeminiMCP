@@ -28,8 +28,7 @@ GEMINI_AUTH_SECRET_KEY=<secret> ./bin/mcp-gemini --transport=http --auth-enabled
 query*          string    The question or task (required)
 model           string    Tier alias or explicit model ID
 systemPrompt    string    Override system prompt
-enable_thinking bool      Enable extended thinking
-thinking_level  string    low | medium | high  (default: tier-aware — medium for pro/flash, low for flash-lite)
+thinking_level  string    low | medium | high  (default: tier-aware — high for pro, medium for flash/flash-lite)
 ```
 
 ### GitHub context (all optional, all combinable)
@@ -54,7 +53,6 @@ github_diff_head    string    Head ref for compare diff  ← pair with base
 query*        string    The research question (required)
 model         string    Override model
 systemPrompt  string    Override system prompt
-enable_thinking bool
 thinking_level  string  minimal | low | medium | high  (default: low)
 start_time    string    RFC3339 — both or neither
 end_time      string    RFC3339 — both or neither
@@ -66,9 +64,9 @@ end_time      string    RFC3339 — both or neither
 
 | Alias | Tier |
 |-------|------|
-| `pro` / `gemini-pro` | Latest Gemini Pro |
-| `flash` / `gemini-flash` | Latest Gemini Flash |
-| `flash-lite` / `gemini-flash-lite` | Latest Gemini Flash Lite |
+| `gemini-pro` | Latest Gemini Pro |
+| `gemini-flash` | Latest Gemini Flash |
+| `gemini-flash-lite` | Latest Gemini Flash Lite |
 
 ---
 
@@ -138,7 +136,6 @@ GEMINI_AUTH_SECRET_KEY=...
 
 # Inference
 GEMINI_TEMPERATURE=1.0
-GEMINI_ENABLE_THINKING=true
 GEMINI_THINKING_LEVEL=high
 GEMINI_SERVICE_TIER=standard     # flex | standard | priority
 
@@ -157,7 +154,6 @@ GEMINI_MAX_BACKOFF=10s
 --gemini-model       tier alias or model ID
 --gemini-system-prompt
 --gemini-temperature 0.0-1.0
---enable-thinking    (default true)
 --service-tier       flex | standard | priority
 --auth-enabled
 --generate-token

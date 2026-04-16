@@ -71,7 +71,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	config.ServiceTier = serviceTierFromString(s.config.ServiceTier)
 
 	// Configure thinking if supported
-	configureThinking(ctx, req, config, s.config.EnableThinking, s.config.SearchThinkingLevel, modelInfo, modelName)
+	configureThinking(ctx, req, config, s.config.SearchThinkingLevel, modelInfo, modelName)
 
 	// Configure max tokens (50% of context window by default for search)
 	configureMaxTokensOutput(ctx, config, req, modelInfo, 0.5)
