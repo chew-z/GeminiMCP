@@ -103,8 +103,8 @@ func (s *GeminiServer) fetchCommit(
 		xmlAttr(meta.Commit.Author.Date),
 		xmlAttr(subject),
 		boolStr(truncated),
-		cdataWrap(messageBody),
-		cdataWrap(patch),
+		messageBody,
+		patch,
 	))
 	return part, commitInventory{
 		SHA:       shortSHA(meta.SHA),

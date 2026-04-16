@@ -29,52 +29,12 @@ func TestXMLAttrEscape(t *testing.T) {
 	}
 }
 
-func TestCDATAWrapSplit(t *testing.T) {
-	t.Run("empty", func(t *testing.T) {
-		assert.Equal(t, "<![CDATA[]]>", cdataWrap(""))
-	})
-
-	t.Run("plain ASCII", func(t *testing.T) {
-		assert.Equal(t, "<![CDATA[hello world]]>", cdataWrap("hello world"))
-	})
-
-	t.Run("unicode survives", func(t *testing.T) {
-		assert.Equal(t, "<![CDATA[héllo 🚀]]>", cdataWrap("héllo 🚀"))
-	})
-
-	t.Run("embedded closer is split", func(t *testing.T) {
-		got := cdataWrap("before]]>after")
-		// The original "]]>" must no longer appear as a CDATA closer; it gets
-		// split into one closing + an opener + the trailing ">".
-		assert.Equal(t, "<![CDATA[before]]]]><![CDATA[>after]]>", got)
-		// Property: after the first "<![CDATA[", the first "]]>" delimits
-		// content that does not itself contain a premature "]]>" sequence.
-		assert.True(t, strings.HasPrefix(got, "<![CDATA["))
-		assert.True(t, strings.HasSuffix(got, "]]>"))
-	})
-
-	t.Run("multiple closers are all split", func(t *testing.T) {
-		in := "a]]>b]]>c"
-		got := cdataWrap(in)
-		// Property: each attacker `]]>` becomes a split form whose leading
-		// `]]>` shifts into the previous CDATA segment, so the number of
-		// `]]>` substrings in the output equals the number in the input
-		// plus exactly one (our own final closer).
-		assert.Equal(t,
-			strings.Count(in, "]]>")+1,
-			strings.Count(got, "]]>"),
-			"each attacker `]]>` should survive as a split form, plus our final closer")
-		// And our final closer is in fact the last 3 bytes.
-		assert.True(t, strings.HasSuffix(got, "]]>"))
-	})
-}
-
 func TestWrapUserTurnWithContextShape(t *testing.T) {
 	ctxParts := []*genai.Part{
 		genai.NewPartFromText("  <commit sha=\"abc\" />\n"),
 	}
 	fileParts := []*genai.Part{
-		genai.NewPartFromText("  <file path=\"README.md\" ref=\"main\" kind=\"text\" mime=\"text/plain\"><![CDATA[readme]]></file>\n"),
+		genai.NewPartFromText("  <file path=\"README.md\" ref=\"main\" kind=\"text\" mime=\"text/plain\">readme</file>\n"),
 	}
 	parts := wrapUserTurnWithContext(
 		"owner/repo",
@@ -93,10 +53,10 @@ func TestWrapUserTurnWithContextShape(t *testing.T) {
 
 	want := "<context repo=\"owner/repo\">\n" +
 		"  <commit sha=\"abc\" />\n" +
-		"  <file path=\"README.md\" ref=\"main\" kind=\"text\" mime=\"text/plain\"><![CDATA[readme]]></file>\n" +
+		"  <file path=\"README.md\" ref=\"main\" kind=\"text\" mime=\"text/plain\">readme</file>\n" +
 		"</context>\n\n" +
 		"USING THE CONTEXT PROVIDED ABOVE, YOUR TASK IS:\n\n" +
-		"<task>\n  <query><![CDATA[please summarise]]></query>\n</task>\n\n" +
+		"<task>\n  <query>please summarise</query>\n</task>\n\n" +
 		"<final_instruction>\nFINAL\n</final_instruction>\n"
 	assert.Equal(t, want, got)
 }
@@ -117,8 +77,8 @@ func TestWrapUserTurnWithContextIncludesUnloadedWhenWarningsPresent(t *testing.T
 	got := sb.String()
 
 	assert.Contains(t, got, "<unloaded_context>")
-	assert.Contains(t, got, "<item><![CDATA[a: fail]]></item>")
-	assert.Contains(t, got, "<item><![CDATA[b: fail]]></item>")
+	assert.Contains(t, got, "<item>a: fail</item>")
+	assert.Contains(t, got, "<item>b: fail</item>")
 	assert.Contains(t, got, "</unloaded_context>")
 }
 
@@ -129,7 +89,7 @@ func TestWrapUserTurnQueryOnlyShape(t *testing.T) {
 	for _, p := range parts {
 		sb.WriteString(p.Text)
 	}
-	want := "<task>\n  <query><![CDATA[hello?]]></query>\n</task>\n\n" +
+	want := "<task>\n  <query>hello?</query>\n</task>\n\n" +
 		"<final_instruction>\nFINAL\n</final_instruction>\n"
 	assert.Equal(t, want, sb.String())
 }

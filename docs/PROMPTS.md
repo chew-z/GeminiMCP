@@ -134,8 +134,8 @@ user turn is wrapped by `envelope.go` into a Gemini 3-style XML envelope:
   `gemini_search` uses a hard-coded `finalInstructionSearch`.
 
 Attacker-controlled metadata goes through `xmlAttr` (escape `& < > "`);
-attacker-controlled bodies go through `cdataWrap` (CDATA-wrap with
-`]]>` splitting). See [ARCHITECTURE OVERVIEW § 8](ARCHITECTURE%20OVERVIEW.md#8-security).
+attacker-controlled bodies are embedded as raw text in the `<task>` and
+`<context>` payloads.
 
 ---
 
@@ -289,7 +289,7 @@ on a stable response shape.
 |------|----------------|
 | `system_prompts.go` | `queryCategory` enum, `systemPromptForCategory`, all XML system-prompt constants. |
 | `prequalify.go` | `resolveSystemPromptAsync` (yields `resolvedPrompt{SystemPrompt, Category}`), `prequalifyQuery`, `buildContextSummary`, `hasGitHubContext`, classifier config and validation. |
-| `envelope.go` | `xmlAttr`, `cdataWrap`, `wrapUserTurnWithContext`, `wrapUserTurnQueryOnly`, `renderUnloadedContext` — the user-turn XML envelope. |
+| `envelope.go` | `xmlAttr`, `wrapUserTurnWithContext`, `wrapUserTurnQueryOnly`, `renderUnloadedContext` — the user-turn XML envelope. |
 | `final_instructions.go` | `finalInstructionFor(category)` and the category → instruction table driving `<final_instruction>`. |
 | `prompts.go` | `Prompts` slice — the MCP prompt registry. |
 | `prompt_handlers.go` | `promptHandler` (generic), `buildReviewPRHandler` / `buildExplainCommitHandler` / `buildCompareRefsHandler` (custom), `createTaskInstructions`, `createSearchInstructions`. |

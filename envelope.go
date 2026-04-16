@@ -20,14 +20,6 @@ func xmlAttr(v string) string {
 	return r.Replace(v)
 }
 
-// cdataWrap wraps v in a CDATA section. Any embedded "]]>" sequence is split
-// across two CDATA sections so attacker-controlled content cannot close the
-// section early.
-func cdataWrap(v string) string {
-	safe := strings.ReplaceAll(v, "]]>", "]]]]><![CDATA[>")
-	return "<![CDATA[" + safe + "]]>"
-}
-
 // debugPartMaxBytes caps each Part body when rendering for DEBUG logs, so an
 // envelope dump cannot flood the log stream with multi-megabyte diffs.
 const debugPartMaxBytes = 2048
@@ -93,7 +85,7 @@ func wrapUserTurnWithContext(
 	parts = append(parts, fileParts...)
 	parts = append(parts, partText("</context>\n\n"))
 	parts = append(parts, partText("USING THE CONTEXT PROVIDED ABOVE, YOUR TASK IS:\n\n"))
-	parts = append(parts, partText("<task>\n  <query>"+cdataWrap(query)+"</query>\n"))
+	parts = append(parts, partText("<task>\n  <query>"+query+"</query>\n"))
 	if len(warnings) > 0 {
 		parts = append(parts, partText(renderUnloadedContext(warnings)))
 	}
@@ -105,7 +97,7 @@ func wrapUserTurnWithContext(
 // wrapUserTurnQueryOnly builds the Parts for a request with no context.
 func wrapUserTurnQueryOnly(query string, finalInstruction string) []*genai.Part {
 	return []*genai.Part{
-		partText("<task>\n  <query>" + cdataWrap(query) + "</query>\n</task>\n\n"),
+		partText("<task>\n  <query>" + query + "</query>\n</task>\n\n"),
 		partText("<final_instruction>\n" + finalInstruction + "\n</final_instruction>\n"),
 	}
 }
@@ -119,7 +111,7 @@ func renderUnloadedContext(warnings []string) string {
 	var b strings.Builder
 	b.WriteString("  <unloaded_context>\n")
 	for _, w := range warnings {
-		fmt.Fprintf(&b, "    <item>%s</item>\n", cdataWrap(w))
+		fmt.Fprintf(&b, "    <item>%s</item>\n", w)
 	}
 	b.WriteString("  </unloaded_context>\n")
 	return b.String()

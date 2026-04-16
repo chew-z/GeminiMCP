@@ -90,10 +90,9 @@ Hunk-aware truncation cuts large diffs at logical `@@` boundaries so Gemini alwa
 receives syntactically valid diff fragments.
 
 **Security:** Attacker-controllable metadata (filenames, commit subjects, PR
-titles, author names, review paths) is attribute-escaped via `xmlAttr`;
-attacker-controllable bodies (messages, patches, diffs, descriptions, review
-comments, file contents) are CDATA-wrapped via `cdataWrap`, which splits any
-embedded `]]>` so a malicious body cannot close its section early.
+titles, author names, review paths) is attribute-escaped via `xmlAttr`.
+Body content (messages, patches, diffs, descriptions, review comments, file
+contents) is inserted as raw text by the current envelope renderer.
 
 ### Mutual Exclusions
 

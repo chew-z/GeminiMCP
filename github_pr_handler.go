@@ -153,16 +153,16 @@ func assemblePRParts(
 		xmlAttr(strings.TrimSpace(meta.Title)),
 		boolStr(diffTruncatedFlag),
 	)
-	fmt.Fprintf(&b, "    <description>%s</description>\n", cdataWrap(strings.TrimSpace(meta.Body)))
+	fmt.Fprintf(&b, "    <description>%s</description>\n", strings.TrimSpace(meta.Body))
 	if diff != "" {
-		fmt.Fprintf(&b, "    <patch>%s</patch>\n", cdataWrap(diff))
+		fmt.Fprintf(&b, "    <patch>%s</patch>\n", diff)
 	}
 	for _, c := range comments {
 		fmt.Fprintf(&b, "    <review author=\"%s\" path=\"%s\" line=\"%d\">%s</review>\n",
 			xmlAttr("@"+c.User.Login),
 			xmlAttr(c.Path),
 			c.Line,
-			cdataWrap(strings.TrimSpace(c.Body)),
+			strings.TrimSpace(c.Body),
 		)
 	}
 	b.WriteString("  </pull_request>\n")

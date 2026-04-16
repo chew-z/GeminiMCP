@@ -516,7 +516,7 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolReq
 }
 
 // buildFileParts converts file uploads to the XML <file> fragments emitted
-// inside the <context> envelope. Text files embed their content as CDATA in
+// inside the <context> envelope. Text files embed their content as raw text in
 // a single text Part. Binary files upload via the Files API and get rendered
 // as a three-Part sequence (opener text, URI, closer text) so the Files-API
 // Part sits inside its own <file> element.
@@ -541,7 +541,7 @@ func renderTextFilePart(upload *FileUploadRequest, githubRef string) *genai.Part
 		xmlAttr(upload.FileName),
 		xmlAttr(githubRef),
 		xmlAttr(upload.MimeType),
-		cdataWrap(string(upload.Content)),
+		string(upload.Content),
 	))
 }
 
@@ -567,7 +567,7 @@ func (s *GeminiServer) renderBinaryFileParts(
 			xmlAttr(upload.FileName),
 			xmlAttr(githubRef),
 			xmlAttr(upload.MimeType),
-			cdataWrap("[Error: This binary file could not be uploaded and cannot be displayed inline.]"),
+			"[Error: This binary file could not be uploaded and cannot be displayed inline.]",
 		))}
 	}
 	return []*genai.Part{

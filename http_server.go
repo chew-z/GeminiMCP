@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -136,6 +138,11 @@ func createHTTPMiddleware(config *Config, logger Logger) server.HTTPContextFunc 
 
 // isOriginAllowed checks if the origin is in the allowed list, with special handling for auth
 func isOriginAllowed(origin string, allowedOrigins []string, authEnabled bool) bool {
+	originHost, err := normalizeOriginHost(origin)
+	if err != nil {
+		return false
+	}
+
 	for _, allowed := range allowedOrigins {
 		if allowed == "*" {
 			if authEnabled {
@@ -148,12 +155,56 @@ func isOriginAllowed(origin string, allowedOrigins []string, authEnabled bool) b
 		}
 		// Support wildcard subdomains (e.g., "*.example.com")
 		if domain, ok := strings.CutPrefix(allowed, "*."); ok {
-			if strings.HasSuffix(origin, domain) {
+			patternHost := extractHostname(domain)
+			if patternHost == "" {
+				continue
+			}
+			if isSubdomainMatch(originHost, patternHost) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func normalizeOriginHost(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err == nil && u.Hostname() != "" {
+		return strings.ToLower(u.Hostname()), nil
+	}
+
+	// Be tolerant of host-only values and treat them like regular hostnames.
+	u, err = url.Parse("//" + strings.TrimSpace(raw))
+	if err != nil || u.Host == "" {
+		return "", fmt.Errorf("invalid origin: %q", raw)
+	}
+
+	return strings.ToLower(u.Hostname()), nil
+}
+
+func extractHostname(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+
+	trimmed = strings.TrimPrefix(trimmed, "//")
+	host, _, err := net.SplitHostPort(trimmed)
+	if err == nil {
+		trimmed = host
+	}
+
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(trimmed)), ".")
+}
+
+func isSubdomainMatch(originHost, patternHost string) bool {
+	if originHost == "" || patternHost == "" {
+		return false
+	}
+	if originHost == patternHost {
+		return false
+	}
+	return strings.HasSuffix(originHost, "."+patternHost)
 }
 
 // createCustomHTTPHandler creates a custom HTTP handler that includes OAuth well-known endpoint

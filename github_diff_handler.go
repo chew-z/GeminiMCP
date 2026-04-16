@@ -44,7 +44,7 @@ func (s *GeminiServer) gatherCompareDiff(
 
 	part := genai.NewPartFromText(fmt.Sprintf(
 		"  <diff base=\"%s\" head=\"%s\" truncated=\"%s\">%s</diff>\n",
-		xmlAttr(base), xmlAttr(head), boolStr(truncated), cdataWrap(diff),
+		xmlAttr(base), xmlAttr(head), boolStr(truncated), diff,
 	))
 
 	inv := &diffInventory{Base: base, Head: head, Truncated: truncated}

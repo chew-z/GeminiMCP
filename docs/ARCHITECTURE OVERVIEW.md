@@ -109,7 +109,7 @@ clients receive a descriptive fault instead of a silent crash.
 | `file_handlers.go` | GitHub file upload to Gemini Files API; rate-limit + status-code handling |
 | `prequalify.go` | Flash-based query classifier; runs in parallel with context fetching |
 | `system_prompts.go` | XML-structured system prompts keyed by classification category |
-| `envelope.go` | User-turn XML envelope helpers: `xmlAttr`, `cdataWrap`, `wrapUserTurnWithContext`, `wrapUserTurnQueryOnly` |
+| `envelope.go` | User-turn XML envelope helpers: `xmlAttr`, `wrapUserTurnWithContext`, `wrapUserTurnQueryOnly`, `renderUnloadedContext` |
 | `final_instructions.go` | Category-keyed `<final_instruction>` bodies injected at end of user turn |
 | `progress.go` | Periodic MCP `notifications/progress` during long Gemini calls |
 | `task_hooks.go` | Lifecycle hooks for task-augmented tool execution |
@@ -225,8 +225,7 @@ Attacker-controlled text is handled two ways:
 - **Metadata** (filenames, commit subjects, PR titles, author names, review
   paths) is rendered into attribute values via `xmlAttr`, escaping `& < > "`.
 - **Bodies** (messages, diffs, descriptions, review comments, file contents)
-  are CDATA-wrapped via `cdataWrap`, which splits any embedded `]]>` so a
-  malicious body cannot close the section early.
+  are inserted directly as raw text.
 
 ### Category-Keyed Final Instruction
 
@@ -269,20 +268,18 @@ githubAPIGet()
 ### Prompt Injection Prevention
 
 The server-emitted structure is a Gemini 3-style XML envelope, so attacker
-attempts to impersonate a block boundary must either forge an opening tag, close
-a CDATA section early, or break out of an attribute value. Two defences in
-`envelope.go` close all three vectors:
+attempts to impersonate a block boundary must either forge an opening tag or
+break out of an attribute value. The current envelope keeps one defence in
+`envelope.go`:
 
 - `xmlAttr(v)` renders every piece of metadata (filenames, commit subjects, PR
   titles, review paths, author names, refs) inside `"…"` attribute values with
   `& < > "` escaped. A filename like `nasty"><injected/>` appears to the model
   as literal text, not a new element.
-- `cdataWrap(v)` wraps every body (commit messages, patches, diffs, PR
-  descriptions, review comments, file contents) in a CDATA section and splits
-  any embedded `]]>` into `]]]]><![CDATA[>`. A malicious body containing
-  `]]></pull_request>` can no longer terminate its containing section.
+- Body text is inserted directly without extra escaping wrappers.
 
-Regression coverage lives in `envelope_test.go` (escape + CDATA split tables)
+Regression coverage lives in `envelope_test.go` (shape assertions around raw
+query/body assembly)
 and in `github_context_test.go` (`TestPRBodyXMLInjection`,
 `TestFilenameXMLInjection`, `TestCommitSubjectXMLInjection`).
 
@@ -303,7 +300,9 @@ and in `github_context_test.go` (`TestPRBodyXMLInjection`,
 | **HTTP** | `--transport=http` | Optional JWT | Preferred for remote/shared deployments |
 
 HTTP server (`http_server.go`) uses `mcp-go`'s SSE transport, adds CORS via
-`isOriginAllowed()`, and injects logger + config into every request's `context.Context`.
+`isOriginAllowed()` using host-based matching (exact origin and `*.domain`
+subdomain matching with boundary checks), and injects logger + config into every
+request's `context.Context`.
 
 ---
 

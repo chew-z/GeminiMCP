@@ -194,11 +194,11 @@ func TestGeminiAskHandlerGitHubWarningTruncationInOutboundQuery(t *testing.T) {
 	all := sb.String()
 
 	assert.Contains(t, all, "<task>")
-	assert.Contains(t, all, "<![CDATA[analyze this repository]]>")
+	assert.Contains(t, all, "analyze this repository")
 	assert.Contains(t, all, "<unloaded_context>")
 
 	for i := 1; i <= maxReportedWarnings; i++ {
-		assert.Contains(t, all, fmt.Sprintf("<![CDATA[path/missing-%02d.txt: could not be fetched from GitHub]]>", i))
+		assert.Contains(t, all, fmt.Sprintf("path/missing-%02d.txt: could not be fetched from GitHub", i))
 	}
 	assert.NotContains(t, all, "path/missing-11.txt: could not be fetched from GitHub")
 	assert.NotContains(t, all, "path/missing-12.txt: could not be fetched from GitHub")
@@ -291,7 +291,7 @@ func TestGeminiAskHandlerWithoutFilesUsesProcessWithoutFiles(t *testing.T) {
 	require.NotEmpty(t, payload.Contents)
 	require.Len(t, payload.Contents[0].Parts, 2)
 	assert.Equal(t,
-		"<task>\n  <query><![CDATA[answer this directly]]></query>\n</task>\n\n",
+		"<task>\n  <query>answer this directly</query>\n</task>\n\n",
 		payload.Contents[0].Parts[0].Text)
 	assert.Contains(t, payload.Contents[0].Parts[1].Text, "<final_instruction>")
 }

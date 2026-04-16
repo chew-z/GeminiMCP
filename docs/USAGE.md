@@ -195,7 +195,7 @@ fetching and picks a tailored system prompt server-side (see
 | `GEMINI_HTTP_STATELESS` | `false` | Stateless SSE mode |
 | `GEMINI_HTTP_HEARTBEAT` | — | Heartbeat interval (e.g. `30s`) |
 | `GEMINI_HTTP_CORS_ENABLED` | `false` | Enable CORS |
-| `GEMINI_HTTP_CORS_ORIGINS` | — | Comma-separated allowed origins |
+| `GEMINI_HTTP_CORS_ORIGINS` | — | Comma-separated allowed origins. Supports exact origins (e.g. `https://app.example.com`) and wildcard subdomains (e.g. `*.example.com`), with exact host boundary checks |
 
 ### Authentication
 
