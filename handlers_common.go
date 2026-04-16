@@ -78,7 +78,7 @@ func extractArgumentInt(req mcp.CallToolRequest, name string) (int, bool) {
 
 // extractArgumentStringArray extracts a string array argument from the request parameters.
 // It handles three input forms:
-//   - []interface{} (JSON array from proper MCP clients)
+//   - []any (JSON array from proper MCP clients)
 //   - string containing a JSON array (e.g., '["file1.go", "file2.go"]' from some clients)
 //   - plain string (single value, e.g., "config.py")
 func extractArgumentStringArray(req mcp.CallToolRequest, name string) []string {
@@ -358,7 +358,7 @@ func NewSafeWriter(logger Logger) *SafeWriter {
 }
 
 // Write adds formatted content to the builder, logging errors but continuing
-func (sw *SafeWriter) Write(format string, args ...interface{}) {
+func (sw *SafeWriter) Write(format string, args ...any) {
 	if sw.failed {
 		return // Don't write if we've already failed
 	}
