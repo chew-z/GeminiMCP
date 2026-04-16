@@ -58,16 +58,14 @@ func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *C
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	var wg sync.WaitGroup
-	wg.Add(1)
 
 	// Start server in goroutine
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := customServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("HTTP server failed to start: %v", err)
 			cancel()
 		}
-	}()
+	})
 
 	// Wait for shutdown signal
 	select {
@@ -147,8 +145,7 @@ func isOriginAllowed(origin string, allowedOrigins []string, authEnabled bool) b
 			return true
 		}
 		// Support wildcard subdomains (e.g., "*.example.com")
-		if strings.HasPrefix(allowed, "*.") {
-			domain := strings.TrimPrefix(allowed, "*.")
+		if domain, ok := strings.CutPrefix(allowed, "*."); ok {
 			if strings.HasSuffix(origin, domain) {
 				return true
 			}
@@ -166,7 +163,7 @@ func createCustomHTTPHandler(mcpHandler http.Handler, config *Config, logger Log
 		logger.Info("OAuth well-known endpoint accessed from %s", r.RemoteAddr)
 
 		// Create OAuth authorization server metadata
-		metadata := map[string]interface{}{
+		metadata := map[string]any{
 			"issuer":                           fmt.Sprintf("http://%s", r.Host),
 			"authorization_endpoint":           fmt.Sprintf("http://%s/oauth/authorize", r.Host),
 			"token_endpoint":                   fmt.Sprintf("http://%s/oauth/token", r.Host),

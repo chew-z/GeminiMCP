@@ -183,7 +183,7 @@ func runMain(args []string) int {
 		return 0
 	}
 
-	logger := newLoggerFn(LevelInfo)
+	logger := newLoggerFn(parseLogLevel(getEnvFn("GEMINI_LOG_LEVEL"), LevelInfo))
 	config, err := newConfigFn(logger)
 	if err != nil {
 		ctx := context.WithValue(context.Background(), loggerKey, logger)

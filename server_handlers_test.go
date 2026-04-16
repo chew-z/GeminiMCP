@@ -45,7 +45,7 @@ func TestWrapHandlerWithLogger(t *testing.T) {
 	req := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name:      "gemini_ask",
-			Arguments: map[string]interface{}{"query": "test"},
+			Arguments: map[string]any{"query": "test"},
 		},
 	}
 
@@ -172,7 +172,7 @@ func TestRegisterErrorTools(t *testing.T) {
 			req := mcp.CallToolRequest{
 				Params: mcp.CallToolParams{
 					Name:      toolName,
-					Arguments: map[string]interface{}{},
+					Arguments: map[string]any{},
 				},
 			}
 			result, err := tool.Handler(ctx, req)

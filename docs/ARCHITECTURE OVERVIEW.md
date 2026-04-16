@@ -356,6 +356,7 @@ and forward to `gemini_ask` — system-prompt selection remains server-side.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GEMINI_API_KEY` | — | **Required** — Gemini API key |
+| `GEMINI_LOG_LEVEL` | `info` | Log verbosity: `debug` / `info` / `warn` / `error` |
 | `GEMINI_MODEL` | `gemini-pro` | Default model (tier alias or explicit ID) |
 | `GEMINI_SEARCH_MODEL` | `gemini-flash-lite` | Model for `gemini_search` |
 | `GEMINI_TEMPERATURE` | `1.0` | Sampling temperature (0.0–1.0) |

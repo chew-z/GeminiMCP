@@ -80,7 +80,7 @@ func TestGeminiSearchHandlerSuccess(t *testing.T) {
 	req := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "gemini_search",
-			Arguments: map[string]interface{}{
+			Arguments: map[string]any{
 				"query":      "What changed in Go 1.23?",
 				"start_time": "2026-01-01T00:00:00Z",
 				"end_time":   "2026-01-31T23:59:59Z",
@@ -138,17 +138,17 @@ func TestGeminiSearchHandlerValidationAndClientErrors(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		args          map[string]interface{}
+		args          map[string]any
 		wantErrorText string
 	}{
 		{
 			name:          "missing query",
-			args:          map[string]interface{}{},
+			args:          map[string]any{},
 			wantErrorText: "query must be a string and cannot be empty",
 		},
 		{
 			name: "invalid partial time range",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"query":      "find updates",
 				"start_time": "2026-01-01T00:00:00Z",
 			},
@@ -156,7 +156,7 @@ func TestGeminiSearchHandlerValidationAndClientErrors(t *testing.T) {
 		},
 		{
 			name: "non gemini model rejected",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"query": "find updates",
 				"model": "gpt-4.1",
 			},
@@ -164,7 +164,7 @@ func TestGeminiSearchHandlerValidationAndClientErrors(t *testing.T) {
 		},
 		{
 			name: "client not initialized",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"query": "find updates",
 			},
 			wantErrorText: "Internal error: Gemini client not properly initialized",
@@ -222,7 +222,7 @@ func TestGeminiSearchHandlerAPIError(t *testing.T) {
 	req := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "gemini_search",
-			Arguments: map[string]interface{}{
+			Arguments: map[string]any{
 				"query": "find updates",
 			},
 		},

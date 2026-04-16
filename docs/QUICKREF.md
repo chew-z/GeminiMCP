@@ -115,6 +115,9 @@ Generic prompts (`code_review`, `explain_code`, `debug_help`, `refactor_suggesti
 # Required
 GEMINI_API_KEY=...
 
+# Logging
+GEMINI_LOG_LEVEL=info               # debug | info | warn | error
+
 # Models
 GEMINI_MODEL=gemini-pro          # default for gemini_ask
 GEMINI_SEARCH_MODEL=gemini-flash-lite # default for gemini_search

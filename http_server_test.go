@@ -171,7 +171,7 @@ func TestCreateCustomHTTPHandler(t *testing.T) {
 		assert.Equal(t, "GET, OPTIONS", rec.Header().Get("Access-Control-Allow-Methods"))
 		assert.Equal(t, "Content-Type, Authorization", rec.Header().Get("Access-Control-Allow-Headers"))
 
-		var metadata map[string]interface{}
+		var metadata map[string]any
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &metadata))
 		assert.Equal(t, "http://mcp.local", metadata["issuer"])
 		assert.Equal(t, "http://mcp.local/oauth/authorize", metadata["authorization_endpoint"])

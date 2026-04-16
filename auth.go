@@ -106,7 +106,7 @@ func (a *AuthMiddleware) HTTPContextFunc(
 
 // validateJWT validates a JWT token and returns the claims
 func (a *AuthMiddleware) validateJWT(tokenString string) (*Claims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (any, error) {
 		// Pin to specific HS256 algorithm for enhanced security
 		if token.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])

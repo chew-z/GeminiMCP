@@ -135,6 +135,12 @@ Pass the token as a Bearer header in the MCP client configuration.
 |----------|-------------|
 | `GEMINI_API_KEY` | Google Gemini API key |
 
+### Logging
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEMINI_LOG_LEVEL` | `info` | Log verbosity: `debug`, `info`, `warn`, `error`. Set to `debug` when troubleshooting request assembly, context merging, or GitHub fetches. |
+
 ### Model
 
 | Variable | Default | Description |

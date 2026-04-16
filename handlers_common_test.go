@@ -15,13 +15,13 @@ import (
 func TestExtractArgumentStringArray(t *testing.T) {
 	tests := []struct {
 		name     string
-		args     map[string]interface{}
+		args     map[string]any
 		key      string
 		expected []string
 	}{
 		{
 			name: "array from client",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"github_files": []any{"a.go", "b.go", 42},
 			},
 			key:      "github_files",
@@ -29,7 +29,7 @@ func TestExtractArgumentStringArray(t *testing.T) {
 		},
 		{
 			name: "json string array",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"github_files": `["x.go","y.go"]`,
 			},
 			key:      "github_files",
@@ -37,7 +37,7 @@ func TestExtractArgumentStringArray(t *testing.T) {
 		},
 		{
 			name: "plain string value",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"github_files": "single.go",
 			},
 			key:      "github_files",
@@ -45,7 +45,7 @@ func TestExtractArgumentStringArray(t *testing.T) {
 		},
 		{
 			name: "malformed json falls back to plain string",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"github_files": "[bad-json",
 			},
 			key:      "github_files",
@@ -53,7 +53,7 @@ func TestExtractArgumentStringArray(t *testing.T) {
 		},
 		{
 			name: "empty string returns empty slice",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"github_files": "",
 			},
 			key:      "github_files",
@@ -61,7 +61,7 @@ func TestExtractArgumentStringArray(t *testing.T) {
 		},
 		{
 			name:     "missing key returns empty slice",
-			args:     map[string]interface{}{},
+			args:     map[string]any{},
 			key:      "github_files",
 			expected: nil,
 		},

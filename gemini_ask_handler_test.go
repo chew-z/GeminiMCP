@@ -45,12 +45,12 @@ func TestGeminiAskHandlerFileSourceBehavior(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		args          map[string]interface{}
+		args          map[string]any
 		wantErrorText string
 	}{
 		{
 			name: "rejects github_files without github_repo",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"query":        "test query",
 				"github_files": []any{"README.md"},
 			},
@@ -146,7 +146,7 @@ func TestGeminiAskHandlerGitHubWarningTruncationInOutboundQuery(t *testing.T) {
 	req := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "gemini_ask",
-			Arguments: map[string]interface{}{
+			Arguments: map[string]any{
 				"query":        "analyze this repository",
 				"github_repo":  "owner/repo",
 				"github_files": githubFiles,
@@ -253,7 +253,7 @@ func TestGeminiAskHandlerWithoutFilesUsesProcessWithoutFiles(t *testing.T) {
 	req := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "gemini_ask",
-			Arguments: map[string]interface{}{
+			Arguments: map[string]any{
 				"query": "answer this directly",
 			},
 		},
@@ -328,7 +328,7 @@ func TestGatherGitHubFiles(t *testing.T) {
 		req := mcp.CallToolRequest{
 			Params: mcp.CallToolParams{
 				Name: "gemini_ask",
-				Arguments: map[string]interface{}{
+				Arguments: map[string]any{
 					"github_repo": "owner/repo",
 				},
 			},
@@ -361,7 +361,7 @@ func TestGatherGitHubFiles(t *testing.T) {
 		req := mcp.CallToolRequest{
 			Params: mcp.CallToolParams{
 				Name: "gemini_ask",
-				Arguments: map[string]interface{}{
+				Arguments: map[string]any{
 					"github_repo": "owner/repo",
 				},
 			},
@@ -402,7 +402,7 @@ func TestParseAskRequest(t *testing.T) {
 			req: mcp.CallToolRequest{
 				Params: mcp.CallToolParams{
 					Name: "gemini_ask",
-					Arguments: map[string]interface{}{
+					Arguments: map[string]any{
 						"query": "test query",
 					},
 				},
@@ -416,7 +416,7 @@ func TestParseAskRequest(t *testing.T) {
 			req: mcp.CallToolRequest{
 				Params: mcp.CallToolParams{
 					Name: "gemini_ask",
-					Arguments: map[string]interface{}{
+					Arguments: map[string]any{
 						"query": "test query",
 						"model": "gemini-3-flash-preview",
 					},
@@ -431,7 +431,7 @@ func TestParseAskRequest(t *testing.T) {
 			req: mcp.CallToolRequest{
 				Params: mcp.CallToolParams{
 					Name: "gemini_ask",
-					Arguments: map[string]interface{}{
+					Arguments: map[string]any{
 						"query": "test query",
 						"model": "gemini-9-pro-preview",
 					},
@@ -446,7 +446,7 @@ func TestParseAskRequest(t *testing.T) {
 			req: mcp.CallToolRequest{
 				Params: mcp.CallToolParams{
 					Name: "gemini_ask",
-					Arguments: map[string]interface{}{
+					Arguments: map[string]any{
 						"query": "test query",
 						"model": "gpt-4.1",
 					},
@@ -460,7 +460,7 @@ func TestParseAskRequest(t *testing.T) {
 			req: mcp.CallToolRequest{
 				Params: mcp.CallToolParams{
 					Name: "gemini_ask",
-					Arguments: map[string]interface{}{
+					Arguments: map[string]any{
 						"query": "",
 					},
 				},

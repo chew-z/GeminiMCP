@@ -98,7 +98,7 @@ func TestCreateModelConfig(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		args          map[string]interface{}
+		args          map[string]any
 		defaultModel  string
 		wantModelName string
 		wantMaxTokens int32
@@ -108,7 +108,7 @@ func TestCreateModelConfig(t *testing.T) {
 	}{
 		{
 			name:          "uses model max output token limit by default",
-			args:          map[string]interface{}{},
+			args:          map[string]any{},
 			defaultModel:  "gemini-3.1-pro-preview",
 			wantModelName: "gemini-3.1-pro-preview-0507",
 			wantMaxTokens: 8192,
@@ -117,7 +117,7 @@ func TestCreateModelConfig(t *testing.T) {
 		},
 		{
 			name: "unknown gemini model redirects by tier",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"model": "gemini-9-flash-preview",
 			},
 			defaultModel:  "gemini-3.1-pro-preview",
@@ -130,7 +130,7 @@ func TestCreateModelConfig(t *testing.T) {
 			// Foolproof tool: deprecated 2.x input resolves forward to the
 			// current tier winner end-to-end through createModelConfig.
 			name: "deprecated 2.5 flash redirects to current flash winner",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"model": "gemini-2.5-flash",
 			},
 			defaultModel:  "gemini-3.1-pro-preview",
@@ -141,7 +141,7 @@ func TestCreateModelConfig(t *testing.T) {
 		},
 		{
 			name: "invalid thinking_level falls back to default",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"thinking_level": "ultra",
 			},
 			defaultModel:  "gemini-3.1-pro-preview",
@@ -152,7 +152,7 @@ func TestCreateModelConfig(t *testing.T) {
 		},
 		{
 			name: "model without thinking support skips thinking config",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"model": "gemini-3.1-flash-lite-preview",
 			},
 			defaultModel:  "gemini-3.1-pro-preview",
@@ -162,7 +162,7 @@ func TestCreateModelConfig(t *testing.T) {
 		},
 		{
 			name: "non-gemini model is rejected",
-			args: map[string]interface{}{
+			args: map[string]any{
 				"model": "claude-3.7-sonnet",
 			},
 			defaultModel: "gemini-3.1-pro-preview",
