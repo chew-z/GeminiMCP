@@ -45,6 +45,7 @@ var GeminiAskTool = mcp.NewTool(
 		"Optional: head ref for a GitHub compare diff (branch, tag, or SHA). "+
 			"Must be paired with github_diff_base.")),
 	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (low, medium, high). Default depends on model tier.")),
+	mcp.WithTaskSupport(mcp.TaskSupportOptional),
 )
 
 // GeminiSearchTool defines the gemini_search tool specification
@@ -70,4 +71,5 @@ var GeminiSearchTool = mcp.NewTool(
 		"Optional: Filter search results to those published before this time "+
 			"(RFC3339 format, e.g. '2024-12-31T23:59:59Z'). If provided, start_time must also be provided.",
 	)),
+	mcp.WithTaskSupport(mcp.TaskSupportOptional),
 )

@@ -185,6 +185,15 @@ func TestRegisterErrorTools(t *testing.T) {
 	}
 }
 
+func TestToolsAdvertiseTaskSupport(t *testing.T) {
+	for _, tool := range []mcp.Tool{GeminiAskTool, GeminiSearchTool} {
+		t.Run(tool.Name, func(t *testing.T) {
+			require.NotNil(t, tool.Execution, "tool %q missing Execution", tool.Name)
+			assert.Equal(t, mcp.TaskSupportOptional, tool.Execution.TaskSupport)
+		})
+	}
+}
+
 func TestSetupGeminiServerFailures(t *testing.T) {
 	t.Run("fails when logger is missing in context", func(t *testing.T) {
 		mcpServer := server.NewMCPServer("gemini", "1.0.0")

@@ -355,6 +355,21 @@ flight:
   transport auto-upgrades the response to SSE on the first notification,
   so no additional transport configuration is required.
 
+### Task-augmented execution
+
+Both tools advertise `taskSupport: optional` (MCP spec 2025-11-25). Clients
+that include a `task` field on `tools/call` receive a `CreateTaskResult`
+within milliseconds while the actual Gemini call continues in a server
+goroutine; the final answer is delivered via `notifications/tasks/status`
+and `tasks/result`. This dissolves the client-side 60 s deadline entirely,
+removing the failure mode that progress notifications only mitigate.
+`GEMINI_MAX_CONCURRENT_TASKS` (default `10`) caps simultaneous task
+executions — requests past the cap are rejected; set to `0` to disable
+task mode server-side. Clients that don't send `task` stay on the normal
+synchronous path, which is unchanged. Client support as of 2026-04:
+`mcp-inspector` ✅ (full UI); Claude Code CLI and OpenAI Codex CLI not
+documented — they continue using the sync path transparently.
+
 ---
 
 ## Query Pre-Qualification

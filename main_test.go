@@ -108,7 +108,7 @@ func installMainHooksForTest(t *testing.T, cfg *Config) *mainTestCalls {
 		return nil
 	}
 	getEnvFn = func(string) string { return "" }
-	newMCPServerFn = func() *server.MCPServer {
+	newMCPServerFn = func(*Config, Logger) *server.MCPServer {
 		return server.NewMCPServer("gemini", "1.0.0")
 	}
 

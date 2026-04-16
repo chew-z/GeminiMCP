@@ -26,7 +26,7 @@ var (
 	startHTTPServerFn    = startHTTPServer
 	serveStdioFn         = server.ServeStdio
 	getEnvFn             = os.Getenv
-	newMCPServerFn       = func() *server.MCPServer {
+	newMCPServerFn       = func(config *Config, logger Logger) *server.MCPServer {
 		return server.NewMCPServer(
 			"gemini",
 			"1.0.0",
@@ -39,6 +39,10 @@ Defaults are optimized per model tier. Override parameters exist but are rarely 
 github_repo is required when using any github_* parameter. github_files requires github_ref.`),
 			server.WithCompletions(),
 			server.WithPromptCompletionProvider(&GeminiCompletionProvider{}),
+			server.WithToolCapabilities(true),
+			server.WithTaskCapabilities(true, true, true),
+			server.WithMaxConcurrentTasks(config.MaxConcurrentTasks),
+			server.WithTaskHooks(newTaskHooks(logger)),
 		)
 	}
 )
@@ -129,7 +133,7 @@ func runMain(args []string) int {
 	}
 
 	// Create MCP server
-	mcpServer := newMCPServerFn()
+	mcpServer := newMCPServerFn(config, logger)
 
 	// Create and register the Gemini server tools (populates model catalog)
 	if err := setupGeminiServerFn(ctx, mcpServer, config); err != nil {

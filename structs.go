@@ -95,6 +95,9 @@ type Config struct {
 	// Progress notification settings
 	ProgressInterval time.Duration // Interval for notifications/progress; <=0 disables.
 
+	// Task-augmented tool settings
+	MaxConcurrentTasks int // Upper bound on concurrently-executing task tools. <=0 disables.
+
 	// Authentication settings
 	AuthEnabled   bool   // Enable JWT authentication for HTTP transport
 	AuthSecretKey string // Secret key for JWT signing and verification

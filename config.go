@@ -37,6 +37,9 @@ const (
 	// Progress notification defaults
 	defaultProgressInterval = 10 * time.Second // Cadence for notifications/progress; <=0 disables.
 
+	// Task-augmented tool defaults
+	defaultMaxConcurrentTasks = 10 // Upper bound on concurrently-executing task tools; <=0 disables.
+
 	// Authentication defaults
 	defaultAuthEnabled = false // Authentication disabled by default
 
@@ -236,6 +239,7 @@ func NewConfig(logger Logger) (*Config, error) {
 		httpHeartbeat = defaultHTTPHeartbeat
 	}
 	progressInterval := parseEnvVarDuration("GEMINI_PROGRESS_INTERVAL", defaultProgressInterval, logger)
+	maxConcurrentTasks := parseEnvVarInt("GEMINI_MAX_CONCURRENT_TASKS", defaultMaxConcurrentTasks, logger)
 	httpCORSEnabled := parseEnvVarBool("GEMINI_HTTP_CORS_ENABLED", defaultHTTPCORSEnabled, logger)
 	var httpCORSOrigins []string
 	if originsStr := os.Getenv("GEMINI_HTTP_CORS_ORIGINS"); originsStr != "" {
@@ -278,11 +282,14 @@ func NewConfig(logger Logger) (*Config, error) {
 			HTTPCORSEnabled:   httpCORSEnabled,
 			HTTPCORSOrigins:   httpCORSOrigins,
 			ProgressInterval:  progressInterval,
-			AuthEnabled:       authEnabled,
-			AuthSecretKey:     authSecretKey,
-			MaxRetries:        maxRetries,
-			InitialBackoff:    initialBackoff,
-			MaxBackoff:        maxBackoff,
+
+			MaxConcurrentTasks: maxConcurrentTasks,
+
+			AuthEnabled:    authEnabled,
+			AuthSecretKey:  authSecretKey,
+			MaxRetries:     maxRetries,
+			InitialBackoff: initialBackoff,
+			MaxBackoff:     maxBackoff,
 
 			// GitHub settings
 			GitHubToken:               githubToken,
