@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -24,6 +25,10 @@ Categories:
 // using a lightweight Flash model call with structured enum output.
 // On any failure it returns an error; the caller decides the fallback.
 func (s *GeminiServer) prequalifyQuery(ctx context.Context, query, contextSummary string) (queryCategory, error) {
+	if strings.TrimSpace(query) == "" && strings.TrimSpace(contextSummary) == "" {
+		return "", fmt.Errorf("prequalify: empty query and context")
+	}
+
 	logger := getLoggerFromContext(ctx)
 	modelName := resolvePrequalifyModel(s.config.PrequalifyModel)
 
@@ -112,22 +117,19 @@ func parsePrequalifyResponse(resp *genai.GenerateContentResponse) (queryCategory
 //  1. GEMINI_PREQUALIFY=false → systemPromptGeneral (synchronous, no API call)
 //  2. Pre-qualification succeeds → systemPromptForCategory(cat)
 //  3. Pre-qualification fails    → analyze if any github_* present, else general
-func (s *GeminiServer) resolveSystemPromptAsync(ctx context.Context, req mcp.CallToolRequest, logger Logger) <-chan string {
+func (s *GeminiServer) resolveSystemPromptAsync(ctx context.Context, req mcp.CallToolRequest, query string, logger Logger) <-chan string {
 	ch := make(chan string, 1)
 	if !s.config.Prequalify || s.client == nil || s.client.Models == nil {
 		ch <- systemPromptGeneral
 		return ch
 	}
 	go func() {
-		query, ok := req.GetArguments()["query"].(string)
-		if !ok {
-			ch <- systemPromptGeneral
-			return
-		}
 		summary := buildContextSummary(req)
 		cat, err := s.prequalifyQuery(ctx, query, summary)
 		if err != nil {
-			logger.Warn("Pre-qualification failed: %v, using fallback", err)
+			if !errors.Is(err, context.Canceled) {
+				logger.Warn("Pre-qualification failed: %v, using fallback", err)
+			}
 			if hasGitHubContext(req) {
 				cat = categoryAnalyze
 			} else {

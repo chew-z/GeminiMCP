@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -282,6 +283,17 @@ func configureMaxTokensOutput(
 // createErrorResult creates a standardized error result for mcp.CallToolResult
 func createErrorResult(message string) *mcp.CallToolResult {
 	return mcp.NewToolResultError(message)
+}
+
+// logGeminiAPIError logs a failure from the Gemini API. Caller-initiated
+// cancellations (MCP client disconnect, deadline expiry upstream) are logged
+// at Info to keep the error channel signal-heavy; everything else is Error.
+func logGeminiAPIError(logger Logger, prefix string, err error) {
+	if errors.Is(err, context.Canceled) {
+		logger.Info("%s canceled by caller: %v", prefix, err)
+		return
+	}
+	logger.Error("%s: %v", prefix, err)
 }
 
 // convertGenaiResponseToMCPResult converts a Gemini API response to an MCP result.

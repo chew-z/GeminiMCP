@@ -58,7 +58,7 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 	// Resolve the system prompt server-side, in parallel with context gathering.
 	// This is the sole assigner of SystemInstruction — createModelConfig does
 	// not touch it.
-	promptCh := s.resolveSystemPromptAsync(ctx, req, logger)
+	promptCh := s.resolveSystemPromptAsync(ctx, req, query, logger)
 
 	ghContextParts, uploads, inventory, allWarnings, errResult := s.gatherAllContext(ctx, req)
 	if errResult != nil {
@@ -549,7 +549,7 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string,
 		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	})
 	if err != nil {
-		logger.Error("Gemini API error: %v", err)
+		logGeminiAPIError(logger, "Gemini API error", err)
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 
@@ -573,7 +573,7 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
 		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	})
 	if err != nil {
-		logger.Error("Gemini API error: %v", err)
+		logGeminiAPIError(logger, "Gemini API error", err)
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 
