@@ -38,13 +38,22 @@ func startProgressReporter(
 	noop := func() {}
 
 	if interval <= 0 {
+		if logger != nil {
+			logger.Debug("progress reporter skipped for %s: interval<=0", label)
+		}
 		return noop
 	}
 	if req.Params.Meta == nil || req.Params.Meta.ProgressToken == nil {
+		if logger != nil {
+			logger.Debug("progress reporter skipped for %s: client did not send progressToken", label)
+		}
 		return noop
 	}
 	srv := server.ServerFromContext(ctx)
 	if srv == nil {
+		if logger != nil {
+			logger.Debug("progress reporter skipped for %s: no MCPServer in context", label)
+		}
 		return noop
 	}
 	return startProgressReporterWithEmitter(ctx, srv, req.Params.Meta.ProgressToken, interval, total, label, logger)
@@ -65,7 +74,16 @@ func startProgressReporterWithEmitter(
 	done := make(chan struct{})
 	var once sync.Once
 	stop = func() {
-		once.Do(func() { close(done) })
+		once.Do(func() {
+			if logger != nil {
+				logger.Debug("progress reporter stopped for %s (token=%v)", label, token)
+			}
+			close(done)
+		})
+	}
+
+	if logger != nil {
+		logger.Debug("progress reporter started for %s: token=%v interval=%s total=%.0f", label, token, interval, total)
 	}
 
 	start := time.Now()
@@ -88,8 +106,10 @@ func startProgressReporterWithEmitter(
 				}
 				if err := emitter.SendNotificationToClient(ctx, progressNotificationMethod, params); err != nil {
 					if logger != nil {
-						logger.Debug("progress notification dropped: %v", err)
+						logger.Debug("progress notification dropped for %s (token=%v): %v", label, token, err)
 					}
+				} else if logger != nil {
+					logger.Debug("progress notification sent for %s (token=%v): %.0fs elapsed", label, token, elapsed)
 				}
 			}
 		}

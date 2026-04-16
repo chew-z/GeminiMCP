@@ -47,10 +47,11 @@ func (l *recordingLogger) snapshot() []logEntry {
 
 func TestTaskHooks(t *testing.T) {
 	metrics := server.TaskMetrics{
-		TaskID:   "task-123",
-		ToolName: "gemini_ask",
-		Status:   mcp.TaskStatusCompleted,
-		Duration: 250 * time.Millisecond,
+		TaskID:    "task-123",
+		ToolName:  "gemini_ask",
+		SessionID: "sess-1",
+		Status:    mcp.TaskStatusCompleted,
+		Duration:  250 * time.Millisecond,
 	}
 
 	t.Run("on_task_created_logs_info", func(t *testing.T) {
@@ -58,9 +59,7 @@ func TestTaskHooks(t *testing.T) {
 		hooks := newTaskHooks(logger)
 		require.Len(t, hooks.OnTaskCreated, 1)
 
-		m := metrics
-		m.SessionID = "sess-1"
-		hooks.OnTaskCreated[0](context.Background(), m)
+		hooks.OnTaskCreated[0](context.Background(), metrics)
 
 		entries := logger.snapshot()
 		require.Len(t, entries, 1)
@@ -81,6 +80,7 @@ func TestTaskHooks(t *testing.T) {
 		require.Len(t, entries, 1)
 		assert.Equal(t, "INFO", entries[0].level)
 		assert.Contains(t, entries[0].msg, "task task-123 completed")
+		assert.Contains(t, entries[0].msg, "session=sess-1")
 		assert.Contains(t, entries[0].msg, "duration=250ms")
 	})
 
@@ -97,6 +97,7 @@ func TestTaskHooks(t *testing.T) {
 		require.Len(t, entries, 1)
 		assert.Equal(t, "ERROR", entries[0].level)
 		assert.Contains(t, entries[0].msg, "task task-123 failed")
+		assert.Contains(t, entries[0].msg, "session=sess-1")
 		assert.Contains(t, entries[0].msg, "error=boom")
 	})
 
@@ -111,6 +112,7 @@ func TestTaskHooks(t *testing.T) {
 		require.Len(t, entries, 1)
 		assert.Equal(t, "INFO", entries[0].level)
 		assert.Contains(t, entries[0].msg, "task task-123 cancelled")
+		assert.Contains(t, entries[0].msg, "session=sess-1")
 		assert.Contains(t, entries[0].msg, "duration=250ms")
 	})
 }

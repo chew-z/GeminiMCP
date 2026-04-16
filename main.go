@@ -27,9 +27,7 @@ var (
 	serveStdioFn         = server.ServeStdio
 	getEnvFn             = os.Getenv
 	newMCPServerFn       = func(config *Config, logger Logger) *server.MCPServer {
-		return server.NewMCPServer(
-			"gemini",
-			"1.0.0",
+		opts := []server.ServerOption{
 			server.WithTitle("Gemini MCP"),
 			server.WithDescription("Gemini LLM for analysis, reasoning and research"),
 			server.WithInstructions(`gemini_ask: send a prompt to Gemini, optionally with GitHub repository context.
@@ -40,10 +38,15 @@ github_repo is required when using any github_* parameter. github_files requires
 			server.WithCompletions(),
 			server.WithPromptCompletionProvider(&GeminiCompletionProvider{}),
 			server.WithToolCapabilities(true),
-			server.WithTaskCapabilities(true, true, true),
-			server.WithMaxConcurrentTasks(config.MaxConcurrentTasks),
-			server.WithTaskHooks(newTaskHooks(logger)),
-		)
+		}
+		if config.MaxConcurrentTasks > 0 {
+			opts = append(opts,
+				server.WithTaskCapabilities(true, true, true),
+				server.WithMaxConcurrentTasks(config.MaxConcurrentTasks),
+				server.WithTaskHooks(newTaskHooks(logger)),
+			)
+		}
+		return server.NewMCPServer("gemini", "1.0.0", opts...)
 	}
 )
 
@@ -134,6 +137,7 @@ func runMain(args []string) int {
 
 	// Create MCP server
 	mcpServer := newMCPServerFn(config, logger)
+	logServerCapabilities(logger, config)
 
 	// Create and register the Gemini server tools (populates model catalog)
 	if err := setupGeminiServerFn(ctx, mcpServer, config); err != nil {
@@ -201,4 +205,25 @@ func getFeatureStatusStr(enabled bool) string {
 		return "enabled"
 	}
 	return "disabled"
+}
+
+// logServerCapabilities summarises advertised MCP capabilities at startup so
+// operators can see at a glance what the server will offer clients.
+func logServerCapabilities(logger Logger, config *Config) {
+	logger.Info("MCP capabilities: tools=true completions=true prompt_completion=true")
+
+	if config.MaxConcurrentTasks > 0 {
+		logger.Info(
+			"MCP capabilities: tasks=enabled max_concurrent=%d progress=supported heartbeat=supported cancel=supported",
+			config.MaxConcurrentTasks,
+		)
+	} else {
+		logger.Info("MCP capabilities: tasks=disabled (GEMINI_MAX_CONCURRENT_TASKS<=0)")
+	}
+
+	if config.ProgressInterval > 0 {
+		logger.Info("MCP capabilities: progress_notifications=enabled interval=%s", config.ProgressInterval)
+	} else {
+		logger.Info("MCP capabilities: progress_notifications=disabled (GEMINI_PROGRESS_INTERVAL<=0)")
+	}
 }
