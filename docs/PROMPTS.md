@@ -113,7 +113,29 @@ When any `github_*` context is attached, `applyContextInventory`
 (`gemini_ask_handler.go`) appends a deterministic, descriptive trailer to
 the chosen system prompt that names every block actually present (file
 count, commit shas, PR number + title, diff base..head). This is purely
-descriptive — it adds no new instructions, only labels the model can cite.
+descriptive — it adds no new instructions, only labels the model can cite
+by their XML tag name (`<file>`, `<commit>`, `<diff>`, `<pull_request>`).
+
+### 3.4 User-turn envelope + final instruction
+
+Independently of the system prompt, every `gemini_ask` and `gemini_search`
+user turn is wrapped by `envelope.go` into a Gemini 3-style XML envelope:
+
+- `<context repo="…">` (present only when at least one `github_*` source
+  succeeds) holds every `<commit>`, `<diff>`, `<pull_request>`, and `<file>`
+  fragment in stable merge order.
+- An anchor line `USING THE CONTEXT PROVIDED ABOVE, YOUR TASK IS:` bridges
+  the context and the task.
+- `<task>` wraps `<query>` and, when any source failed, a sibling
+  `<unloaded_context>` listing the failed items.
+- `<final_instruction>` carries a short scenario-specific body picked from
+  `final_instructions.go` by the **same category** the pre-qualifier
+  produced: `general`, `analyze`, `review`, `security`, `debug`, `tests`.
+  `gemini_search` uses a hard-coded `finalInstructionSearch`.
+
+Attacker-controlled metadata goes through `xmlAttr` (escape `& < > "`);
+attacker-controlled bodies go through `cdataWrap` (CDATA-wrap with
+`]]>` splitting). See [ARCHITECTURE OVERVIEW § 8](ARCHITECTURE%20OVERVIEW.md#8-security).
 
 ---
 
@@ -131,7 +153,7 @@ gemini_ask request
       ├─ resolveSystemPromptAsync(ctx, req)         ── prequalify.go ──┐
       │       │                                                       │
       │       ├─ s.config.Prequalify == false?                        │
-      │       │     └─ ch <- systemPromptGeneral  (synchronous)       │
+      │       │     └─ ch <- {SystemPrompt: general, Category: general}
       │       │                                                       │
       │       └─ goroutine                                             │
       │             ├─ buildContextSummary(req)    (one-line summary)  │
@@ -139,15 +161,21 @@ gemini_ask request
       │             │     └─ Flash call w/ JSON-enum schema            │
       │             ├─ on error → analyze if hasGitHubContext(req)     │
       │             │             else general                         │
-      │             └─ ch <- systemPromptForCategory(cat)              │
+      │             └─ ch <- resolvedPrompt{                           │
+      │                        SystemPrompt: systemPromptForCategory(cat),
+      │                        Category:     cat,                      │
+      │                     }                                          │
       │                                                                │
       ├─ gatherAllContext(ctx, req)  ── parallel ──                   │
       │                                                                │
-      └─ <-promptCh   ── sole assigner of SystemInstruction ───────────┘
+      └─ <-promptCh   ── system instruction + final-instruction key ───┘
 ```
 
-The category is delivered through a buffered channel; `GeminiAskHandler`
-blocks on the channel only after all context-fetching work is complete.
+The channel yields a `resolvedPrompt{SystemPrompt, Category}`; the system
+prompt becomes `SystemInstruction`, and the category selects the
+`<final_instruction>` body via `finalInstructionFor(category)` in
+`final_instructions.go`. `GeminiAskHandler` blocks on the channel only
+after all context-fetching work is complete.
 
 ### 4.2 The classifier
 
@@ -220,7 +248,9 @@ truth; if the operator wants different behavior they edit
    `parsePrequalifyResponse` in `prequalify.go`.
 5. Update the category list in `prequalifySystemPrompt` so the classifier
    knows the new option exists.
-6. Add a row to the category table in this file and in
+6. Add a `finalInstructionFoo` constant and a `categoryFoo: finalInstructionFoo`
+   entry to `finalInstructionByCategory` in `final_instructions.go`.
+7. Add a row to the category table in this file and in
    [TOOLS.md](TOOLS.md).
 
 ### 6.2 Add a new MCP prompt
@@ -258,9 +288,11 @@ on a stable response shape.
 | File | Responsibility |
 |------|----------------|
 | `system_prompts.go` | `queryCategory` enum, `systemPromptForCategory`, all XML system-prompt constants. |
-| `prequalify.go` | `resolveSystemPromptAsync`, `prequalifyQuery`, `buildContextSummary`, `hasGitHubContext`, classifier config and validation. |
+| `prequalify.go` | `resolveSystemPromptAsync` (yields `resolvedPrompt{SystemPrompt, Category}`), `prequalifyQuery`, `buildContextSummary`, `hasGitHubContext`, classifier config and validation. |
+| `envelope.go` | `xmlAttr`, `cdataWrap`, `wrapUserTurnWithContext`, `wrapUserTurnQueryOnly`, `renderUnloadedContext` — the user-turn XML envelope. |
+| `final_instructions.go` | `finalInstructionFor(category)` and the category → instruction table driving `<final_instruction>`. |
 | `prompts.go` | `Prompts` slice — the MCP prompt registry. |
 | `prompt_handlers.go` | `promptHandler` (generic), `buildReviewPRHandler` / `buildExplainCommitHandler` / `buildCompareRefsHandler` (custom), `createTaskInstructions`, `createSearchInstructions`. |
-| `gemini_ask_handler.go` | `GeminiAskHandler` — the **sole** assigner of `SystemInstruction` for `gemini_ask`; `applyContextInventory` for the descriptive addendum. |
-| `gemini_search_handler.go` | `GeminiSearchHandler` — assigns `systemPromptSearch` directly. |
+| `gemini_ask_handler.go` | `GeminiAskHandler` — the **sole** assigner of `SystemInstruction` for `gemini_ask`; `applyContextInventory` for the descriptive addendum; calls `wrapUserTurnWithContext` / `wrapUserTurnQueryOnly`. |
+| `gemini_search_handler.go` | `GeminiSearchHandler` — assigns `systemPromptSearch` directly; wraps query via `wrapUserTurnQueryOnly` + `finalInstructionSearch`. |
 | `handlers_common.go` | `createModelConfig` — does **not** touch `SystemInstruction`; the caller owns it. |

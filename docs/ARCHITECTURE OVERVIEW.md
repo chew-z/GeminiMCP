@@ -102,13 +102,15 @@ clients receive a descriptive fault instead of a silent crash.
 | `tools.go` | MCP tool schema definitions |
 | `fetch_models.go` | Dynamic model catalog from live Gemini API; tier classification |
 | `handlers_common.go` | `createModelConfig`; `extractArgumentString`; `SafeWriter`; grounding-source collection |
-| `github_diff.go` | GitHub API HTTP client; rate-limit handling; `sanitizeUntrustedBlockContent` |
-| `github_diff_handler.go` | `gatherCompareDiff` — base…head diff fetching |
-| `github_pr_handler.go` | PR body + review-comments context |
-| `github_commits_handler.go` | Commit message context |
+| `github_diff.go` | GitHub API HTTP client; rate-limit handling; hunk-aware diff truncation |
+| `github_diff_handler.go` | `gatherCompareDiff` — base…head diff fetching, emits `<diff>` XML |
+| `github_pr_handler.go` | PR body + review-comments, emits nested `<pull_request>` XML |
+| `github_commits_handler.go` | Commit message + patch, emits `<commit>` XML |
 | `file_handlers.go` | GitHub file upload to Gemini Files API; rate-limit + status-code handling |
 | `prequalify.go` | Flash-based query classifier; runs in parallel with context fetching |
 | `system_prompts.go` | XML-structured system prompts keyed by classification category |
+| `envelope.go` | User-turn XML envelope helpers: `xmlAttr`, `cdataWrap`, `wrapUserTurnWithContext`, `wrapUserTurnQueryOnly` |
+| `final_instructions.go` | Category-keyed `<final_instruction>` bodies injected at end of user turn |
 | `progress.go` | Periodic MCP `notifications/progress` during long Gemini calls |
 | `task_hooks.go` | Lifecycle hooks for task-augmented tool execution |
 | `auth.go` | `AuthMiddleware`; JWT validation; `Claims` |
@@ -149,14 +151,17 @@ Clients may also pass explicit model IDs which are validated by `ValidateModelID
 GeminiAskHandler
   └─ parseAskRequest()
   └─ resolveSystemPromptAsync()         — prequalify.go: Flash classifier in parallel
+                                         returns resolvedPrompt{SystemPrompt, Category}
   └─ gatherAllContext()                 — runs concurrently with the classifier
-       ├─ gatherGitHubContext()         — commits → diff → PR bundle
+       ├─ gatherGitHubContext()         — commits → diff → PR bundle (XML fragments)
        │    └─ fetchGitHubContextSources() (parallel-safe)
        └─ gatherFileUploads()           — github_files
             └─ gatherGitHubFiles()
-  └─ applyContextInventory()            — prepend inventory block to system prompt
+  └─ applyContextInventory()            — prepend inventory addendum to system prompt
   └─ processWithFiles()  |
-     processWithoutFiles()              — call Gemini API with assembled parts
+     processWithoutFiles()              — wrap in XML envelope, call Gemini API
+                                         ↳ wrapUserTurnWithContext/QueryOnly (envelope.go)
+                                         ↳ finalInstructionFor(category) (final_instructions.go)
 ```
 
 Pre-qualification (`prequalify.go`) classifies every request into one of six
@@ -180,10 +185,63 @@ All four sources are **independent, optional peers** in one request:
 Stable merge order: `[commits] → [diff] → [PR bundle] → [files]`.
 `github_repo` is **required** whenever any `github_*` parameter is used.
 
+### User-Turn XML Envelope
+
+Every `gemini_ask` user turn is wrapped in a Gemini 3-style XML envelope assembled
+by `envelope.go`. With context:
+
+```xml
+<context repo="owner/repo">
+  <commit sha="…" author="…" …><message>…</message><patch>…</patch></commit>
+  <diff base="…" head="…" truncated="…">…</diff>
+  <pull_request number="…" …>
+    <description>…</description>
+    <patch>…</patch>
+    <review author="…" path="…" line="…">…</review>
+  </pull_request>
+  <file path="…" ref="…" kind="text|binary" mime="…">…</file>
+</context>
+
+USING THE CONTEXT PROVIDED ABOVE, YOUR TASK IS:
+
+<task>
+  <query>…user's query…</query>
+  <unloaded_context>          <!-- only when warnings present -->
+    <item>…failed item…</item>
+  </unloaded_context>
+</task>
+
+<final_instruction>
+…category-specific body (see final_instructions.go)…
+</final_instruction>
+```
+
+Without context (general query with no attachments, or `gemini_search`), the
+`<context>` block and the anchor line are omitted; the envelope collapses to
+`<task>` + `<final_instruction>`.
+
+Attacker-controlled text is handled two ways:
+
+- **Metadata** (filenames, commit subjects, PR titles, author names, review
+  paths) is rendered into attribute values via `xmlAttr`, escaping `& < > "`.
+- **Bodies** (messages, diffs, descriptions, review comments, file contents)
+  are CDATA-wrapped via `cdataWrap`, which splits any embedded `]]>` so a
+  malicious body cannot close the section early.
+
+### Category-Keyed Final Instruction
+
+`final_instructions.go` holds a table mapping each `queryCategory` produced by
+the pre-qualifier to a short scenario-specific `<final_instruction>` body
+(e.g. severity-ordered findings for `review`, OWASP-style reporting for
+`security`, runnable tests for `tests`). `gemini_search` uses a hard-coded
+`finalInstructionSearch` because it never routes through the classifier.
+
 ### Context Inventory
 
-`applyContextInventory()` prepends a deterministic inventory block to the system
-instruction, letting the model cite which sources are present without hallucinating.
+`applyContextInventory()` appends a deterministic inventory addendum to the
+system instruction, naming every `<file>`, `<commit>`, `<diff>`, and
+`<pull_request>` present so the model cites real sources rather than
+hallucinating.
 
 ---
 
@@ -210,14 +268,23 @@ githubAPIGet()
 
 ### Prompt Injection Prevention
 
-`sanitizeUntrustedBlockContent()` (`github_diff.go:324`) runs on every piece of
-attacker-controlled text (PR bodies, commit messages, review comments). It performs
-a multi-pass scan per line:
+The server-emitted structure is a Gemini 3-style XML envelope, so attacker
+attempts to impersonate a block boundary must either forge an opening tag, close
+a CDATA section early, or break out of an attribute value. Two defences in
+`envelope.go` close all three vectors:
 
-1. Strip invisible Unicode runes (`Cf`, `Mn`, `Me` categories).
-2. Normalize dash variants (`Pd` + U+2212 MINUS SIGN) to ASCII `-`.
-3. Normalize alternative line separators (`VT`, `FF`, `NEL`, `LS`, `PS`) to LF.
-4. Redact any line matching the server block-header anchor `---<whitespace>`.
+- `xmlAttr(v)` renders every piece of metadata (filenames, commit subjects, PR
+  titles, review paths, author names, refs) inside `"…"` attribute values with
+  `& < > "` escaped. A filename like `nasty"><injected/>` appears to the model
+  as literal text, not a new element.
+- `cdataWrap(v)` wraps every body (commit messages, patches, diffs, PR
+  descriptions, review comments, file contents) in a CDATA section and splits
+  any embedded `]]>` into `]]]]><![CDATA[>`. A malicious body containing
+  `]]></pull_request>` can no longer terminate its containing section.
+
+Regression coverage lives in `envelope_test.go` (escape + CDATA split tables)
+and in `github_context_test.go` (`TestPRBodyXMLInjection`,
+`TestFilenameXMLInjection`, `TestCommitSubjectXMLInjection`).
 
 ### JWT Authentication (HTTP transport)
 

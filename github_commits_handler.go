@@ -50,63 +50,67 @@ func (s *GeminiServer) gatherCommits(
 		if sha == "" {
 			continue
 		}
-
-		commitURL := fmt.Sprintf("%s/repos/%s/%s/commits/%s", base, owner, repo, encodeRefForURL(sha))
-
-		// Metadata — for the rich header.
-		metaBytes, err := githubAPIGet(ctx, s, commitURL, "application/vnd.github+json", 1<<20)
-		if err != nil {
-			logger.Warn("Failed to fetch commit %s metadata: %v", sha, err)
-			warnings = append(warnings, fmt.Sprintf("commit %s: %v", sha, err))
+		part, cinv, warns := s.fetchCommit(ctx, base, owner, repo, sha, logger)
+		warnings = append(warnings, warns...)
+		if part == nil {
 			continue
 		}
-		var meta githubCommitMeta
-		if uerr := json.Unmarshal(metaBytes, &meta); uerr != nil {
-			logger.Warn("Failed to parse commit %s metadata: %v", sha, uerr)
-			warnings = append(warnings, fmt.Sprintf("commit %s: parse error", sha))
-			continue
-		}
-
-		// Patch.
-		patchBytes, err := githubAPIGet(ctx, s, commitURL, "application/vnd.github.v3.diff", s.config.MaxGitHubDiffBytes+1)
-		if err != nil {
-			logger.Warn("Failed to fetch commit %s diff: %v", sha, err)
-			warnings = append(warnings, fmt.Sprintf("commit %s diff: %v", sha, err))
-			continue
-		}
-		patch, truncated := truncateDiff(string(patchBytes), s.config.MaxGitHubDiffBytes)
-
-		subject, messageBody := splitCommitMessage(meta.Commit.Message)
-		// Author is either a GitHub Login (alphanumeric/dash, safe) or the
-		// free-form Commit.Author.Name (attacker-controlled). Quote the
-		// free-form form so a name containing "---" cannot spoof a header.
-		var author string
-		if meta.Author.Login != "" {
-			author = "@" + meta.Author.Login
-		} else {
-			author = fmt.Sprintf("%q", meta.Commit.Author.Name)
-		}
-
-		// subject is attacker-controlled (commit message first line); %q
-		// quotes it so embedded "---" cannot impersonate a block header.
-		header := fmt.Sprintf("--- Commit %s by %s (%s): %q ---",
-			shortSHA(meta.SHA), author, meta.Commit.Author.Date, subject)
-		var body strings.Builder
-		if messageBody != "" {
-			body.WriteString(sanitizeUntrustedBlockContent(messageBody))
-			body.WriteString("\n\n")
-		}
-		body.WriteString(patch)
-
-		parts = append(parts, makeTextPart(header, body.String()))
-		inv = append(inv, commitInventory{
-			SHA:       shortSHA(meta.SHA),
-			Subject:   subject,
-			Truncated: truncated,
-		})
+		parts = append(parts, part)
+		inv = append(inv, cinv)
 	}
 
 	return parts, inv, warnings, nil
+}
+
+// fetchCommit fetches one commit's metadata + patch and renders the XML
+// fragment. Returns a nil part plus warnings when any step fails.
+func (s *GeminiServer) fetchCommit(
+	ctx context.Context, base, owner, repo, sha string, logger Logger,
+) (*genai.Part, commitInventory, []string) {
+	commitURL := fmt.Sprintf("%s/repos/%s/%s/commits/%s", base, owner, repo, encodeRefForURL(sha))
+
+	metaBytes, err := githubAPIGet(ctx, s, commitURL, "application/vnd.github+json", 1<<20)
+	if err != nil {
+		logger.Warn("Failed to fetch commit %s metadata: %v", sha, err)
+		return nil, commitInventory{}, []string{fmt.Sprintf("commit %s: %v", sha, err)}
+	}
+	var meta githubCommitMeta
+	if uerr := json.Unmarshal(metaBytes, &meta); uerr != nil {
+		logger.Warn("Failed to parse commit %s metadata: %v", sha, uerr)
+		return nil, commitInventory{}, []string{fmt.Sprintf("commit %s: parse error", sha)}
+	}
+
+	patchBytes, err := githubAPIGet(ctx, s, commitURL, "application/vnd.github.v3.diff", s.config.MaxGitHubDiffBytes+1)
+	if err != nil {
+		logger.Warn("Failed to fetch commit %s diff: %v", sha, err)
+		return nil, commitInventory{}, []string{fmt.Sprintf("commit %s diff: %v", sha, err)}
+	}
+	patch, truncated := truncateDiff(string(patchBytes), s.config.MaxGitHubDiffBytes)
+
+	subject, messageBody := splitCommitMessage(meta.Commit.Message)
+	authorAttr := meta.Commit.Author.Name
+	if meta.Author.Login != "" {
+		authorAttr = "@" + meta.Author.Login
+	}
+
+	part := genai.NewPartFromText(fmt.Sprintf(
+		"  <commit sha=\"%s\" author=\"%s\" date=\"%s\" subject=\"%s\" truncated=\"%s\">\n"+
+			"    <message>%s</message>\n"+
+			"    <patch>%s</patch>\n"+
+			"  </commit>\n",
+		xmlAttr(shortSHA(meta.SHA)),
+		xmlAttr(authorAttr),
+		xmlAttr(meta.Commit.Author.Date),
+		xmlAttr(subject),
+		boolStr(truncated),
+		cdataWrap(messageBody),
+		cdataWrap(patch),
+	))
+	return part, commitInventory{
+		SHA:       shortSHA(meta.SHA),
+		Subject:   subject,
+		Truncated: truncated,
+	}, nil
 }
 
 // splitCommitMessage separates a git commit message into its subject line and

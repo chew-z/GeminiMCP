@@ -42,8 +42,10 @@ func (s *GeminiServer) gatherCompareDiff(
 
 	diff, truncated := truncateDiff(string(patchBytes), s.config.MaxGitHubDiffBytes)
 
-	header := fmt.Sprintf("--- Diff from %s/%s: %s..%s ---", owner, repo, base, head)
-	part := makeTextPart(header, diff)
+	part := genai.NewPartFromText(fmt.Sprintf(
+		"  <diff base=\"%s\" head=\"%s\" truncated=\"%s\">%s</diff>\n",
+		xmlAttr(base), xmlAttr(head), boolStr(truncated), cdataWrap(diff),
+	))
 
 	inv := &diffInventory{Base: base, Head: head, Truncated: truncated}
 	return []*genai.Part{part}, inv, nil

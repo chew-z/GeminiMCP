@@ -109,18 +109,27 @@ func parsePrequalifyResponse(resp *genai.GenerateContentResponse) (queryCategory
 	}
 }
 
-// resolveSystemPromptAsync returns a buffered channel that yields the
-// system-prompt string for this request. It is the SOLE assigner of system
-// instructions for gemini_ask and runs concurrently with context gathering.
+// resolvedPrompt carries both the system-prompt string and the category it was
+// resolved from. Callers need the category to select the matching
+// <final_instruction> body for the user-turn envelope.
+type resolvedPrompt struct {
+	SystemPrompt string
+	Category     queryCategory
+}
+
+// resolveSystemPromptAsync returns a buffered channel that yields the resolved
+// system prompt and category for this request. It is the SOLE assigner of
+// system instructions for gemini_ask and runs concurrently with context
+// gathering.
 //
 // Resolution precedence:
-//  1. GEMINI_PREQUALIFY=false → systemPromptGeneral (synchronous, no API call)
-//  2. Pre-qualification succeeds → systemPromptForCategory(cat)
+//  1. GEMINI_PREQUALIFY=false → systemPromptGeneral + categoryGeneral (synchronous, no API call)
+//  2. Pre-qualification succeeds → systemPromptForCategory(cat) + cat
 //  3. Pre-qualification fails    → analyze if any github_* present, else general
-func (s *GeminiServer) resolveSystemPromptAsync(ctx context.Context, req mcp.CallToolRequest, query string, logger Logger) <-chan string {
-	ch := make(chan string, 1)
+func (s *GeminiServer) resolveSystemPromptAsync(ctx context.Context, req mcp.CallToolRequest, query string, logger Logger) <-chan resolvedPrompt {
+	ch := make(chan resolvedPrompt, 1)
 	if !s.config.Prequalify || s.client == nil || s.client.Models == nil {
-		ch <- systemPromptGeneral
+		ch <- resolvedPrompt{SystemPrompt: systemPromptGeneral, Category: categoryGeneral}
 		return ch
 	}
 	go func() {
@@ -136,7 +145,7 @@ func (s *GeminiServer) resolveSystemPromptAsync(ctx context.Context, req mcp.Cal
 				cat = categoryGeneral
 			}
 		}
-		ch <- systemPromptForCategory(cat)
+		ch <- resolvedPrompt{SystemPrompt: systemPromptForCategory(cat), Category: cat}
 	}()
 	return ch
 }

@@ -54,14 +54,27 @@ parameters are **independent, optional peers** — mix and match freely in one c
 ### GitHub Context Behavior
 
 When GitHub parameters are present, the server fetches each source **independently
-and in parallel-safe order**, then merges them into the request in this stable sequence:
+and in parallel-safe order**, then merges them into a Gemini 3-style XML envelope
+in this stable sequence:
 
 ```
-[commits] → [diff (compare)] → [PR bundle (diff + description + review comments)] → [files]
+<context repo="…">
+  [commits] → [diff (compare)] → [PR bundle] → [files]
+</context>
+
+USING THE CONTEXT PROVIDED ABOVE, YOUR TASK IS:
+
+<task><query>…</query></task>
+
+<final_instruction>…scenario-specific…</final_instruction>
 ```
 
-A **context inventory** block is prepended to the system instruction so the model
-can cite which sources are actually present.
+Each source renders as a typed XML element — `<commit>`, `<diff>`, `<pull_request>`
+(with nested `<description>`, `<patch>`, `<review>`), and `<file>`. Failed fetches
+surface inside the task as an `<unloaded_context>` list, not as a query suffix.
+
+A **context inventory** block is appended to the system instruction so the model
+can cite which sources are actually present by their tag name.
 
 **Limits (configurable via env vars):**
 
@@ -76,9 +89,11 @@ can cite which sources are actually present.
 Hunk-aware truncation cuts large diffs at logical `@@` boundaries so Gemini always
 receives syntactically valid diff fragments.
 
-**Security:** All attacker-controlled text (PR bodies, commit messages, review
-comments) passes through a multi-pass Unicode sanitizer that neutralizes
-prompt-injection attempts before being sent to the model.
+**Security:** Attacker-controllable metadata (filenames, commit subjects, PR
+titles, author names, review paths) is attribute-escaped via `xmlAttr`;
+attacker-controllable bodies (messages, patches, diffs, descriptions, review
+comments, file contents) are CDATA-wrapped via `cdataWrap`, which splits any
+embedded `]]>` so a malicious body cannot close its section early.
 
 ### Mutual Exclusions
 
@@ -375,7 +390,10 @@ documented — they continue using the sync path transparently.
 ## Query Pre-Qualification
 
 `gemini_ask` automatically classifies every request into one of six categories
-and selects a tailored XML-structured system prompt server-side.
+and selects a tailored XML-structured system prompt server-side. The **same
+category** also selects a scenario-specific `<final_instruction>` body at the
+end of the user-turn envelope (e.g. severity-ordered findings for `review`,
+OWASP-style reporting for `security`, runnable tests for `tests`).
 
 | Category | Selected when |
 |----------|--------------|

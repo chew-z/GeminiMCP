@@ -27,33 +27,6 @@ func toolResultText(t *testing.T, result *mcp.CallToolResult) string {
 	return text.Text
 }
 
-func TestAppendFileWarningNote(t *testing.T) {
-	baseQuery := "summarize this code"
-
-	t.Run("no warnings keeps query unchanged", func(t *testing.T) {
-		got := appendFileWarningNote(baseQuery, nil)
-		assert.Equal(t, baseQuery, got)
-	})
-
-	t.Run("caps warnings and appends overflow suffix", func(t *testing.T) {
-		var warnings []string
-		for i := 1; i <= maxReportedWarnings+2; i++ {
-			warnings = append(warnings, fmt.Sprintf("file-%02d: could not be loaded", i))
-		}
-
-		got := appendFileWarningNote(baseQuery, warnings)
-		assert.Contains(t, got, baseQuery)
-		assert.Contains(t, got, "The following requested context could not be loaded")
-		assert.Contains(t, got, "... and 2 other item(s)")
-
-		for i := 0; i < maxReportedWarnings; i++ {
-			assert.Contains(t, got, warnings[i])
-		}
-		assert.NotContains(t, got, warnings[maxReportedWarnings])
-		assert.NotContains(t, got, warnings[maxReportedWarnings+1])
-	})
-}
-
 func TestGeminiAskHandlerFileSourceBehavior(t *testing.T) {
 	seedModelStateForTest(t, testModelCatalog())
 
@@ -213,16 +186,22 @@ func TestGeminiAskHandlerGitHubWarningTruncationInOutboundQuery(t *testing.T) {
 	require.NotEmpty(t, payload.Contents)
 	require.NotEmpty(t, payload.Contents[0].Parts)
 
-	querySent := payload.Contents[0].Parts[len(payload.Contents[0].Parts)-1].Text
-	assert.Contains(t, querySent, "analyze this repository")
-	assert.Contains(t, querySent, "The following requested context could not be loaded")
-	assert.Contains(t, querySent, "... and 2 other item(s)")
+	// Flatten all Parts text — the envelope is split across several Parts.
+	var sb strings.Builder
+	for _, p := range payload.Contents[0].Parts {
+		sb.WriteString(p.Text)
+	}
+	all := sb.String()
+
+	assert.Contains(t, all, "<task>")
+	assert.Contains(t, all, "<![CDATA[analyze this repository]]>")
+	assert.Contains(t, all, "<unloaded_context>")
 
 	for i := 1; i <= maxReportedWarnings; i++ {
-		assert.Contains(t, querySent, fmt.Sprintf("path/missing-%02d.txt: could not be fetched from GitHub", i))
+		assert.Contains(t, all, fmt.Sprintf("<![CDATA[path/missing-%02d.txt: could not be fetched from GitHub]]>", i))
 	}
-	assert.NotContains(t, querySent, "path/missing-11.txt: could not be fetched from GitHub")
-	assert.NotContains(t, querySent, "path/missing-12.txt: could not be fetched from GitHub")
+	assert.NotContains(t, all, "path/missing-11.txt: could not be fetched from GitHub")
+	assert.NotContains(t, all, "path/missing-12.txt: could not be fetched from GitHub")
 }
 
 func TestGeminiAskHandlerWithoutFilesUsesProcessWithoutFiles(t *testing.T) {
@@ -310,8 +289,11 @@ func TestGeminiAskHandlerWithoutFilesUsesProcessWithoutFiles(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(requestBody, &payload))
 	require.NotEmpty(t, payload.Contents)
-	require.Len(t, payload.Contents[0].Parts, 1)
-	assert.Equal(t, "answer this directly", payload.Contents[0].Parts[0].Text)
+	require.Len(t, payload.Contents[0].Parts, 2)
+	assert.Equal(t,
+		"<task>\n  <query><![CDATA[answer this directly]]></query>\n</task>\n\n",
+		payload.Contents[0].Parts[0].Text)
+	assert.Contains(t, payload.Contents[0].Parts[1].Text, "<final_instruction>")
 }
 
 func TestGatherGitHubFiles(t *testing.T) {

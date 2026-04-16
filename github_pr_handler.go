@@ -66,7 +66,7 @@ func (s *GeminiServer) gatherPullRequest(
 	comments, commentWarns := s.fetchPRComments(ctx, base, owner, repo, prNumber)
 	warnings = append(warnings, commentWarns...)
 
-	parts := assemblePRParts(owner, repo, meta, diff, comments)
+	parts := assemblePRParts(owner, repo, meta, diff, diffTruncated, comments)
 
 	inv := &prInventory{
 		Number:        meta.Number,
@@ -132,39 +132,41 @@ func (s *GeminiServer) fetchPRComments(
 }
 
 // assemblePRParts converts the fetched PR metadata, diff, and review comments
-// into the labelled text parts handed to Gemini.
+// into a single nested <pull_request> XML fragment handed to Gemini. The
+// _ = owner and _ = repo parameters are retained for signature continuity;
+// the repo is already recorded on the <context repo="..."> wrapper.
 func assemblePRParts(
-	owner, repo string, meta githubPRMeta, diff string, comments []githubPRReviewComment,
+	_, _ string, meta githubPRMeta, diff string, diffTruncatedFlag bool, comments []githubPRReviewComment,
 ) []*genai.Part {
-	var parts []*genai.Part
-
-	header := fmt.Sprintf("--- PR #%d from %s/%s: %q by @%s [%s] (base %s → head %s) ---",
-		meta.Number, owner, repo, strings.TrimSpace(meta.Title), meta.User.Login, meta.State,
-		shortSHA(meta.Base.SHA), shortSHA(meta.Head.SHA))
-	body := strings.TrimSpace(meta.Body)
-	if body == "" {
-		body = "(no description)"
-	} else {
-		body = sanitizeUntrustedBlockContent(body)
-	}
-	parts = append(parts, makeTextPart(header, body))
-
+	var b strings.Builder
+	fmt.Fprintf(&b,
+		"  <pull_request number=\"%d\" author=\"%s\" state=\"%s\""+
+			" base_ref=\"%s\" base_sha=\"%s\" head_ref=\"%s\" head_sha=\"%s\""+
+			" title=\"%s\" diff_truncated=\"%s\">\n",
+		meta.Number,
+		xmlAttr("@"+meta.User.Login),
+		xmlAttr(meta.State),
+		xmlAttr(meta.Base.Ref),
+		xmlAttr(shortSHA(meta.Base.SHA)),
+		xmlAttr(meta.Head.Ref),
+		xmlAttr(shortSHA(meta.Head.SHA)),
+		xmlAttr(strings.TrimSpace(meta.Title)),
+		boolStr(diffTruncatedFlag),
+	)
+	fmt.Fprintf(&b, "    <description>%s</description>\n", cdataWrap(strings.TrimSpace(meta.Body)))
 	if diff != "" {
-		diffHeader := fmt.Sprintf("--- PR #%d Diff ---", meta.Number)
-		parts = append(parts, makeTextPart(diffHeader, diff))
+		fmt.Fprintf(&b, "    <patch>%s</patch>\n", cdataWrap(diff))
 	}
-
 	for _, c := range comments {
-		// Path is attacker-controlled — quote it so a path with "---" in it
-		// cannot impersonate a block-header separator.
-		location := fmt.Sprintf("%q", c.Path)
-		if c.Line > 0 {
-			location = fmt.Sprintf("%q:%d", c.Path, c.Line)
-		}
-		commentHeader := fmt.Sprintf("--- PR #%d Review by @%s on %s ---", meta.Number, c.User.Login, location)
-		parts = append(parts, makeTextPart(commentHeader, sanitizeUntrustedBlockContent(strings.TrimSpace(c.Body))))
+		fmt.Fprintf(&b, "    <review author=\"%s\" path=\"%s\" line=\"%d\">%s</review>\n",
+			xmlAttr("@"+c.User.Login),
+			xmlAttr(c.Path),
+			c.Line,
+			cdataWrap(strings.TrimSpace(c.Body)),
+		)
 	}
-	return parts
+	b.WriteString("  </pull_request>\n")
+	return []*genai.Part{genai.NewPartFromText(b.String())}
 }
 
 // shortSHA returns the leading 7 characters of a commit sha, or the whole

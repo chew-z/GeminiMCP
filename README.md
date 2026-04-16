@@ -8,6 +8,8 @@ An MCP server that exposes Google Gemini models to MCP clients (Claude Code, IDE
 - **`gemini_search`** — Google Search-grounded queries returning structured JSON
 - **3 workflow prompts** — `review_pr`, `explain_commit`, `compare_refs`
 - **8 coding prompts** — code review, explain, debug, refactor, architecture, tests, security, research
+- **Gemini 3-style XML envelope** — every user turn is rendered as `<context>` / `<task>` / `<final_instruction>` with CDATA-wrapped attacker-controllable bodies
+- **Server-side system-prompt selection** — a Flash classifier picks a category-specific `SystemInstruction` and matching `<final_instruction>` body
 - Two transports: **HTTP** (JWT-secured, preferred) and **stdio** (local fallback)
 
 ## Quick start

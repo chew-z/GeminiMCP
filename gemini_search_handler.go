@@ -77,7 +77,10 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	}
 
 	contents := []*genai.Content{
-		genai.NewContentFromText(query, genai.RoleUser),
+		genai.NewContentFromParts(
+			wrapUserTurnQueryOnly(query, finalInstructionSearch),
+			genai.RoleUser,
+		),
 	}
 
 	// Validate client and models before proceeding

@@ -13,22 +13,6 @@ import (
 // maxReportedWarnings is the cap for file failure warnings surfaced to the model.
 const maxReportedWarnings = 10
 
-func appendFileWarningNote(query string, warnings []string) string {
-	if len(warnings) == 0 {
-		return query
-	}
-
-	reported := warnings
-	suffix := ""
-	if len(reported) > maxReportedWarnings {
-		suffix = fmt.Sprintf("\n- ... and %d other item(s)", len(reported)-maxReportedWarnings)
-		reported = reported[:maxReportedWarnings]
-	}
-
-	return query + "\n\n[System Note: The following requested context could not be loaded:\n- " +
-		strings.Join(reported, "\n- ") + suffix + "]"
-}
-
 func (s *GeminiServer) parseAskRequest(ctx context.Context, req mcp.CallToolRequest) (string, *genai.GenerateContentConfig, string, error) {
 	// Extract and validate query parameter (required)
 	query, err := validateRequiredString(req, "query")
@@ -64,9 +48,9 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 	if errResult != nil {
 		return errResult, nil
 	}
-	query = appendFileWarningNote(query, allWarnings)
 
-	config.SystemInstruction = genai.NewContentFromText(<-promptCh, "")
+	prompt := <-promptCh
+	config.SystemInstruction = genai.NewContentFromText(prompt.SystemPrompt, "")
 
 	// Validate client and models before proceeding
 	if s.client == nil || s.client.Models == nil {
@@ -75,14 +59,14 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 	}
 
 	// If any GitHub context is attached, append a descriptive addendum to the
-	// system instruction so Gemini can cite the correct block headers.
+	// system instruction so Gemini can cite the correct <context> elements.
 	applyContextInventory(config, &inventory)
 
 	// Process with context if anything was attached
 	if len(ghContextParts) > 0 || len(uploads) > 0 {
-		return s.processWithFiles(ctx, req, query, ghContextParts, uploads, modelName, config)
+		return s.processWithFiles(ctx, req, query, ghContextParts, uploads, allWarnings, inventory.Repo, prompt.Category, modelName, config)
 	}
-	return s.processWithoutFiles(ctx, req, query, modelName, config)
+	return s.processWithoutFiles(ctx, req, query, prompt.Category, modelName, config)
 }
 
 // gatherAllContext runs the two independent context-gathering paths (GitHub
@@ -283,7 +267,8 @@ func (s *GeminiServer) fetchGitHubContextSources(
 
 // buildContextInventoryAddendum renders a deterministic, descriptive (not
 // instructional) summary of every attached context block, suitable for
-// appending to the system prompt.
+// appending to the system prompt. The text references the XML tag names the
+// server emits inside <context> so Gemini can cite them correctly.
 func buildContextInventoryAddendum(inv *contextInventory) string {
 	if inv == nil || !inv.HasAny() {
 		return ""
@@ -293,14 +278,14 @@ func buildContextInventoryAddendum(inv *contextInventory) string {
 	if inv.Repo != "" {
 		fmt.Fprintf(&b, " from github.com/%s", inv.Repo)
 	}
-	b.WriteString(":\n")
+	b.WriteString(", inside a <context> element (your instructions are inside a <task> element):\n")
 
 	writeFilesInventory(&b, inv.Files)
 	writeCommitsInventory(&b, inv.Commits)
 	writeDiffInventory(&b, inv.Diff)
 	writePRInventory(&b, inv.PR)
 
-	b.WriteString("\nUse these blocks to answer the user's query.")
+	b.WriteString("\nUse these blocks to answer the user's task.")
 	return b.String()
 }
 
@@ -309,17 +294,17 @@ func writeFilesInventory(b *strings.Builder, f fileInventory) {
 		return
 	}
 	if f.Ref != "" {
-		fmt.Fprintf(b, "- %d source file(s) (ref %s), each in a block headed \"--- File: <path> ---\"\n", f.Count, f.Ref)
+		fmt.Fprintf(b, "- %d <file> element(s) at ref %s\n", f.Count, f.Ref)
 		return
 	}
-	fmt.Fprintf(b, "- %d source file(s), each in a block headed \"--- File: <path> ---\"\n", f.Count)
+	fmt.Fprintf(b, "- %d <file> element(s)\n", f.Count)
 }
 
 func writeCommitsInventory(b *strings.Builder, commits []commitInventory) {
 	if len(commits) == 0 {
 		return
 	}
-	fmt.Fprintf(b, "- %d commit patch(es), each in a block headed \"--- Commit <sha> ... ---\"\n", len(commits))
+	fmt.Fprintf(b, "- %d <commit> element(s)\n", len(commits))
 }
 
 func writeDiffInventory(b *strings.Builder, d *diffInventory) {
@@ -330,8 +315,7 @@ func writeDiffInventory(b *strings.Builder, d *diffInventory) {
 	if d.Truncated {
 		suffix = " (diff was truncated at size limit)"
 	}
-	fmt.Fprintf(b, "- A comparison between %s and %s, in a block headed \"--- Diff ... %s..%s ---\"%s\n",
-		d.Base, d.Head, d.Base, d.Head, suffix)
+	fmt.Fprintf(b, "- A <diff> element (%s..%s)%s\n", d.Base, d.Head, suffix)
 }
 
 func writePRInventory(b *strings.Builder, pr *prInventory) {
@@ -342,9 +326,8 @@ func writePRInventory(b *strings.Builder, pr *prInventory) {
 	if pr.DiffTruncated {
 		suffix = " (diff was truncated at size limit)"
 	}
-	fmt.Fprintf(b, "- Pull request #%d (%q), with description, unified diff, and %d review comment(s), "+
-		"in blocks headed \"--- PR #%d ... ---\"%s\n",
-		pr.Number, pr.Title, pr.ReviewCount, pr.Number, suffix)
+	fmt.Fprintf(b, "- A <pull_request> element #%d (%q), with <description>, <patch>, and %d <review>(s)%s\n",
+		pr.Number, pr.Title, pr.ReviewCount, suffix)
 }
 
 // applyContextInventory appends the inventory addendum to the existing system
@@ -476,69 +459,32 @@ func (s *GeminiServer) gatherGitHubFiles(
 }
 
 // processWithFiles handles a Gemini API request with any combination of
-// pre-built github-context text parts (commits / diff / PR bundle) and file
+// pre-built github-context XML parts (commits / diff / PR bundle) and file
 // attachments. Everything is placed BEFORE the query to maximise implicit
 // caching — Gemini caches the shared prefix of repeated requests, so stable
 // content at the front gets cached automatically across calls.
 //
 // The stable merge order is:
 //
-//	[commits] → [diff] → [PR bundle] → [files] → [query]
+//	<context> [commits] → [diff] → [PR bundle] → [files] </context> → <task><query>…</query></task> → <final_instruction>
 //
 // contextParts MUST already be in the above order when passed in.
 func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolRequest, query string,
 	contextParts []*genai.Part, uploads []*FileUploadRequest,
+	warnings []string, repo string, category queryCategory,
 	modelName string, config *genai.GenerateContentConfig) (*mcp.CallToolResult, error) {
 
 	logger := getLoggerFromContext(ctx)
 
-	// Build parts: context + files first (cacheable prefix), then query last.
-	// All parts must be in a single Content object — separate Content objects
-	// with the same role are treated as distinct conversation turns and file
-	// context is dropped.
-	var parts []*genai.Part
-
 	if len(contextParts) > 0 {
 		logger.Info("Processing %d github-context part(s) for inline injection", len(contextParts))
-		parts = append(parts, contextParts...)
 	}
 
 	logger.Info("Processing %d file(s) for inline injection", len(uploads))
-	for _, upload := range uploads {
-		// Inject text files directly as inline content — avoids Files API upload latency,
-		// URI propagation delays, and silent empty-URI failures. Text content is well
-		// within Gemini's 1M token context window and doesn't need Files API storage.
-		if isTextMimeType(upload.MimeType) {
-			logger.Info("Injecting %s (%d bytes) as inline text", upload.FileName, len(upload.Content))
-			parts = append(parts, genai.NewPartFromText(fmt.Sprintf("--- File: %s ---\n%s", upload.FileName, string(upload.Content))))
-			continue
-		}
+	githubRef := extractArgumentString(req, "github_ref", "")
+	fileParts := s.buildFileParts(ctx, uploads, githubRef, logger)
 
-		// For binary/media files, use the Files API upload path
-		logger.Info("Uploading binary file %s (%s) via Files API", upload.FileName, upload.MimeType)
-		uploadConfig := &genai.UploadFileConfig{
-			MIMEType:    upload.MimeType,
-			DisplayName: upload.FileName,
-		}
-		file, err := withRetry(ctx, s.config, logger, "gemini.files.upload", func(ctx context.Context) (*genai.File, error) {
-			return s.client.Files.Upload(ctx, bytes.NewReader(upload.Content), uploadConfig)
-		})
-		if err != nil || file.URI == "" {
-			if err != nil {
-				logger.Error("Failed to upload file %s: %v - skipping binary file", upload.FileName, err)
-			} else {
-				logger.Error("File %s uploaded but URI is empty - skipping binary file", upload.FileName)
-			}
-			parts = append(parts, genai.NewPartFromText(fmt.Sprintf(
-				"--- File: %s ---\n[Error: This binary file (%s) could not be uploaded and cannot be displayed inline.]",
-				upload.FileName, upload.MimeType)))
-			continue
-		}
-		parts = append(parts, genai.NewPartFromURI(file.URI, upload.MimeType))
-	}
-
-	// Query goes last — this is the variable part that changes between requests
-	parts = append(parts, genai.NewPartFromText(query))
+	parts := wrapUserTurnWithContext(repo, contextParts, fileParts, query, warnings, finalInstructionFor(category))
 
 	contents := []*genai.Content{
 		genai.NewContentFromParts(parts, genai.RoleUser),
@@ -563,15 +509,83 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolReq
 	return convertGenaiResponseToMCPResult(response, logger), nil
 }
 
+// buildFileParts converts file uploads to the XML <file> fragments emitted
+// inside the <context> envelope. Text files embed their content as CDATA in
+// a single text Part. Binary files upload via the Files API and get rendered
+// as a three-Part sequence (opener text, URI, closer text) so the Files-API
+// Part sits inside its own <file> element.
+func (s *GeminiServer) buildFileParts(
+	ctx context.Context, uploads []*FileUploadRequest, githubRef string, logger Logger,
+) []*genai.Part {
+	fileParts := make([]*genai.Part, 0, len(uploads))
+	for _, upload := range uploads {
+		if isTextMimeType(upload.MimeType) {
+			logger.Info("Injecting %s (%d bytes) as inline text", upload.FileName, len(upload.Content))
+			fileParts = append(fileParts, renderTextFilePart(upload, githubRef))
+			continue
+		}
+		fileParts = append(fileParts, s.renderBinaryFileParts(ctx, upload, githubRef, logger)...)
+	}
+	return fileParts
+}
+
+func renderTextFilePart(upload *FileUploadRequest, githubRef string) *genai.Part {
+	return genai.NewPartFromText(fmt.Sprintf(
+		"  <file path=\"%s\" ref=\"%s\" kind=\"text\" mime=\"%s\">%s</file>\n",
+		xmlAttr(upload.FileName),
+		xmlAttr(githubRef),
+		xmlAttr(upload.MimeType),
+		cdataWrap(string(upload.Content)),
+	))
+}
+
+func (s *GeminiServer) renderBinaryFileParts(
+	ctx context.Context, upload *FileUploadRequest, githubRef string, logger Logger,
+) []*genai.Part {
+	logger.Info("Uploading binary file %s (%s) via Files API", upload.FileName, upload.MimeType)
+	uploadConfig := &genai.UploadFileConfig{
+		MIMEType:    upload.MimeType,
+		DisplayName: upload.FileName,
+	}
+	file, err := withRetry(ctx, s.config, logger, "gemini.files.upload", func(ctx context.Context) (*genai.File, error) {
+		return s.client.Files.Upload(ctx, bytes.NewReader(upload.Content), uploadConfig)
+	})
+	if err != nil || file.URI == "" {
+		if err != nil {
+			logger.Error("Failed to upload file %s: %v - skipping binary file", upload.FileName, err)
+		} else {
+			logger.Error("File %s uploaded but URI is empty - skipping binary file", upload.FileName)
+		}
+		return []*genai.Part{genai.NewPartFromText(fmt.Sprintf(
+			"  <file path=\"%s\" ref=\"%s\" kind=\"binary\" mime=\"%s\">%s</file>\n",
+			xmlAttr(upload.FileName),
+			xmlAttr(githubRef),
+			xmlAttr(upload.MimeType),
+			cdataWrap("[Error: This binary file could not be uploaded and cannot be displayed inline.]"),
+		))}
+	}
+	return []*genai.Part{
+		genai.NewPartFromText(fmt.Sprintf(
+			"  <file path=\"%s\" ref=\"%s\" kind=\"binary\" mime=\"%s\">",
+			xmlAttr(upload.FileName),
+			xmlAttr(githubRef),
+			xmlAttr(upload.MimeType),
+		)),
+		genai.NewPartFromURI(file.URI, upload.MimeType),
+		genai.NewPartFromText("</file>\n"),
+	}
+}
+
 // processWithoutFiles handles a Gemini API request without file attachments
 func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallToolRequest, query string,
+	category queryCategory,
 	modelName string, config *genai.GenerateContentConfig) (*mcp.CallToolResult, error) {
 
 	logger := getLoggerFromContext(ctx)
 
-	// Create content with just the query
+	parts := wrapUserTurnQueryOnly(query, finalInstructionFor(category))
 	contents := []*genai.Content{
-		genai.NewContentFromText(query, genai.RoleUser),
+		genai.NewContentFromParts(parts, genai.RoleUser),
 	}
 
 	// Generate content
