@@ -28,6 +28,43 @@ func cdataWrap(v string) string {
 	return "<![CDATA[" + safe + "]]>"
 }
 
+// debugPartMaxBytes caps each Part body when rendering for DEBUG logs, so an
+// envelope dump cannot flood the log stream with multi-megabyte diffs.
+const debugPartMaxBytes = 2048
+
+// renderPartsForDebug concatenates parts into a single string suitable for
+// DEBUG logging. Each part is truncated independently to debugPartMaxBytes so
+// the envelope shape stays visible even when individual bodies are large.
+func renderPartsForDebug(parts []*genai.Part) string {
+	var b strings.Builder
+	for i, p := range parts {
+		if p == nil || p.Text == "" {
+			continue
+		}
+		t := p.Text
+		if len(t) > debugPartMaxBytes {
+			t = t[:debugPartMaxBytes] + fmt.Sprintf("…[truncated %d bytes]", len(p.Text)-debugPartMaxBytes)
+		}
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(t)
+	}
+	return b.String()
+}
+
+// totalPartBytes returns the sum of Text lengths across parts, for a cheap
+// "envelope size" number in DEBUG logs.
+func totalPartBytes(parts []*genai.Part) int {
+	n := 0
+	for _, p := range parts {
+		if p != nil {
+			n += len(p.Text)
+		}
+	}
+	return n
+}
+
 // boolStr renders a Go bool as the literal "true" / "false" for an XML
 // attribute value.
 func boolStr(b bool) string {

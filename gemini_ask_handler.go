@@ -32,7 +32,7 @@ func (s *GeminiServer) parseAskRequest(ctx context.Context, req mcp.CallToolRequ
 // GeminiAskHandler is a handler for the gemini_ask tool that uses mcp-go types directly
 func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling gemini_ask request with direct handler")
+	logger.Debug("handling gemini_ask request with direct handler")
 
 	query, config, modelName, err := s.parseAskRequest(ctx, req)
 	if err != nil {
@@ -86,7 +86,7 @@ func (s *GeminiServer) gatherAllContext(
 		return nil, nil, inventory, nil, errResult
 	}
 
-	logger.Info("Starting file handling logic")
+	logger.Debug("starting file handling logic")
 	// Pass spec.any() as the "more than just files was requested" flag so a
 	// file-fetch failure becomes a warning (not a hard-fail) whenever other
 	// github_* sources were also requested — even if those other sources
@@ -368,7 +368,7 @@ func (s *GeminiServer) gatherFileUploads(
 	logger := getLoggerFromContext(ctx)
 
 	githubFiles := extractArgumentStringArray(req, "github_files")
-	logger.Info("Extracted file parameters - github files: %d", len(githubFiles))
+	logger.Debug("github_files parameter: %d entries", len(githubFiles))
 
 	if len(githubFiles) == 0 {
 		return nil, nil, nil
@@ -486,6 +486,12 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolReq
 
 	parts := wrapUserTurnWithContext(repo, contextParts, fileParts, query, warnings, finalInstructionFor(category))
 
+	logger.Debug("request shape: model=%s category=%s thinking=%v max_tokens=%d context_parts=%d file_parts=%d warnings=%d",
+		modelName, category, config.ThinkingConfig != nil, config.MaxOutputTokens,
+		len(contextParts), len(fileParts), len(warnings))
+	logger.Debug("envelope (with context): repo=%q parts=%d bytes=%d\n%s",
+		repo, len(parts), totalPartBytes(parts), renderPartsForDebug(parts))
+
 	contents := []*genai.Content{
 		genai.NewContentFromParts(parts, genai.RoleUser),
 	}
@@ -584,6 +590,12 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallTool
 	logger := getLoggerFromContext(ctx)
 
 	parts := wrapUserTurnQueryOnly(query, finalInstructionFor(category))
+
+	logger.Debug("request shape: model=%s category=%s thinking=%v max_tokens=%d context_parts=0 file_parts=0 warnings=0",
+		modelName, category, config.ThinkingConfig != nil, config.MaxOutputTokens)
+	logger.Debug("envelope (query-only): parts=%d bytes=%d\n%s",
+		len(parts), totalPartBytes(parts), renderPartsForDebug(parts))
+
 	contents := []*genai.Content{
 		genai.NewContentFromParts(parts, genai.RoleUser),
 	}

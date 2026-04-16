@@ -26,8 +26,10 @@ func withRetry[T any](ctx context.Context, cfg *Config, logger Logger, opName st
 			return zero, ctx.Err()
 		}
 
+		logger.Debug("%s: attempt %d/%d", opName, attempt+1, maxAttempts)
 		val, err := fn(ctx)
 		if err == nil {
+			logger.Debug("%s: attempt %d/%d succeeded", opName, attempt+1, maxAttempts)
 			if attempt > 0 {
 				logger.Info("%s succeeded after %d attempt(s)", opName, attempt+1)
 			}
@@ -35,7 +37,10 @@ func withRetry[T any](ctx context.Context, cfg *Config, logger Logger, opName st
 		}
 
 		// Do not retry non-retryable errors or on last attempt
-		if !isRetryableError(err) || attempt == maxAttempts-1 {
+		retryable := isRetryableError(err)
+		if !retryable || attempt == maxAttempts-1 {
+			logger.Debug("%s: attempt %d/%d failed terminally (retryable=%v): %v",
+				opName, attempt+1, maxAttempts, retryable, err)
 			return zero, err
 		}
 

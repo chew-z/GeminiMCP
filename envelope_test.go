@@ -153,6 +153,27 @@ func TestBoolStr(t *testing.T) {
 	assert.Equal(t, "false", boolStr(false))
 }
 
+func TestRenderPartsForDebug_TruncatesLargeBodies(t *testing.T) {
+	huge := strings.Repeat("A", debugPartMaxBytes*5)
+	small := "short"
+	parts := []*genai.Part{
+		genai.NewPartFromText(small),
+		genai.NewPartFromText(huge),
+		nil,
+		genai.NewPartFromText(""),
+	}
+
+	got := renderPartsForDebug(parts)
+
+	assert.Contains(t, got, small, "short parts must survive intact")
+	assert.Contains(t, got, "[truncated", "oversized parts must carry a truncation marker")
+	assert.NotContains(t, got, strings.Repeat("A", debugPartMaxBytes+1),
+		"oversized parts must not be rendered in full")
+
+	assert.Equal(t, len(small)+len(huge), totalPartBytes(parts),
+		"totalPartBytes must reflect pre-truncation sizes")
+}
+
 func TestFinalInstructionFor(t *testing.T) {
 	// Every declared category must resolve to a non-empty instruction.
 	for _, cat := range []queryCategory{

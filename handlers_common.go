@@ -196,7 +196,7 @@ func configureThinking(ctx context.Context, req mcp.CallToolRequest, config *gen
 	if levelStr, ok := req.GetArguments()["thinking_level"].(string); ok && levelStr != "" {
 		if validateThinkingLevel(levelStr) {
 			thinkingLevel = strings.ToLower(levelStr)
-			logger.Info("Setting thinking level to: %s", thinkingLevel)
+			logger.Debug("setting thinking level to: %s", thinkingLevel)
 		} else {
 			logger.Warn("Invalid thinking_level '%s' (valid: minimal, low, medium, high). Using default: %s", levelStr, defaultLevel)
 		}
@@ -331,9 +331,14 @@ func convertGenaiResponseToMCPResult(resp *genai.GenerateContentResponse, logger
 	}
 
 	if logger != nil {
-		logger.Info("gemini response: finish_reason=%s model=%s", cand.FinishReason, resp.ModelVersion)
-		if u := resp.UsageMetadata; u != nil && u.CachedContentTokenCount > 0 {
-			logger.Info("cache hit: %d/%d prompt tokens cached", u.CachedContentTokenCount, u.PromptTokenCount)
+		if u := resp.UsageMetadata; u != nil {
+			logger.Info("gemini response: model=%s finish=%s prompt_tokens=%d output_tokens=%d cached_tokens=%d thoughts_tokens=%d total_tokens=%d",
+				resp.ModelVersion, cand.FinishReason,
+				u.PromptTokenCount, u.CandidatesTokenCount,
+				u.CachedContentTokenCount, u.ThoughtsTokenCount, u.TotalTokenCount)
+		} else {
+			logger.Info("gemini response: model=%s finish=%s (no usage metadata)",
+				resp.ModelVersion, cand.FinishReason)
 		}
 	}
 

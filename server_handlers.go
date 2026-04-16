@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -108,52 +109,68 @@ func registerPrompts(mcpServer *server.MCPServer, geminiSvc *GeminiServer, logge
 	}
 }
 
-// enforceHTTPAuth checks for authentication on HTTP requests and logs user info.
-// It returns an error if authentication fails.
+// enforceHTTPAuth checks for authentication on HTTP requests. Successful
+// authentication is logged at the tool-entry level by wrapHandlerWithLogger,
+// so this function is silent on the happy path and only warns on failure.
 func enforceHTTPAuth(ctx context.Context, resourceType, resourceName string, logger Logger) error {
 	// Check if this is an HTTP request
 	if httpMethod, ok := ctx.Value(httpMethodKey).(string); !ok || httpMethod == "" {
 		return nil // Not an HTTP request, so no auth check needed
 	}
 
-	// Check for authentication errors
 	if authError := getAuthError(ctx); authError != "" {
 		logger.Warn("Authentication failed for %s '%s': %s", resourceType, resourceName, authError)
 		return fmt.Errorf("authentication required: %s", authError)
 	}
 
-	// Log successful authentication
 	if isAuthenticated(ctx) {
 		userID, username, role := getUserInfo(ctx)
-		logger.Info("%s '%s' called by authenticated user %s (%s) with role %s",
+		logger.Debug("%s '%s' accessed by user=%s id=%s role=%s",
 			resourceType, resourceName, username, userID, role)
 	}
 
 	return nil
 }
 
-// wrapHandlerWithLogger creates a middleware wrapper for logging and authentication around a tool handler
+// wrapHandlerWithLogger creates a middleware wrapper for logging and
+// authentication around a tool handler. It mints a per-call request ID,
+// scopes the context logger with a "[req-id]" prefix, and emits one
+// structured INFO line at start and one at completion.
 func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logger Logger) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		logger.Info("Calling tool '%s'...", toolName)
+		reqID := newRequestID()
+		ctx, rlog := withRequestLogger(ctx, logger, reqID)
+		start := time.Now()
 
-		if err := enforceHTTPAuth(ctx, "tool", toolName, logger); err != nil {
+		user, role := "-", "-"
+		if isAuthenticated(ctx) {
+			_, u, r := getUserInfo(ctx)
+			if u != "" {
+				user = u
+			}
+			if r != "" {
+				role = r
+			}
+		}
+		rlog.Info("tool=%s start user=%s role=%s", toolName, user, role)
+
+		if err := enforceHTTPAuth(ctx, "tool", toolName, rlog); err != nil {
+			rlog.Info("tool=%s done status=auth_error duration=%s", toolName, time.Since(start).Round(time.Millisecond))
 			return createErrorResult(err.Error()), nil
 		}
 
-		// Call the actual handler
 		resp, err := handler(ctx, req)
+		duration := time.Since(start).Round(time.Millisecond)
 
 		switch {
 		case err != nil:
-			logger.Error("Tool '%s' failed: %v", toolName, err)
+			rlog.Error("tool=%s done status=error duration=%s err=%v", toolName, duration, err)
 		case resp != nil && resp.IsError:
-			logger.Warn("Tool '%s' returned an error result", toolName)
+			rlog.Warn("tool=%s done status=tool_error duration=%s", toolName, duration)
 		default:
-			logger.Info("Tool '%s' completed successfully", toolName)
+			rlog.Info("tool=%s done status=ok duration=%s", toolName, duration)
 		}
 
-		// Return the original response and error
 		return resp, err
 	}
 }

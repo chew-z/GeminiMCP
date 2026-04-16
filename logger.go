@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -104,4 +107,44 @@ func (l *StandardLogger) log(level, format string, args ...any) {
 	message := fmt.Sprintf(format, args...)
 	//nolint:errcheck
 	fmt.Fprintf(l.writer, "[%s] %s: %s\n", timestamp, level, message)
+}
+
+// scopedLogger prefixes every message with a short tag (typically a request
+// ID) so interleaved parallel log streams can be correlated.
+type scopedLogger struct {
+	inner  Logger
+	prefix string
+}
+
+func (s *scopedLogger) Debug(format string, args ...any) {
+	s.inner.Debug(s.prefix+format, args...)
+}
+func (s *scopedLogger) Info(format string, args ...any) {
+	s.inner.Info(s.prefix+format, args...)
+}
+func (s *scopedLogger) Warn(format string, args ...any) {
+	s.inner.Warn(s.prefix+format, args...)
+}
+func (s *scopedLogger) Warnf(format string, args ...any) {
+	s.inner.Warnf(s.prefix+format, args...)
+}
+func (s *scopedLogger) Error(format string, args ...any) {
+	s.inner.Error(s.prefix+format, args...)
+}
+
+// newRequestID returns a short hex tag suitable for correlating logs belonging
+// to a single tool call. On any entropy failure it falls back to a timestamp.
+func newRequestID() string {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("%x", time.Now().UnixNano()&0xffffffff)
+	}
+	return hex.EncodeToString(b[:])
+}
+
+// withRequestLogger returns a context whose logger is scoped with the given
+// request ID, plus the scoped logger itself for direct use at the call site.
+func withRequestLogger(ctx context.Context, base Logger, reqID string) (context.Context, Logger) {
+	scoped := &scopedLogger{inner: base, prefix: "[" + reqID + "] "}
+	return context.WithValue(ctx, loggerKey, scoped), scoped
 }

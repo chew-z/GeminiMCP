@@ -93,6 +93,12 @@ func (a *AuthMiddleware) HTTPContextFunc(
 		}
 
 		a.logger.Info("Authenticated user %s (%s) from %s", claims.Username, claims.Role, r.RemoteAddr)
+		exp := "none"
+		if claims.ExpiresAt != nil {
+			exp = claims.ExpiresAt.Time.Format(time.RFC3339)
+		}
+		a.logger.Debug("auth ok: subject=%s username=%s role=%s exp=%s from=%s",
+			claims.UserID, claims.Username, claims.Role, exp, r.RemoteAddr)
 
 		// Add user to request context
 		ctx = context.WithValue(ctx, authenticatedKey, true)

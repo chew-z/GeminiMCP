@@ -155,7 +155,10 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 //     body is left OPEN so the caller's status-code handler can read the genuine GitHub error payload.
 func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Logger, filePath string) (ctxErr, retryErr error) {
 	remaining := resp.Header.Get("X-RateLimit-Remaining")
+	logger.Debug("[%s] ratelimit headers: status=%d remaining=%q reset=%q",
+		filePath, resp.StatusCode, remaining, resp.Header.Get("X-RateLimit-Reset"))
 	if remaining != "0" && resp.StatusCode != http.StatusTooManyRequests {
+		logger.Debug("[%s] ratelimit: not throttled, caller owns body", filePath)
 		return nil, nil
 	}
 
@@ -168,6 +171,7 @@ func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Lo
 	waitTime := time.Until(time.Unix(resetTime, 0))
 
 	if waitTime <= 0 {
+		logger.Debug("[%s] ratelimit: reset window already elapsed, caller owns body", filePath)
 		return nil, nil
 	}
 
@@ -178,6 +182,7 @@ func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Lo
 
 	logger.Warn("[%s] Rate limit exceeded. Reset in %v", filePath, waitTime)
 	if waitTime <= 2*time.Minute {
+		logger.Debug("[%s] ratelimit: waiting %v in-process before signalling retry", filePath, waitTime)
 		select {
 		case <-ctx.Done():
 			return ctx.Err(), nil
@@ -185,6 +190,7 @@ func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Lo
 			return nil, fmt.Errorf("rate limit exceeded")
 		}
 	}
+	logger.Debug("[%s] ratelimit: wait %v exceeds 2m cap, returning retryable error", filePath, waitTime)
 	return nil, fmt.Errorf("rate limit exceeded")
 }
 
@@ -326,9 +332,9 @@ func fetchAttempt(ctx context.Context, p fetchAttemptParams) fetchAttemptOutcome
 		if retryErr != nil {
 			return fetchAttemptOutcome{retryErr: retryErr}
 		}
-		// Rate-limit headers said "not actually limited"; body is closed,
-		// so the status-code check below will be responsible for deciding
-		// whether the bare 403 is fatal.
+		// Rate-limit headers said "not actually limited"; body is left OPEN so
+		// the status-code check below can feed readErrorBody with the real
+		// GitHub payload and decide whether the bare 403 is fatal.
 	}
 
 	if resp.StatusCode != http.StatusOK {

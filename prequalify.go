@@ -47,10 +47,12 @@ func (s *GeminiServer) prequalifyQuery(ctx context.Context, query, contextSummar
 		return "", fmt.Errorf("prequalify API call failed: %w", err)
 	}
 
-	cat, err := parsePrequalifyResponse(resp)
+	cat, raw, err := parsePrequalifyResponse(resp)
 	if err != nil {
+		logger.Debug("prequalify: raw=%q parse error: %v", raw, err)
 		return "", err
 	}
+	logger.Debug("prequalify: raw=%q parsed=%s model=%s", raw, cat, modelName)
 	logger.Info("Pre-qualified query as '%s'", cat)
 	return cat, nil
 }
@@ -86,10 +88,12 @@ func buildPrequalifyConfig(modelName, thinkingLevel string) *genai.GenerateConte
 	return config
 }
 
-// parsePrequalifyResponse extracts and validates the category from an API response.
-func parsePrequalifyResponse(resp *genai.GenerateContentResponse) (queryCategory, error) {
+// parsePrequalifyResponse extracts and validates the category from an API
+// response. The second return is the raw classifier text (post-JSON-unquote)
+// so callers can surface it in DEBUG logs when the parse fails.
+func parsePrequalifyResponse(resp *genai.GenerateContentResponse) (queryCategory, string, error) {
 	if resp == nil || len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
-		return "", fmt.Errorf("prequalify returned empty response")
+		return "", "", fmt.Errorf("prequalify returned empty response")
 	}
 
 	raw := strings.TrimSpace(resp.Text())
@@ -103,9 +107,9 @@ func parsePrequalifyResponse(resp *genai.GenerateContentResponse) (queryCategory
 	cat := queryCategory(strings.ToLower(strings.TrimSpace(raw)))
 	switch cat {
 	case categoryGeneral, categoryAnalyze, categoryReview, categorySecurity, categoryDebug, categoryTests:
-		return cat, nil
+		return cat, raw, nil
 	default:
-		return "", fmt.Errorf("prequalify returned unknown category: %q", raw)
+		return "", raw, fmt.Errorf("prequalify returned unknown category: %q", raw)
 	}
 }
 
@@ -135,6 +139,7 @@ func (s *GeminiServer) resolveSystemPromptAsync(ctx context.Context, req mcp.Cal
 	go func() {
 		summary := buildContextSummary(req)
 		cat, err := s.prequalifyQuery(ctx, query, summary)
+		fallback := err != nil
 		if err != nil {
 			if !errors.Is(err, context.Canceled) {
 				logger.Warn("Pre-qualification failed: %v, using fallback", err)
@@ -145,6 +150,8 @@ func (s *GeminiServer) resolveSystemPromptAsync(ctx context.Context, req mcp.Cal
 				cat = categoryGeneral
 			}
 		}
+		logger.Debug("prequalify resolved: category=%s fallback=%v has_github_context=%v",
+			cat, fallback, hasGitHubContext(req))
 		ch <- resolvedPrompt{SystemPrompt: systemPromptForCategory(cat), Category: cat}
 	}()
 	return ch

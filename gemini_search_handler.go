@@ -52,7 +52,7 @@ func buildSearchConfig(
 // GeminiSearchHandler is a handler for the gemini_search tool that uses mcp-go types directly
 func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	logger := getLoggerFromContext(ctx)
-	logger.Info("Handling gemini_search request with direct handler")
+	logger.Debug("handling gemini_search request with direct handler")
 
 	query, err := validateRequiredString(req, "query")
 	if err != nil {

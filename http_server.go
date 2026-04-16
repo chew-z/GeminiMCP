@@ -99,8 +99,10 @@ func createHTTPMiddleware(config *Config, logger Logger) server.HTTPContextFunc 
 	}
 
 	return func(ctx context.Context, r *http.Request) context.Context {
-		// Log HTTP request
-		logger.Info("HTTP %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+		// Per-request INFO line was noisy (twice per MCP call). We log at
+		// DEBUG; the tool-entry line in wrapHandlerWithLogger captures the
+		// authenticated user + request ID that operators actually need.
+		logger.Debug("HTTP %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
 
 		// Apply authentication middleware if enabled
 		if authMiddleware != nil {
