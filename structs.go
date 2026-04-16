@@ -131,6 +131,11 @@ type Config struct {
 
 	// Service tier settings
 	ServiceTier string // Service tier: flex, standard, priority (default: standard)
+
+	// Pre-qualification settings
+	Prequalify              bool   // Enable query pre-qualification for automatic system prompt selection
+	PrequalifyModel         string // Model tier for pre-qualification (e.g. "gemini-flash")
+	PrequalifyThinkingLevel string // Thinking level for pre-qualification call
 }
 
 // ModelVersion represents an actual API-addressable Gemini model

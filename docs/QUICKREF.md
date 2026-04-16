@@ -139,6 +139,11 @@ GEMINI_TEMPERATURE=1.0
 GEMINI_THINKING_LEVEL=high
 GEMINI_SERVICE_TIER=standard     # flex | standard | priority
 
+# Pre-qualification (auto system prompt selection)
+GEMINI_PREQUALIFY=true           # disable with false
+GEMINI_PREQUALIFY_MODEL=gemini-flash
+GEMINI_PREQUALIFY_THINKING=medium
+
 # Retry
 GEMINI_MAX_RETRIES=2
 GEMINI_INITIAL_BACKOFF=1s

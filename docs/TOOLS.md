@@ -362,6 +362,41 @@ jittered backoff rather than blocking.
 
 ---
 
+## Query Pre-Qualification
+
+When `gemini_ask` receives a request **without** an explicit `systemPrompt`, the
+server automatically classifies the query into one of five categories and selects
+a tailored XML-structured system prompt:
+
+| Category | Selected when |
+|----------|--------------|
+| `general` | Non-programming question, general knowledge, no code context |
+| `analyze` | Understanding, explaining, or documenting code; architecture analysis |
+| `review` | Code quality review, best practices, refactoring, performance |
+| `security` | Security vulnerabilities, authentication, authorization, OWASP |
+| `debug` | Bug fixing, error analysis, troubleshooting, test failures |
+
+Classification runs as a lightweight Flash model call **in parallel** with GitHub
+context fetching, so it adds zero visible latency.
+
+### Skip conditions (no pre-qualification)
+
+1. Client provided an explicit `systemPrompt` parameter — used as-is.
+2. `GEMINI_PREQUALIFY=false` — pre-qualification disabled; server falls back to the
+   default general system prompt.
+3. Classification call fails — fallback: `analyze` if any `github_*` context is
+   attached, otherwise `general`.
+
+### Configuration
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `GEMINI_PREQUALIFY` | `true` | Enable/disable pre-qualification |
+| `GEMINI_PREQUALIFY_MODEL` | `gemini-flash` | Model tier for classification |
+| `GEMINI_PREQUALIFY_THINKING` | `medium` | Thinking level for classification |
+
+---
+
 ## Error Responses
 
 All tools return errors as MCP tool results (not protocol-level errors), so

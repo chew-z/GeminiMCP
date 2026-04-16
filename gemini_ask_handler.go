@@ -55,11 +55,22 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 		return createErrorResult(err.Error()), nil
 	}
 
+	// Start pre-qualification in parallel with context gathering.
+	pqDone := s.startPrequalification(ctx, req, logger)
+
 	ghContextParts, uploads, inventory, allWarnings, errResult := s.gatherAllContext(ctx, req)
 	if errResult != nil {
 		return errResult, nil
 	}
 	query = appendFileWarningNote(query, allWarnings)
+
+	// Wait for pre-qualification and apply the category-specific system prompt.
+	if pqDone != nil {
+		cat := <-pqDone
+		config.SystemInstruction = genai.NewContentFromText(
+			systemPromptForCategory(cat), "")
+		logger.Info("Pre-qualified as '%s', selected system prompt", cat)
+	}
 
 	// Validate client and models before proceeding
 	if s.client == nil || s.client.Models == nil {

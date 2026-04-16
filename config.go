@@ -11,23 +11,13 @@ import (
 
 // Default configuration values
 const (
-	defaultGeminiModel        = "gemini-pro"        // Tier-level name; triggers bestModelForTier() at runtime
-	defaultGeminiSearchModel  = "gemini-flash-lite" // Tier-level name; triggers bestModelForTier() at runtime
-	defaultGeminiTemperature  = 1.0                 // Gemini 3 default temperature
-	defaultGeminiSystemPrompt = `
-You are a senior developer. Your job is to do a thorough code review of this code.
-You should write it up and output markdown.
-Include line numbers, and contextual info.
-Your code review will be passed to another teammate, so be thorough.
-Think deeply  before writing the code review. Review every part, and don't hallucinate.
-`
-	// System prompt for search-based queries
-	defaultGeminiSearchSystemPrompt = `
-You are a helpful search assistant. Use the Google Search results to provide accurate and up-to-date information.
-Your answers should be comprehensive but concise, focusing on the most relevant information.
-Cite your sources when appropriate and maintain a neutral, informative tone.
-If the search results don't contain enough information to fully answer the query, acknowledge the limitations.
-`
+	defaultGeminiModel       = "gemini-pro"        // Tier-level name; triggers bestModelForTier() at runtime
+	defaultGeminiSearchModel = "gemini-flash-lite" // Tier-level name; triggers bestModelForTier() at runtime
+	defaultGeminiTemperature = 1.0                 // Gemini 3 default temperature
+	// Pre-qualification defaults
+	defaultPrequalify              = true
+	defaultPrequalifyModel         = "gemini-flash"
+	defaultPrequalifyThinkingLevel = "medium"
 	// GitHub settings defaults
 	defaultGitHubAPIBaseURL          = "https://api.github.com"
 	defaultMaxGitHubFiles            = 20
@@ -162,13 +152,13 @@ func NewConfig(logger Logger) (*Config, error) {
 	// Get Gemini system prompt - optional with default
 	geminiSystemPrompt := os.Getenv("GEMINI_SYSTEM_PROMPT")
 	if geminiSystemPrompt == "" {
-		geminiSystemPrompt = defaultGeminiSystemPrompt // Default system prompt if not specified
+		geminiSystemPrompt = systemPromptGeneral
 	}
 
 	// Get Gemini search system prompt - optional with default
 	geminiSearchSystemPrompt := os.Getenv("GEMINI_SEARCH_SYSTEM_PROMPT")
 	if geminiSearchSystemPrompt == "" {
-		geminiSearchSystemPrompt = defaultGeminiSearchSystemPrompt // Default search system prompt if not specified
+		geminiSearchSystemPrompt = systemPromptSearch
 	}
 
 	// Use helper functions to parse environment variables
@@ -229,6 +219,14 @@ func NewConfig(logger Logger) (*Config, error) {
 			logger.Warnf("Invalid GEMINI_SERVICE_TIER '%s' (valid: flex, standard, priority). Using default: %s", tierStr, defaultServiceTier)
 		}
 	}
+
+	// Pre-qualification settings
+	prequalify := parseEnvVarBool("GEMINI_PREQUALIFY", defaultPrequalify, logger)
+	prequalifyModel := os.Getenv("GEMINI_PREQUALIFY_MODEL")
+	if prequalifyModel == "" {
+		prequalifyModel = defaultPrequalifyModel
+	}
+	prequalifyThinkingLevel := parseThinkingLevelEnv("GEMINI_PREQUALIFY_THINKING", defaultPrequalifyThinkingLevel, logger)
 
 	// HTTP transport settings
 	enableHTTP := parseEnvVarBool("GEMINI_ENABLE_HTTP", defaultEnableHTTP, logger)
@@ -307,6 +305,10 @@ func NewConfig(logger Logger) (*Config, error) {
 			ThinkingLevel:       thinkingLevel,
 			SearchThinkingLevel: searchThinkingLevel,
 			ServiceTier:         serviceTier,
+
+			Prequalify:              prequalify,
+			PrequalifyModel:         prequalifyModel,
+			PrequalifyThinkingLevel: prequalifyThinkingLevel,
 		},
 		nil
 }
