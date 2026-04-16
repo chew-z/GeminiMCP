@@ -149,18 +149,6 @@ func NewConfig(logger Logger) (*Config, error) {
 	}
 	// Note: We also don't validate the search model here
 
-	// Get Gemini system prompt - optional with default
-	geminiSystemPrompt := os.Getenv("GEMINI_SYSTEM_PROMPT")
-	if geminiSystemPrompt == "" {
-		geminiSystemPrompt = systemPromptGeneral
-	}
-
-	// Get Gemini search system prompt - optional with default
-	geminiSearchSystemPrompt := os.Getenv("GEMINI_SEARCH_SYSTEM_PROMPT")
-	if geminiSearchSystemPrompt == "" {
-		geminiSearchSystemPrompt = systemPromptSearch
-	}
-
 	// Use helper functions to parse environment variables
 	timeout := parseEnvVarDuration("GEMINI_TIMEOUT", 300*time.Second, logger)
 	maxRetries := parseEnvVarInt("GEMINI_MAX_RETRIES", 2, logger)
@@ -273,25 +261,23 @@ func NewConfig(logger Logger) (*Config, error) {
 	}
 
 	return &Config{
-			GeminiAPIKey:             geminiAPIKey,
-			GeminiModel:              geminiModel,
-			GeminiSearchModel:        geminiSearchModel, // Assign the read value
-			GeminiSystemPrompt:       geminiSystemPrompt,
-			GeminiSearchSystemPrompt: geminiSearchSystemPrompt,
-			GeminiTemperature:        geminiTemperature,
-			HTTPTimeout:              timeout,
-			EnableHTTP:               enableHTTP,
-			HTTPAddress:              httpAddress,
-			HTTPPath:                 httpPath,
-			HTTPStateless:            httpStateless,
-			HTTPHeartbeat:            httpHeartbeat,
-			HTTPCORSEnabled:          httpCORSEnabled,
-			HTTPCORSOrigins:          httpCORSOrigins,
-			AuthEnabled:              authEnabled,
-			AuthSecretKey:            authSecretKey,
-			MaxRetries:               maxRetries,
-			InitialBackoff:           initialBackoff,
-			MaxBackoff:               maxBackoff,
+			GeminiAPIKey:      geminiAPIKey,
+			GeminiModel:       geminiModel,
+			GeminiSearchModel: geminiSearchModel, // Assign the read value
+			GeminiTemperature: geminiTemperature,
+			HTTPTimeout:       timeout,
+			EnableHTTP:        enableHTTP,
+			HTTPAddress:       httpAddress,
+			HTTPPath:          httpPath,
+			HTTPStateless:     httpStateless,
+			HTTPHeartbeat:     httpHeartbeat,
+			HTTPCORSEnabled:   httpCORSEnabled,
+			HTTPCORSOrigins:   httpCORSOrigins,
+			AuthEnabled:       authEnabled,
+			AuthSecretKey:     authSecretKey,
+			MaxRetries:        maxRetries,
+			InitialBackoff:    initialBackoff,
+			MaxBackoff:        maxBackoff,
 
 			// GitHub settings
 			GitHubToken:               githubToken,

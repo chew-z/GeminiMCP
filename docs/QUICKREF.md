@@ -27,7 +27,6 @@ GEMINI_AUTH_SECRET_KEY=<secret> ./bin/mcp-gemini --transport=http --auth-enabled
 ```
 query*          string    The question or task (required)
 model           string    Tier alias or explicit model ID
-systemPrompt    string    Override system prompt
 thinking_level  string    low | medium | high  (default: tier-aware — high for pro, medium for flash/flash-lite)
 ```
 
@@ -52,7 +51,6 @@ github_diff_head    string    Head ref for compare diff  ← pair with base
 ```
 query*        string    The research question (required)
 model         string    Override model
-systemPrompt  string    Override system prompt
 thinking_level  string  minimal | low | medium | high  (default: low)
 start_time    string    RFC3339 — both or neither
 end_time      string    RFC3339 — both or neither
@@ -77,10 +75,9 @@ end_time      string    RFC3339 — both or neither
 | `review_pr` | `owner` `repo` `pr_number` | `focus` |
 | `explain_commit` | `owner` `repo` `sha` | `question` |
 | `compare_refs` | `owner` `repo` `base` `head` | `question` |
-| `inspect_files` | `owner` `repo` `paths` `question` | `ref` |
 
 Generic prompts (`code_review`, `explain_code`, `debug_help`, `refactor_suggestions`,
-`architecture_analysis`, `doc_generate`, `test_generate`, `security_analysis`,
+`architecture_analysis`, `test_generate`, `security_analysis`,
 `research_question`) all take: `problem_statement*` `model` `thinking_level`
 
 ---
@@ -157,7 +154,6 @@ GEMINI_MAX_BACKOFF=10s
 ```
 --transport          stdio* | http
 --gemini-model       tier alias or model ID
---gemini-system-prompt
 --gemini-temperature 0.0-1.0
 --service-tier       flex | standard | priority
 --auth-enabled

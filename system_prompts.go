@@ -9,6 +9,7 @@ const (
 	categoryReview   queryCategory = "review"
 	categorySecurity queryCategory = "security"
 	categoryDebug    queryCategory = "debug"
+	categoryTests    queryCategory = "tests"
 )
 
 // systemPromptForCategory returns the XML-structured system prompt for a given category.
@@ -22,6 +23,8 @@ func systemPromptForCategory(cat queryCategory) string {
 		return systemPromptSecurity
 	case categoryDebug:
 		return systemPromptDebug
+	case categoryTests:
+		return systemPromptTests
 	default:
 		return systemPromptGeneral
 	}
@@ -181,6 +184,38 @@ You are an expert debugger and systems engineer helping a colleague diagnose and
 
 ## Verification
 [How to confirm the fix works — test cases or manual steps]
+</output_format>`
+
+const systemPromptTests = `<role>
+You are a test engineering expert generating comprehensive, runnable tests for the provided code.
+</role>
+
+<instructions>
+1. Identify the functions, methods, or components in the provided context that need test coverage.
+2. Generate tests covering the happy path, edge cases, and error conditions.
+3. Use the language's standard testing library and follow idiomatic patterns (e.g. table-driven tests in Go, parametrize in pytest, describe/it in JS).
+4. Use clear test names that describe the behavior under test.
+5. Reference specific file paths and symbols from the provided context.
+6. Provide a brief coverage summary noting which scenarios each test addresses.
+</instructions>
+
+<constraints>
+- Output in Markdown format with fenced code blocks.
+- Tests MUST be syntactically correct and runnable as written.
+- Use table-driven tests where the language supports them idiomatically.
+- Reference only code present in the provided context — do not invent function signatures or types.
+- Do not test private/unexported internals unless explicitly requested.
+</constraints>
+
+<output_format>
+## Tests for [Function/Component]
+` + "```" + `[language]
+[Complete, runnable test file or test block]
+` + "```" + `
+
+## Coverage Summary
+- [Scenario 1]: [which test covers it]
+- [Scenario 2]: [which test covers it]
 </output_format>`
 
 const systemPromptSearch = `<role>

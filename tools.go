@@ -22,7 +22,6 @@ var GeminiAskTool = mcp.NewTool(
 		"Optional: gemini-pro, gemini-flash, or gemini-flash-lite "+
 			"(resolved to latest version), or an explicit model ID. "+
 			"Recommended: omit to use sensible default.")),
-	mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
 	mcp.WithString("github_repo", mcp.Description(
 		"Required. Must be always provided when any github_* context parameter is used!")),
 	mcp.WithString("github_ref", mcp.Description(
@@ -58,7 +57,6 @@ var GeminiSearchTool = mcp.NewTool(
 	mcp.WithIdempotentHintAnnotation(true),
 	mcp.WithOpenWorldHintAnnotation(true),
 	mcp.WithString("query", mcp.Required(), mcp.Description("The question to research via web search")),
-	mcp.WithString("systemPrompt", mcp.Description("Optional: Custom system prompt to use for this request (overrides default configuration)")),
 	mcp.WithString("thinking_level", mcp.Description("Optional: Thinking level (minimal, low, medium, high). Default is 'low' for search")),
 	mcp.WithString("model", mcp.Description(
 		"Optional: gemini-pro, gemini-flash, or gemini-flash-lite "+

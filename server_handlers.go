@@ -44,20 +44,12 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 			config.GeminiModel, model.ContextWindowSize)
 	}
 
-	// Log a truncated version of the system prompt for security/brevity
-	promptPreview := config.GeminiSystemPrompt
-	if len(promptPreview) > 50 {
-		// Use proper UTF-8 safe truncation
-		runeCount := 0
-		for i := range promptPreview {
-			runeCount++
-			if runeCount > 50 {
-				promptPreview = promptPreview[:i] + "..."
-				break
-			}
-		}
+	if config.Prequalify {
+		logger.Info("System prompt selection: pre-qualification enabled (model %s)",
+			config.PrequalifyModel)
+	} else {
+		logger.Info("System prompt selection: pre-qualification disabled — using systemPromptGeneral")
 	}
-	logger.Info("Using system prompt: %s", promptPreview)
 
 	return nil
 }

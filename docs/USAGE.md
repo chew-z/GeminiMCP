@@ -116,7 +116,6 @@ Pass the token as a Bearer header in the MCP client configuration.
 |------|---------|-------------|
 | `--transport` | `stdio` | `stdio` or `http` |
 | `--gemini-model` | _(config)_ | Override default model (tier alias or full ID) |
-| `--gemini-system-prompt` | _(config)_ | Override system prompt |
 | `--gemini-temperature` | _(config)_ | Float 0.0–1.0 |
 | `--enable-thinking` | `true` | Enable extended thinking mode |
 | `--service-tier` | _(config)_ | `flex`, `standard`, or `priority` |
@@ -156,8 +155,6 @@ Tier aliases resolve to the latest live API model at startup:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GEMINI_SYSTEM_PROMPT` | — | Default system prompt for `gemini_ask` |
-| `GEMINI_SEARCH_SYSTEM_PROMPT` | — | Default system prompt for `gemini_search` |
 | `GEMINI_TEMPERATURE` | `1.0` | Sampling temperature (0.0–1.0) |
 | `GEMINI_ENABLE_THINKING` | `true` | Enable extended thinking globally |
 | `GEMINI_THINKING_LEVEL` | `high` | Default thinking level for `gemini_ask`: `low`, `medium`, `high` |

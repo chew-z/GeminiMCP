@@ -66,14 +66,13 @@ func TestGeminiSearchHandlerSuccess(t *testing.T) {
 
 	s := &GeminiServer{
 		config: &Config{
-			GeminiSearchSystemPrompt: "search system prompt",
-			GeminiSearchModel:        "gemini-3-flash-preview",
-			GeminiTemperature:        0.3,
+			GeminiSearchModel: "gemini-3-flash-preview",
+			GeminiTemperature: 0.3,
 
-			SearchThinkingLevel:      "medium",
-			ServiceTier:              "standard",
-			MaxRetries:               0,
-			HTTPTimeout:              100 * time.Millisecond,
+			SearchThinkingLevel: "medium",
+			ServiceTier:         "standard",
+			MaxRetries:          0,
+			HTTPTimeout:         100 * time.Millisecond,
 		},
 		client: client,
 	}
@@ -129,12 +128,11 @@ func TestGeminiSearchHandlerValidationAndClientErrors(t *testing.T) {
 
 	s := &GeminiServer{
 		config: &Config{
-			GeminiSearchSystemPrompt: "search system prompt",
-			GeminiSearchModel:        "gemini-3-flash-preview",
-			GeminiTemperature:        0.3,
+			GeminiSearchModel: "gemini-3-flash-preview",
+			GeminiTemperature: 0.3,
 
-			SearchThinkingLevel:      "medium",
-			ServiceTier:              "standard",
+			SearchThinkingLevel: "medium",
+			ServiceTier:         "standard",
 		},
 	}
 
@@ -210,14 +208,13 @@ func TestGeminiSearchHandlerAPIError(t *testing.T) {
 
 	s := &GeminiServer{
 		config: &Config{
-			GeminiSearchSystemPrompt: "search system prompt",
-			GeminiSearchModel:        "gemini-3-flash-preview",
-			GeminiTemperature:        0.3,
+			GeminiSearchModel: "gemini-3-flash-preview",
+			GeminiTemperature: 0.3,
 
-			SearchThinkingLevel:      "medium",
-			ServiceTier:              "standard",
-			MaxRetries:               0,
-			HTTPTimeout:              100 * time.Millisecond,
+			SearchThinkingLevel: "medium",
+			ServiceTier:         "standard",
+			MaxRetries:          0,
+			HTTPTimeout:         100 * time.Millisecond,
 		},
 		client: client,
 	}

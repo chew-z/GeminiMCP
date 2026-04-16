@@ -90,11 +90,10 @@ func TestCreateModelConfig(t *testing.T) {
 	seedModelStateForTest(t, testModelCatalog())
 
 	baseConfig := &Config{
-		GeminiModel:        "gemini-3.1-pro-preview",
-		GeminiSystemPrompt: "system prompt",
-		GeminiTemperature:  0.2,
-		ThinkingLevel:      "high",
-		ServiceTier:        "standard",
+		GeminiModel:       "gemini-3.1-pro-preview",
+		GeminiTemperature: 0.2,
+		ThinkingLevel:     "high",
+		ServiceTier:       "standard",
 	}
 
 	tests := []struct {

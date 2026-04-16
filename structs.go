@@ -9,17 +9,17 @@ import (
 	"google.golang.org/genai"
 )
 
-// PromptDefinition defines the structure for a prompt with its system prompt.
+// PromptDefinition defines the structure for a prompt.
 //
 // HandlerFactory is optional. When nil, the default generic handler
 // (promptHandler) is used — which expects a "problem_statement" argument and
-// emits a gemini_ask call wrapped around the system prompt. When non-nil, the
-// factory is invoked with the live GeminiServer to produce a custom handler;
-// this is the hook used by the github-workflow prompts (review_pr,
-// explain_commit, compare_refs, inspect_files) that need bespoke arguments.
+// emits a gemini_ask invocation. The server picks the system prompt via
+// pre-qualification; clients cannot inject one. When non-nil, the factory is
+// invoked with the live GeminiServer to produce a custom handler; this is the
+// hook used by the github-workflow prompts (review_pr, explain_commit,
+// compare_refs) that need bespoke arguments.
 type PromptDefinition struct {
 	*mcp.Prompt
-	SystemPrompt   SystemPromptProvider
 	HandlerFactory func(s *GeminiServer) mcpPromptHandlerFunc
 }
 
@@ -27,21 +27,9 @@ type PromptDefinition struct {
 // import into structs.go. The real type alias lives in server_handlers.go.
 type mcpPromptHandlerFunc func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error)
 
-// SystemPromptProvider is an interface for providing system prompts
-type SystemPromptProvider interface {
-	GetSystemPrompt() string
-}
-
-// StaticSystemPrompt provides a fixed system prompt
-type StaticSystemPrompt string
-
-// GetSystemPrompt returns the system prompt
-func (s StaticSystemPrompt) GetSystemPrompt() string {
-	return string(s)
-}
-
-// NewPromptDefinition creates a new prompt definition
-func NewPromptDefinition(name, description string, systemPrompt string) *PromptDefinition {
+// NewPromptDefinition creates a new generic prompt definition. The server
+// resolves the system prompt server-side via pre-qualification.
+func NewPromptDefinition(name, description string) *PromptDefinition {
 	return &PromptDefinition{
 		Prompt: &mcp.Prompt{
 			Name:        name,
@@ -62,7 +50,6 @@ func NewPromptDefinition(name, description string, systemPrompt string) *PromptD
 				},
 			},
 		},
-		SystemPrompt: StaticSystemPrompt(systemPrompt),
 	}
 }
 
@@ -88,12 +75,10 @@ type SourceInfo struct {
 // Config holds all configuration parameters for the application
 type Config struct {
 	// Gemini API settings
-	GeminiAPIKey             string
-	GeminiModel              string // Default model for 'gemini_ask'
-	GeminiSearchModel        string // Default model for 'gemini_search'
-	GeminiSystemPrompt       string
-	GeminiSearchSystemPrompt string
-	GeminiTemperature        float64
+	GeminiAPIKey      string
+	GeminiModel       string // Default model for 'gemini_ask'
+	GeminiSearchModel string // Default model for 'gemini_search'
+	GeminiTemperature float64
 
 	// HTTP client settings
 	HTTPTimeout time.Duration

@@ -207,7 +207,11 @@ func configureThinking(ctx context.Context, req mcp.CallToolRequest, config *gen
 	logger.Info("Thinking mode enabled with level '%s' for model %s", thinkingLevel, modelName)
 }
 
-// createModelConfig creates a GenerateContentConfig for Gemini API based on request parameters
+// createModelConfig creates a GenerateContentConfig for Gemini API based on request parameters.
+// It does NOT set SystemInstruction — the caller is responsible for assigning
+// the system prompt (gemini_ask uses resolveSystemPromptAsync; gemini_search
+// uses systemPromptSearch directly). Per CLAUDE.md principle #1 the server is
+// the sole authority on system prompt selection.
 func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Config, defaultModel string) (*genai.GenerateContentConfig, string, error) {
 	// Extract model parameter - use defaultModel if not specified
 	modelName := extractArgumentString(req, "model", defaultModel)
@@ -217,12 +221,6 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 		return nil, "", err
 	}
 
-	// Extract system prompt
-	systemPrompt := config.GeminiSystemPrompt
-	if sp, ok := req.GetArguments()["systemPrompt"].(string); ok {
-		systemPrompt = sp
-	}
-
 	// Get model information
 	logger := getLoggerFromContext(ctx)
 	modelInfo := GetModelByID(modelName)
@@ -230,10 +228,10 @@ func createModelConfig(ctx context.Context, req mcp.CallToolRequest, config *Con
 		logger.Warn("Model information not found for %s, using default parameters", modelName)
 	}
 
-	// Create the configuration
+	// Create the configuration. SystemInstruction is intentionally left nil;
+	// the caller assigns it.
 	contentConfig := &genai.GenerateContentConfig{
-		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
-		Temperature:       genai.Ptr(float32(config.GeminiTemperature)),
+		Temperature: genai.Ptr(float32(config.GeminiTemperature)),
 	}
 	contentConfig.ServiceTier = serviceTierFromString(config.ServiceTier)
 

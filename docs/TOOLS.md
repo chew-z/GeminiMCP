@@ -6,8 +6,8 @@
 
 ## Overview
 
-The server exposes **2 MCP tools** and **13 MCP prompts** (4 GitHub workflow
-shortcuts + 9 generic coding prompts).
+The server exposes **2 MCP tools** and **11 MCP prompts** (3 GitHub workflow
+shortcuts + 8 generic coding prompts).
 
 | Name | Type | Purpose |
 |------|------|---------|
@@ -16,13 +16,11 @@ shortcuts + 9 generic coding prompts).
 | `review_pr` | Prompt | Review a GitHub pull request |
 | `explain_commit` | Prompt | Explain what a single commit does |
 | `compare_refs` | Prompt | Summarize a diff between two refs |
-| `inspect_files` | Prompt | Inspect files in a GitHub repository |
 | `code_review` | Prompt | Review code for quality and best practices |
 | `explain_code` | Prompt | Explain how code works |
 | `debug_help` | Prompt | Debug an issue |
 | `refactor_suggestions` | Prompt | Suggest refactoring improvements |
 | `architecture_analysis` | Prompt | Analyze system architecture |
-| `doc_generate` | Prompt | Generate documentation |
 | `test_generate` | Prompt | Generate unit tests |
 | `security_analysis` | Prompt | Analyze code for security vulnerabilities |
 | `research_question` | Prompt | Research with Google Search |
@@ -43,7 +41,6 @@ parameters are **independent, optional peers** — mix and match freely in one c
 |-----------|------|----------|-------------|
 | `query` | string | **Yes** | The coding question or task |
 | `model` | string | No | Override default model (tier alias or explicit model ID) |
-| `systemPrompt` | string | No | Override default system prompt for this call |
 | `thinking_level` | string | No | `low`, `medium`, `high`. Default is tier-aware: `high` for pro, `medium` for flash and flash-lite. |
 | `github_repo` | string | No* | Repository in `owner/repo` format — **required when any `github_*` param is used** |
 | `github_ref` | string | No | Git branch, tag, or SHA — applies to `github_files` only |
@@ -173,7 +170,6 @@ a structured JSON response containing the answer and cited sources.
 |-----------|------|----------|-------------|
 | `query` | string | **Yes** | The question to research |
 | `model` | string | No | Override model (default: `GEMINI_SEARCH_MODEL`, typically `gemini-flash-lite`) |
-| `systemPrompt` | string | No | Override system prompt |
 | `thinking_level` | string | No | `minimal`, `low`, `medium`, `high` (default: `low`) |
 | `start_time` | string | No | RFC3339 lower bound for search result dates (must pair with `end_time`) |
 | `end_time` | string | No | RFC3339 upper bound for search result dates (must pair with `start_time`) |
@@ -225,7 +221,7 @@ the call returns a validation error.
 
 ## GitHub Workflow Prompts
 
-These four prompts are **discoverable shortcuts** that emit a pre-filled
+These three prompts are **discoverable shortcuts** that emit a pre-filled
 `gemini_ask` call. Smart clients can skip prompts entirely and call `gemini_ask`
 directly with any parameter combination.
 
@@ -298,31 +294,9 @@ query             = "Summarize the changes between <base> and <head> in <owner>/
 
 ---
 
-### Prompt: `inspect_files`
-
-Inspect one or more files in a GitHub repository.
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `owner` | Yes | Repository owner |
-| `repo` | Yes | Repository name |
-| `paths` | Yes | Comma-separated list of file paths |
-| `question` | Yes | Question to ask about the files |
-| `ref` | No | Git ref (branch, tag, SHA). Defaults to repo default branch |
-
-**Emitted `gemini_ask` call:**
-```
-github_repo  = "<owner>/<repo>"
-github_files = ["<path1>", "<path2>", ...]
-github_ref   = "<ref>"  (if provided)
-query        = "<question>"
-```
-
----
-
 ## Generic Coding Prompts
 
-All nine generic prompts share the same argument schema:
+All eight generic prompts share the same argument schema:
 
 | Argument | Required | Description |
 |----------|----------|-------------|
@@ -330,8 +304,7 @@ All nine generic prompts share the same argument schema:
 | `model` | No | Override model for this call |
 | `thinking_level` | No | `minimal`, `low`, `medium`, `high` |
 
-Each prompt emits instructions for the MCP client to call `gemini_ask` with
-a tailored system prompt pre-filled.
+Each prompt emits instructions for the MCP client to call `gemini_ask`.
 
 | Prompt | Best for |
 |--------|----------|
@@ -340,7 +313,6 @@ a tailored system prompt pre-filled.
 | `debug_help` | Root-cause analysis and fix suggestions |
 | `refactor_suggestions` | Modernization and structural improvements |
 | `architecture_analysis` | High-level design and component breakdown |
-| `doc_generate` | Generating Markdown documentation |
 | `test_generate` | Writing unit/integration tests |
 | `security_analysis` | OWASP Top 10 vulnerability scan |
 | `research_question` | Routes to `gemini_search` instead of `gemini_ask` |
@@ -364,9 +336,8 @@ jittered backoff rather than blocking.
 
 ## Query Pre-Qualification
 
-When `gemini_ask` receives a request **without** an explicit `systemPrompt`, the
-server automatically classifies the query into one of five categories and selects
-a tailored XML-structured system prompt:
+`gemini_ask` automatically classifies every request into one of six categories
+and selects a tailored XML-structured system prompt server-side.
 
 | Category | Selected when |
 |----------|--------------|
@@ -375,16 +346,16 @@ a tailored XML-structured system prompt:
 | `review` | Code quality review, best practices, refactoring, performance |
 | `security` | Security vulnerabilities, authentication, authorization, OWASP |
 | `debug` | Bug fixing, error analysis, troubleshooting, test failures |
+| `tests` | Generating new unit/integration tests for existing code |
 
 Classification runs as a lightweight Flash model call **in parallel** with GitHub
 context fetching, so it adds zero visible latency.
 
 ### Skip conditions (no pre-qualification)
 
-1. Client provided an explicit `systemPrompt` parameter — used as-is.
-2. `GEMINI_PREQUALIFY=false` — pre-qualification disabled; server falls back to the
+1. `GEMINI_PREQUALIFY=false` — pre-qualification disabled; server falls back to the
    default general system prompt.
-3. Classification call fails — fallback: `analyze` if any `github_*` context is
+2. Classification call fails — fallback: `analyze` if any `github_*` context is
    attached, otherwise `general`.
 
 ### Configuration

@@ -20,9 +20,6 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 		return createErrorResult(err.Error()), nil
 	}
 
-	// Extract optional system prompt - use search-specific prompt as default
-	systemPrompt := extractArgumentString(req, "systemPrompt", s.config.GeminiSearchSystemPrompt)
-
 	// Extract optional model parameter - use search-specific model as default
 	modelName := extractArgumentString(req, "model", s.config.GeminiSearchModel)
 	modelName, err = resolveAndValidateModel(ctx, modelName)
@@ -60,7 +57,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	}
 
 	config := &genai.GenerateContentConfig{
-		SystemInstruction: genai.NewContentFromText(systemPrompt, ""),
+		SystemInstruction: genai.NewContentFromText(systemPromptSearch, ""),
 		Temperature:       genai.Ptr(float32(s.config.GeminiTemperature)),
 		Tools: []*genai.Tool{
 			{

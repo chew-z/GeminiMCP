@@ -58,7 +58,6 @@ func runMain(args []string) int {
 
 	// Define command-line flags for configuration override
 	geminiModelFlag := flagSet.String("gemini-model", "", "Gemini model name (overrides env var)")
-	geminiSystemPromptFlag := flagSet.String("gemini-system-prompt", "", "System prompt (overrides env var)")
 	geminiTemperatureFlag := flagSet.Float64("gemini-temperature", -1, "Temperature setting (0.0-1.0, overrides env var)")
 	serviceTierFlag := flagSet.String("service-tier", "", "Service tier: flex, standard, priority (overrides env var)")
 	transportFlag := flagSet.String("transport", "stdio", "Transport mode: 'stdio' (default) or 'http'")
@@ -95,12 +94,6 @@ func runMain(args []string) int {
 	// Now create the main context with everything it needs
 	ctx := context.WithValue(context.Background(), loggerKey, logger)
 	ctx = context.WithValue(ctx, configKey, config)
-
-	// Override non-model flags before catalog fetch
-	if *geminiSystemPromptFlag != "" {
-		logger.Info("Overriding Gemini system prompt with flag value")
-		config.GeminiSystemPrompt = *geminiSystemPromptFlag
-	}
 
 	// Override temperature if provided and valid
 	if *geminiTemperatureFlag >= 0 {

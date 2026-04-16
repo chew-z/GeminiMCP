@@ -117,13 +117,12 @@ func installMainHooksForTest(t *testing.T, cfg *Config) *mainTestCalls {
 
 func baseMainTestConfig() *Config {
 	return &Config{
-		GeminiAPIKey:       "test-key",
-		GeminiModel:        "gemini-3.1-pro-preview",
-		GeminiSearchModel:  "gemini-3-flash-preview",
-		GeminiSystemPrompt: "system",
-		ServiceTier:        "standard",
-		HTTPAddress:        "127.0.0.1:0",
-		HTTPPath:           "/mcp",
+		GeminiAPIKey:      "test-key",
+		GeminiModel:       "gemini-3.1-pro-preview",
+		GeminiSearchModel: "gemini-3-flash-preview",
+		ServiceTier:       "standard",
+		HTTPAddress:       "127.0.0.1:0",
+		HTTPPath:          "/mcp",
 	}
 }
 
@@ -409,7 +408,6 @@ func TestRunMainModelFlagValidation(t *testing.T) {
 		}
 
 		code := runMain([]string{
-			"-gemini-system-prompt=override",
 			"-gemini-temperature=0.6",
 			"-service-tier=priority",
 			"-auth-enabled",
@@ -417,7 +415,6 @@ func TestRunMainModelFlagValidation(t *testing.T) {
 		})
 
 		assert.Equal(t, 0, code)
-		assert.Equal(t, "override", cfg.GeminiSystemPrompt)
 		assert.Equal(t, 0.6, cfg.GeminiTemperature)
 		assert.Equal(t, "priority", cfg.ServiceTier)
 		assert.True(t, cfg.AuthEnabled)

@@ -6,8 +6,8 @@ An MCP server that exposes Google Gemini models to MCP clients (Claude Code, IDE
 
 - **`gemini_ask`** — multimodal question answering with composable GitHub context (PRs, commits, diffs, files)
 - **`gemini_search`** — Google Search-grounded queries returning structured JSON
-- **4 workflow prompts** — `review_pr`, `explain_commit`, `compare_refs`, `inspect_files`
-- **9 coding prompts** — code review, explain, debug, refactor, architecture, docs, tests, security, research
+- **3 workflow prompts** — `review_pr`, `explain_commit`, `compare_refs`
+- **8 coding prompts** — code review, explain, debug, refactor, architecture, tests, security, research
 - Two transports: **HTTP** (JWT-secured, preferred) and **stdio** (local fallback)
 
 ## Quick start

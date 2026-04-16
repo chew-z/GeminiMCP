@@ -17,7 +17,8 @@ Categories:
 - analyze: Understanding, explaining, or documenting code; architecture analysis
 - review: Code quality review, best practices, refactoring, performance
 - security: Security vulnerabilities, authentication, authorization, OWASP
-- debug: Bug fixing, error analysis, troubleshooting, test failures`
+- debug: Bug fixing, error analysis, troubleshooting, test failures
+- tests: Generating new unit/integration tests or test cases for existing code`
 
 // prequalifyQuery classifies a user query into one of the five categories
 // using a lightweight Flash model call with structured enum output.
@@ -67,7 +68,7 @@ func buildPrequalifyConfig(modelName, thinkingLevel string) *genai.GenerateConte
 		ResponseSchema: &genai.Schema{
 			Type:   genai.TypeString,
 			Format: "enum",
-			Enum:   []string{"general", "analyze", "review", "security", "debug"},
+			Enum:   []string{"general", "analyze", "review", "security", "debug", "tests"},
 		},
 		ServiceTier: genai.ServiceTierPriority,
 	}
@@ -97,31 +98,35 @@ func parsePrequalifyResponse(resp *genai.GenerateContentResponse) (queryCategory
 
 	cat := queryCategory(strings.ToLower(strings.TrimSpace(raw)))
 	switch cat {
-	case categoryGeneral, categoryAnalyze, categoryReview, categorySecurity, categoryDebug:
+	case categoryGeneral, categoryAnalyze, categoryReview, categorySecurity, categoryDebug, categoryTests:
 		return cat, nil
 	default:
 		return "", fmt.Errorf("prequalify returned unknown category: %q", raw)
 	}
 }
 
-// startPrequalification launches a background goroutine that classifies the
-// query and returns the result on a channel. Returns nil if pre-qualification
-// is disabled or the client provided an explicit systemPrompt.
-func (s *GeminiServer) startPrequalification(ctx context.Context, req mcp.CallToolRequest, logger Logger) <-chan queryCategory {
-	_, clientOverride := req.GetArguments()["systemPrompt"].(string)
-	if clientOverride || !s.config.Prequalify {
-		return nil
+// resolveSystemPromptAsync returns a buffered channel that yields the
+// system-prompt string for this request. It is the SOLE assigner of system
+// instructions for gemini_ask and runs concurrently with context gathering.
+//
+// Resolution precedence:
+//  1. GEMINI_PREQUALIFY=false → systemPromptGeneral (synchronous, no API call)
+//  2. Pre-qualification succeeds → systemPromptForCategory(cat)
+//  3. Pre-qualification fails    → analyze if any github_* present, else general
+func (s *GeminiServer) resolveSystemPromptAsync(ctx context.Context, req mcp.CallToolRequest, logger Logger) <-chan string {
+	ch := make(chan string, 1)
+	if !s.config.Prequalify {
+		ch <- systemPromptGeneral
+		return ch
 	}
-
-	ch := make(chan queryCategory, 1)
 	go func() {
-		summary := buildContextSummary(req)
-		q, ok := req.GetArguments()["query"].(string)
+		query, ok := req.GetArguments()["query"].(string)
 		if !ok {
-			ch <- categoryGeneral
+			ch <- systemPromptGeneral
 			return
 		}
-		cat, err := s.prequalifyQuery(ctx, q, summary)
+		summary := buildContextSummary(req)
+		cat, err := s.prequalifyQuery(ctx, query, summary)
 		if err != nil {
 			logger.Warn("Pre-qualification failed: %v, using fallback", err)
 			if hasGitHubContext(req) {
@@ -130,7 +135,7 @@ func (s *GeminiServer) startPrequalification(ctx context.Context, req mcp.CallTo
 				cat = categoryGeneral
 			}
 		}
-		ch <- cat
+		ch <- systemPromptForCategory(cat)
 	}()
 	return ch
 }

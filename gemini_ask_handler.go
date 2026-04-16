@@ -55,8 +55,10 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 		return createErrorResult(err.Error()), nil
 	}
 
-	// Start pre-qualification in parallel with context gathering.
-	pqDone := s.startPrequalification(ctx, req, logger)
+	// Resolve the system prompt server-side, in parallel with context gathering.
+	// This is the sole assigner of SystemInstruction — createModelConfig does
+	// not touch it.
+	promptCh := s.resolveSystemPromptAsync(ctx, req, logger)
 
 	ghContextParts, uploads, inventory, allWarnings, errResult := s.gatherAllContext(ctx, req)
 	if errResult != nil {
@@ -64,13 +66,7 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 	}
 	query = appendFileWarningNote(query, allWarnings)
 
-	// Wait for pre-qualification and apply the category-specific system prompt.
-	if pqDone != nil {
-		cat := <-pqDone
-		config.SystemInstruction = genai.NewContentFromText(
-			systemPromptForCategory(cat), "")
-		logger.Info("Pre-qualified as '%s', selected system prompt", cat)
-	}
+	config.SystemInstruction = genai.NewContentFromText(<-promptCh, "")
 
 	// Validate client and models before proceeding
 	if s.client == nil || s.client.Models == nil {

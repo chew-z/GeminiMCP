@@ -200,7 +200,6 @@ func TestGeminiAskHandlerMergesGitHubContext(t *testing.T) {
 	s := &GeminiServer{
 		config: &Config{
 			GeminiModel:               "gemini-pro",
-			GeminiSystemPrompt:        "base system prompt",
 			GeminiTemperature:         0.3,
 			ServiceTier:               "standard",
 			MaxRetries:                0,
@@ -280,10 +279,12 @@ func TestGeminiAskHandlerMergesGitHubContext(t *testing.T) {
 	assert.Less(t, prIdx, fileIdx, "PR must come before files")
 	assert.Less(t, fileIdx, queryIdx, "files must come before query")
 
-	// System prompt addendum should describe every attached source.
+	// System prompt addendum should describe every attached source. With
+	// pre-qualification disabled the server falls back to systemPromptGeneral
+	// and then appends the inventory addendum.
 	require.NotEmpty(t, payload.SystemInstruction.Parts)
 	systemText := payload.SystemInstruction.Parts[0].Text
-	assert.Contains(t, systemText, "base system prompt")
+	assert.Contains(t, systemText, "knowledgeable assistant")
 	assert.Contains(t, systemText, "github.com/o/r")
 	assert.Contains(t, systemText, "1 source file(s)")
 	assert.Contains(t, systemText, "1 commit patch(es)")
@@ -297,7 +298,6 @@ func TestGeminiAskHandlerGitHubDiffRequiresBothRefs(t *testing.T) {
 	s := &GeminiServer{
 		config: &Config{
 			GeminiModel:        "gemini-pro",
-			GeminiSystemPrompt: "sp",
 			GeminiTemperature:  0.3,
 			ServiceTier:        "standard",
 			MaxGitHubDiffBytes: 1024,
@@ -438,7 +438,6 @@ func newMergedContextServer(t *testing.T, backend *mergedContextTestServer) *Gem
 	return &GeminiServer{
 		config: &Config{
 			GeminiModel:               "gemini-pro",
-			GeminiSystemPrompt:        "base system prompt",
 			GeminiTemperature:         0.3,
 			ServiceTier:               "standard",
 			MaxRetries:                0,

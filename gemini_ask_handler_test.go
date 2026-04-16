@@ -59,15 +59,14 @@ func TestGeminiAskHandlerFileSourceBehavior(t *testing.T) {
 
 	s := &GeminiServer{
 		config: &Config{
-			GeminiModel:        "gemini-pro",
-			GeminiSystemPrompt: "system prompt",
-			GeminiTemperature:  0.3,
+			GeminiModel:       "gemini-pro",
+			GeminiTemperature: 0.3,
 
-			ThinkingLevel:      "high",
-			ServiceTier:        "standard",
-			MaxGitHubFiles:     10,
-			MaxGitHubFileSize:  1024,
-			HTTPTimeout:        50 * time.Millisecond,
+			ThinkingLevel:     "high",
+			ServiceTier:       "standard",
+			MaxGitHubFiles:    10,
+			MaxGitHubFileSize: 1024,
+			HTTPTimeout:       50 * time.Millisecond,
 		},
 	}
 
@@ -152,17 +151,16 @@ func TestGeminiAskHandlerGitHubWarningTruncationInOutboundQuery(t *testing.T) {
 
 	s := &GeminiServer{
 		config: &Config{
-			GeminiModel:        "gemini-pro",
-			GeminiSystemPrompt: "system prompt",
-			GeminiTemperature:  0.3,
+			GeminiModel:       "gemini-pro",
+			GeminiTemperature: 0.3,
 
-			ThinkingLevel:      "high",
-			ServiceTier:        "standard",
-			MaxRetries:         0,
-			HTTPTimeout:        100 * time.Millisecond,
-			GitHubAPIBaseURL:   githubServer.URL,
-			MaxGitHubFiles:     20,
-			MaxGitHubFileSize:  1024,
+			ThinkingLevel:     "high",
+			ServiceTier:       "standard",
+			MaxRetries:        0,
+			HTTPTimeout:       100 * time.Millisecond,
+			GitHubAPIBaseURL:  githubServer.URL,
+			MaxGitHubFiles:    20,
+			MaxGitHubFileSize: 1024,
 		},
 		client: client,
 	}
@@ -262,14 +260,13 @@ func TestGeminiAskHandlerWithoutFilesUsesProcessWithoutFiles(t *testing.T) {
 
 	s := &GeminiServer{
 		config: &Config{
-			GeminiModel:        "gemini-pro",
-			GeminiSystemPrompt: "system prompt",
-			GeminiTemperature:  0.3,
+			GeminiModel:       "gemini-pro",
+			GeminiTemperature: 0.3,
 
-			ThinkingLevel:      "high",
-			ServiceTier:        "standard",
-			MaxRetries:         0,
-			HTTPTimeout:        100 * time.Millisecond,
+			ThinkingLevel: "high",
+			ServiceTier:   "standard",
+			MaxRetries:    0,
+			HTTPTimeout:   100 * time.Millisecond,
 		},
 		client: client,
 	}
@@ -402,12 +399,11 @@ func TestParseAskRequest(t *testing.T) {
 
 	s := &GeminiServer{
 		config: &Config{
-			GeminiModel:        "gemini-pro",
-			GeminiSystemPrompt: "system prompt",
-			GeminiTemperature:  0.3,
+			GeminiModel:       "gemini-pro",
+			GeminiTemperature: 0.3,
 
-			ThinkingLevel:      "high",
-			ServiceTier:        "standard",
+			ThinkingLevel: "high",
+			ServiceTier:   "standard",
 		},
 	}
 

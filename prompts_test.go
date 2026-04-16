@@ -25,7 +25,6 @@ func TestPromptHandlers(t *testing.T) {
 	testPrompt := NewPromptDefinition(
 		"test-prompt",
 		"A test prompt",
-		"You are a helpful assistant.",
 	)
 
 	t.Run("happy path", func(t *testing.T) {
@@ -50,7 +49,7 @@ func TestPromptHandlers(t *testing.T) {
 
 		instructions := textContent.Text
 		assert.Contains(t, instructions, problemStatement, "Instructions should contain the problem statement")
-		assert.Contains(t, instructions, testPrompt.SystemPrompt, "Instructions should contain the system prompt")
+		assert.NotContains(t, instructions, "systemPrompt", "Instructions must not advertise systemPrompt argument")
 	})
 
 	t.Run("error on missing problem_statement argument", func(t *testing.T) {

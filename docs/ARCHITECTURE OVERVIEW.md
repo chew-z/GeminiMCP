@@ -95,7 +95,7 @@ clients receive a descriptive fault instead of a silent crash.
 | `config.go` | `NewConfig` — all env vars with typed parsers |
 | `gemini_ask_handler.go` | `GeminiAskHandler` — context assembly, file uploads, prompt injection |
 | `gemini_search_handler.go` | `GeminiSearchHandler` — Google Search grounded queries |
-| `prompt_handlers.go` | Workflow prompt handlers: `review_pr`, `explain_commit`, `compare_refs`, `inspect_files` |
+| `prompt_handlers.go` | Workflow prompt handlers: `review_pr`, `explain_commit`, `compare_refs` |
 | `prompts.go` | `PromptDefinition` catalog; `problem_statement` generic prompts |
 | `tools.go` | MCP tool schema definitions |
 | `fetch_models.go` | Dynamic model catalog from live Gemini API; tier classification |
@@ -228,17 +228,15 @@ HTTP server (`http_server.go`) uses `mcp-go`'s SSE transport, adds CORS via
 
 ## 10. MCP Workflow Prompts
 
-Four shortcuts registered by `registerPrompts()` / `prompt_handlers.go`:
+Three shortcuts registered by `registerPrompts()` / `prompt_handlers.go`:
 
 | Prompt | Arguments | GitHub context used |
 |--------|-----------|---------------------|
 | `review_pr` | `repo`, `pr_number`, `focus` | `github_pr` + `github_diff_*` |
 | `explain_commit` | `repo`, `sha` | `github_commits` |
 | `compare_refs` | `repo`, `base`, `head` | `github_diff_*` |
-| `inspect_files` | `repo`, `paths`, `ref` | `github_files` |
 
-Generic prompts use a `problem_statement` argument and forward to `gemini_ask`
-with a baked-in system prompt.
+Generic prompts use a `problem_statement` argument and forward to `gemini_ask`.
 
 ---
 
@@ -249,7 +247,6 @@ with a baked-in system prompt.
 | `GEMINI_API_KEY` | — | **Required** — Gemini API key |
 | `GEMINI_MODEL` | `gemini-pro` | Default model (tier alias or explicit ID) |
 | `GEMINI_SEARCH_MODEL` | `gemini-flash` | Model for `gemini_search` |
-| `GEMINI_SYSTEM_PROMPT` | — | Optional default system prompt |
 | `GEMINI_TEMPERATURE` | `0.7` | Sampling temperature (0.0–1.0) |
 | `GEMINI_ENABLE_THINKING` | `true` | Extended thinking for supported models |
 | `GEMINI_SERVICE_TIER` | — | `flex` / `standard` / `priority` |
