@@ -44,6 +44,7 @@ Claude Code `mcpServers` entry (stdio):
 |-----|---------|
 | [docs/QUICKREF.md](docs/QUICKREF.md) | One-page cheat sheet — parameters, env vars, CLI flags, examples |
 | [docs/TOOLS.md](docs/TOOLS.md) | Full tool and prompt reference with all parameters and examples |
+| [docs/PROMPTS.md](docs/PROMPTS.md) | MCP-prompt registry and server-side system-prompt selection |
 | [docs/USAGE.md](docs/USAGE.md) | Installation, transport modes, authentication, all env vars |
 | [docs/ARCHITECTURE OVERVIEW.md](docs/ARCHITECTURE%20OVERVIEW.md) | Codebase map, component diagram, request lifecycle |
 | [.env.example](.env.example) | Annotated configuration template |

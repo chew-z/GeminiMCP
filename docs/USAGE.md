@@ -117,7 +117,6 @@ Pass the token as a Bearer header in the MCP client configuration.
 | `--transport` | `stdio` | `stdio` or `http` |
 | `--gemini-model` | _(config)_ | Override default model (tier alias or full ID) |
 | `--gemini-temperature` | _(config)_ | Float 0.0–1.0 |
-| `--enable-thinking` | `true` | Enable extended thinking mode |
 | `--service-tier` | _(config)_ | `flex`, `standard`, or `priority` |
 | `--auth-enabled` | `false` | Enable JWT auth (HTTP only) |
 | `--generate-token` | — | Print a JWT and exit |
@@ -156,10 +155,29 @@ Tier aliases resolve to the latest live API model at startup:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GEMINI_TEMPERATURE` | `1.0` | Sampling temperature (0.0–1.0) |
-| `GEMINI_ENABLE_THINKING` | `true` | Enable extended thinking globally |
-| `GEMINI_THINKING_LEVEL` | `high` | Default thinking level for `gemini_ask`: `low`, `medium`, `high` |
-| `GEMINI_SEARCH_THINKING_LEVEL` | `low` | Default thinking level for `gemini_search` |
+| `GEMINI_THINKING_LEVEL` | tier-aware (`high` pro / `medium` flash / flash-lite) | Override thinking level for `gemini_ask`: `minimal`, `low`, `medium`, `high`. Thinking is always on for models that support it. |
+| `GEMINI_SEARCH_THINKING_LEVEL` | `low` | Override thinking level for `gemini_search` |
 | `GEMINI_SERVICE_TIER` | `standard` | Service tier: `flex`, `standard`, `priority` |
+| `GEMINI_TIMEOUT` | `300s` | HTTP timeout for Gemini API calls |
+
+### Query pre-qualification
+
+The server runs a lightweight Flash classifier in parallel with GitHub context
+fetching and picks a tailored system prompt server-side (see
+[PROMPTS.md](PROMPTS.md)). Clients cannot inject system prompts.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEMINI_PREQUALIFY` | `true` | Enable/disable pre-qualification |
+| `GEMINI_PREQUALIFY_MODEL` | `gemini-flash` | Tier alias or model ID used for classification |
+| `GEMINI_PREQUALIFY_THINKING` | `medium` | Thinking level for the classifier |
+
+### Long-running operations
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEMINI_PROGRESS_INTERVAL` | `10s` | Cadence for MCP `notifications/progress` during long Gemini calls. Clients opt in via `_meta.progressToken`. Set to `0` to disable. |
+| `GEMINI_MAX_CONCURRENT_TASKS` | `10` | Cap on concurrent task-augmented tool executions. Set to `0` to disable task mode entirely. |
 
 ### HTTP Transport
 

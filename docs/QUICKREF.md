@@ -133,13 +133,19 @@ GEMINI_AUTH_SECRET_KEY=...
 
 # Inference
 GEMINI_TEMPERATURE=1.0
-GEMINI_THINKING_LEVEL=high
-GEMINI_SERVICE_TIER=standard     # flex | standard | priority
+GEMINI_THINKING_LEVEL=              # optional override; default is tier-aware
+GEMINI_SEARCH_THINKING_LEVEL=low
+GEMINI_SERVICE_TIER=standard        # flex | standard | priority
+GEMINI_TIMEOUT=300s                 # Gemini API timeout
 
 # Pre-qualification (auto system prompt selection)
-GEMINI_PREQUALIFY=true           # disable with false
+GEMINI_PREQUALIFY=true              # disable with false
 GEMINI_PREQUALIFY_MODEL=gemini-flash
 GEMINI_PREQUALIFY_THINKING=medium
+
+# Long-running operations
+GEMINI_PROGRESS_INTERVAL=10s        # notifications/progress cadence; 0 disables
+GEMINI_MAX_CONCURRENT_TASKS=10      # task-mode cap; 0 disables task mode
 
 # Retry
 GEMINI_MAX_RETRIES=2

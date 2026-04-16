@@ -11,7 +11,9 @@ models to MCP clients (Claude Code, IDEs, custom tooling). It provides:
 
 - A primary `gemini_ask` tool — multimodal, GitHub-context-aware question answering.
 - A `gemini_search` tool — Google Search-grounded queries returning structured JSON.
-- Four **workflow prompts** (shortcuts) that compose the above tools.
+- Three GitHub **workflow prompts** plus eight generic coding prompts that compose the tools.
+- Server-side query pre-qualification that auto-selects a tailored system prompt.
+- MCP `notifications/progress` + task-augmented execution for long-running calls.
 - Two transport modes: **HTTP** (preferred, JWT-secured) and **stdio** (legacy/local).
 
 ---
@@ -99,12 +101,16 @@ clients receive a descriptive fault instead of a silent crash.
 | `prompts.go` | `PromptDefinition` catalog; `problem_statement` generic prompts |
 | `tools.go` | MCP tool schema definitions |
 | `fetch_models.go` | Dynamic model catalog from live Gemini API; tier classification |
-| `handlers_common.go` | `createModelConfig`; `extractArgumentString`; `SafeWriter` |
+| `handlers_common.go` | `createModelConfig`; `extractArgumentString`; `SafeWriter`; grounding-source collection |
 | `github_diff.go` | GitHub API HTTP client; rate-limit handling; `sanitizeUntrustedBlockContent` |
 | `github_diff_handler.go` | `gatherCompareDiff` — base…head diff fetching |
 | `github_pr_handler.go` | PR body + review-comments context |
 | `github_commits_handler.go` | Commit message context |
-| `file_handlers.go` | Local and GitHub file upload to Gemini Files API |
+| `file_handlers.go` | GitHub file upload to Gemini Files API; rate-limit + status-code handling |
+| `prequalify.go` | Flash-based query classifier; runs in parallel with context fetching |
+| `system_prompts.go` | XML-structured system prompts keyed by classification category |
+| `progress.go` | Periodic MCP `notifications/progress` during long Gemini calls |
+| `task_hooks.go` | Lifecycle hooks for task-augmented tool execution |
 | `auth.go` | `AuthMiddleware`; JWT validation; `Claims` |
 | `http_server.go` | `startHTTPServer`; CORS; `createHTTPMiddleware` |
 | `retry.go` | `withRetry`; `computeBackoff` — exponential backoff with full jitter |
@@ -142,15 +148,23 @@ Clients may also pass explicit model IDs which are validated by `ValidateModelID
 ```
 GeminiAskHandler
   └─ parseAskRequest()
-  └─ gatherAllContext()
-       ├─ gatherGitHubContext()          — commits → diff → PR bundle
+  └─ resolveSystemPromptAsync()         — prequalify.go: Flash classifier in parallel
+  └─ gatherAllContext()                 — runs concurrently with the classifier
+       ├─ gatherGitHubContext()         — commits → diff → PR bundle
        │    └─ fetchGitHubContextSources() (parallel-safe)
-       └─ gatherFileUploads()            — github_files
+       └─ gatherFileUploads()           — github_files
             └─ gatherGitHubFiles()
   └─ applyContextInventory()            — prepend inventory block to system prompt
   └─ processWithFiles()  |
      processWithoutFiles()              — call Gemini API with assembled parts
 ```
+
+Pre-qualification (`prequalify.go`) classifies every request into one of six
+categories (`general`, `analyze`, `review`, `security`, `debug`, `tests`) and
+picks a tailored XML system prompt from `system_prompts.go`. Runs in parallel
+with context fetching so it adds no visible latency. Falls back to `analyze`
+when `github_*` context is present or `general` otherwise if the classifier
+fails or is disabled via `GEMINI_PREQUALIFY=false`.
 
 ### GitHub Context Sources (composable)
 
@@ -226,7 +240,34 @@ HTTP server (`http_server.go`) uses `mcp-go`'s SSE transport, adds CORS via
 
 ---
 
-## 10. MCP Workflow Prompts
+## 10. Long-Running Operations
+
+Pro-tier calls with large context can run for 60–300 s, exceeding client-side
+deadlines. Two independent, additive mechanisms keep long calls viable:
+
+### Progress notifications (`progress.go`)
+
+Clients that send `_meta.progressToken` on a tool call receive periodic
+`notifications/progress` pings during `GenerateContent`. The session-scoped
+reporter ticks every `GEMINI_PROGRESS_INTERVAL` (default `10s`; `0` disables)
+and reports elapsed seconds against `GEMINI_TIMEOUT` along with a short
+description of the active model and thinking level. Clients without a progress
+token see no behaviour change.
+
+### Task-augmented execution (`task_hooks.go`)
+
+Both tools advertise `taskSupport: optional` (MCP spec 2025-11-25). Clients
+that include a `task` field on `tools/call` receive a `CreateTaskResult` within
+milliseconds while the actual Gemini call continues in a server goroutine; the
+final answer is delivered via `notifications/tasks/status` and `tasks/result`.
+This removes the client-side 60 s deadline entirely.
+`GEMINI_MAX_CONCURRENT_TASKS` (default `10`) caps simultaneous task executions;
+`0` disables task mode. Clients that don't send `task` stay on the synchronous
+path transparently.
+
+---
+
+## 11. MCP Workflow Prompts
 
 Three shortcuts registered by `registerPrompts()` / `prompt_handlers.go`:
 
@@ -236,32 +277,42 @@ Three shortcuts registered by `registerPrompts()` / `prompt_handlers.go`:
 | `explain_commit` | `repo`, `sha` | `github_commits` |
 | `compare_refs` | `repo`, `base`, `head` | `github_diff_*` |
 
-Generic prompts use a `problem_statement` argument and forward to `gemini_ask`.
+Eight generic coding prompts (`code_review`, `explain_code`, `debug_help`,
+`refactor_suggestions`, `architecture_analysis`, `test_generate`,
+`security_analysis`, `research_question`) share a `problem_statement` argument
+and forward to `gemini_ask` — system-prompt selection remains server-side.
 
 ---
 
-## 11. Configuration Reference (key env vars)
+## 12. Configuration Reference (key env vars)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GEMINI_API_KEY` | — | **Required** — Gemini API key |
 | `GEMINI_MODEL` | `gemini-pro` | Default model (tier alias or explicit ID) |
-| `GEMINI_SEARCH_MODEL` | `gemini-flash` | Model for `gemini_search` |
-| `GEMINI_TEMPERATURE` | `0.7` | Sampling temperature (0.0–1.0) |
-| `GEMINI_ENABLE_THINKING` | `true` | Extended thinking for supported models |
-| `GEMINI_SERVICE_TIER` | — | `flex` / `standard` / `priority` |
+| `GEMINI_SEARCH_MODEL` | `gemini-flash-lite` | Model for `gemini_search` |
+| `GEMINI_TEMPERATURE` | `1.0` | Sampling temperature (0.0–1.0) |
+| `GEMINI_THINKING_LEVEL` | tier-aware | Override thinking level for `gemini_ask` (`minimal` / `low` / `medium` / `high`) |
+| `GEMINI_SEARCH_THINKING_LEVEL` | `low` | Override thinking level for `gemini_search` |
+| `GEMINI_SERVICE_TIER` | `standard` | `flex` / `standard` / `priority` |
+| `GEMINI_TIMEOUT` | `300s` | HTTP timeout for Gemini API calls |
+| `GEMINI_PREQUALIFY` | `true` | Enable server-side query classification |
+| `GEMINI_PREQUALIFY_MODEL` | `gemini-flash` | Model used by the classifier |
+| `GEMINI_PREQUALIFY_THINKING` | `medium` | Thinking level for the classifier |
+| `GEMINI_PROGRESS_INTERVAL` | `10s` | Cadence for `notifications/progress`; `0` disables |
+| `GEMINI_MAX_CONCURRENT_TASKS` | `10` | Task-mode concurrency cap; `0` disables task mode |
 | `GEMINI_AUTH_ENABLED` | `false` | Enable JWT auth for HTTP transport |
 | `GEMINI_AUTH_SECRET_KEY` | — | JWT signing secret (required if auth enabled) |
 | `GEMINI_HTTP_ADDRESS` | `:8080` | HTTP bind address |
 | `GEMINI_HTTP_PATH` | `/mcp` | HTTP MCP endpoint path |
-| `GITHUB_TOKEN` | — | GitHub PAT for private repo access |
+| `GEMINI_GITHUB_TOKEN` | — | GitHub PAT for private repo access |
 | `GEMINI_MAX_GITHUB_DIFF_BYTES` | `512000` | Max diff size (500 KB) |
 | `GEMINI_MAX_GITHUB_COMMITS` | `10` | Max commits fetched per request |
 | `GEMINI_MAX_GITHUB_PR_REVIEW_COMMENTS` | `50` | Max PR review comments |
 
 ---
 
-## 12. Testing Strategy
+## 13. Testing Strategy
 
 Tests live alongside sources (`*_test.go`). Notable test files:
 
@@ -269,10 +320,16 @@ Tests live alongside sources (`*_test.go`). Notable test files:
 |------|----------|
 | `github_context_test.go` | Full merge-path integration; rate-limit header parsing; prompt injection regression |
 | `gemini_ask_handler_test.go` | Handler unit tests; mutual exclusion; context assembly |
+| `gemini_search_handler_test.go` | Search handler; grounding metadata collection |
+| `handlers_common_test.go` | Argument extraction; grounding-source dedup; `SafeWriter` |
+| `progress_test.go` | Progress reporter lifecycle; notification cadence |
+| `task_hooks_test.go` | Task hook events and session-ID tagging |
+| `file_handlers_unit_test.go` | Rate-limit handling; status-code mapping; retry outcomes |
 | `fetch_models_test.go` | `classifyModel` tier logic |
 | `config_test.go` | Env-var parsing; defaults |
 | `retry_test.go` | Backoff math; jitter bounds |
 | `auth_test.go` | JWT validation; claims extraction |
 | `http_server_test.go` | Middleware; CORS |
+| `main_test.go` | Flag parsing; startup error handling; transport selection |
 
 Run with: `./run_test.sh`
