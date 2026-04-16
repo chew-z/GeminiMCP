@@ -155,7 +155,7 @@ blocks on the channel only after all context-fetching work is complete.
 |----------|-------|
 | Model | `s.config.PrequalifyModel` resolved to a concrete tier (default `gemini-flash`) |
 | Service tier | `priority` (always — pre-qualification is on the latency hot path) |
-| Max output tokens | `10` |
+| Max output tokens | unset — model default (thinking tokens would otherwise starve the enum output) |
 | Response schema | `enum` of the six category names |
 | Thinking | Enabled at `s.config.PrequalifyThinkingLevel` if the model supports it |
 | System prompt | `prequalifySystemPrompt` — an enumerated category list |

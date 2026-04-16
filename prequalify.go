@@ -63,7 +63,6 @@ func resolvePrequalifyModel(tierName string) string {
 func buildPrequalifyConfig(modelName, thinkingLevel string) *genai.GenerateContentConfig {
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(prequalifySystemPrompt, ""),
-		MaxOutputTokens:   10,
 		ResponseMIMEType:  "application/json",
 		ResponseSchema: &genai.Schema{
 			Type:   genai.TypeString,
@@ -115,7 +114,7 @@ func parsePrequalifyResponse(resp *genai.GenerateContentResponse) (queryCategory
 //  3. Pre-qualification fails    → analyze if any github_* present, else general
 func (s *GeminiServer) resolveSystemPromptAsync(ctx context.Context, req mcp.CallToolRequest, logger Logger) <-chan string {
 	ch := make(chan string, 1)
-	if !s.config.Prequalify {
+	if !s.config.Prequalify || s.client == nil || s.client.Models == nil {
 		ch <- systemPromptGeneral
 		return ch
 	}
