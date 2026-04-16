@@ -92,6 +92,9 @@ type Config struct {
 	HTTPCORSEnabled bool          // Enable CORS
 	HTTPCORSOrigins []string      // Allowed origins
 
+	// Progress notification settings
+	ProgressInterval time.Duration // Interval for notifications/progress; <=0 disables.
+
 	// Authentication settings
 	AuthEnabled   bool   // Enable JWT authentication for HTTP transport
 	AuthSecretKey string // Secret key for JWT signing and verification

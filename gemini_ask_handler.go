@@ -80,9 +80,9 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 
 	// Process with context if anything was attached
 	if len(ghContextParts) > 0 || len(uploads) > 0 {
-		return s.processWithFiles(ctx, query, ghContextParts, uploads, modelName, config)
+		return s.processWithFiles(ctx, req, query, ghContextParts, uploads, modelName, config)
 	}
-	return s.processWithoutFiles(ctx, query, modelName, config)
+	return s.processWithoutFiles(ctx, req, query, modelName, config)
 }
 
 // gatherAllContext runs the two independent context-gathering paths (GitHub
@@ -486,7 +486,7 @@ func (s *GeminiServer) gatherGitHubFiles(
 //	[commits] → [diff] → [PR bundle] → [files] → [query]
 //
 // contextParts MUST already be in the above order when passed in.
-func (s *GeminiServer) processWithFiles(ctx context.Context, query string,
+func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolRequest, query string,
 	contextParts []*genai.Part, uploads []*FileUploadRequest,
 	modelName string, config *genai.GenerateContentConfig) (*mcp.CallToolResult, error) {
 
@@ -545,6 +545,12 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string,
 	}
 
 	// Generate content with files
+	stop := startProgressReporter(ctx, req,
+		s.config.ProgressInterval,
+		s.config.HTTPTimeout.Seconds(),
+		progressLabel(modelName, config),
+		logger)
+	defer stop()
 	response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
 		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	})
@@ -558,7 +564,7 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, query string,
 }
 
 // processWithoutFiles handles a Gemini API request without file attachments
-func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
+func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallToolRequest, query string,
 	modelName string, config *genai.GenerateContentConfig) (*mcp.CallToolResult, error) {
 
 	logger := getLoggerFromContext(ctx)
@@ -569,6 +575,12 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, query string,
 	}
 
 	// Generate content
+	stop := startProgressReporter(ctx, req,
+		s.config.ProgressInterval,
+		s.config.HTTPTimeout.Seconds(),
+		progressLabel(modelName, config),
+		logger)
+	defer stop()
 	response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
 		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	})

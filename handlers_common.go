@@ -143,6 +143,15 @@ func resolveAndValidateModel(ctx context.Context, modelName string) (string, err
 	return modelName, nil
 }
 
+// progressLabel renders a short model+thinking label for progress messages.
+// Returns just the model name when thinking is off or the config is nil.
+func progressLabel(modelName string, config *genai.GenerateContentConfig) string {
+	if config == nil || config.ThinkingConfig == nil || config.ThinkingConfig.ThinkingLevel == "" {
+		return modelName
+	}
+	return fmt.Sprintf("%s (%s)", modelName, config.ThinkingConfig.ThinkingLevel)
+}
+
 // tierDefaultThinkingLevel returns the server-picked thinking_level default
 // for a given model. pro defaults to high, flash and flash-lite to medium.
 // Falls back to the provided fallback (typically the operator-configured

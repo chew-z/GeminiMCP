@@ -34,6 +34,9 @@ const (
 	defaultHTTPHeartbeat   = 20 * time.Second // Keeps nginx proxy_read_timeout and client idle timers quiet on long pro-tier requests.
 	defaultHTTPCORSEnabled = true
 
+	// Progress notification defaults
+	defaultProgressInterval = 10 * time.Second // Cadence for notifications/progress; <=0 disables.
+
 	// Authentication defaults
 	defaultAuthEnabled = false // Authentication disabled by default
 
@@ -232,6 +235,7 @@ func NewConfig(logger Logger) (*Config, error) {
 		logger.Warnf("GEMINI_HTTP_HEARTBEAT must be non-negative. Using default: %s", defaultHTTPHeartbeat.String())
 		httpHeartbeat = defaultHTTPHeartbeat
 	}
+	progressInterval := parseEnvVarDuration("GEMINI_PROGRESS_INTERVAL", defaultProgressInterval, logger)
 	httpCORSEnabled := parseEnvVarBool("GEMINI_HTTP_CORS_ENABLED", defaultHTTPCORSEnabled, logger)
 	var httpCORSOrigins []string
 	if originsStr := os.Getenv("GEMINI_HTTP_CORS_ORIGINS"); originsStr != "" {
@@ -273,6 +277,7 @@ func NewConfig(logger Logger) (*Config, error) {
 			HTTPHeartbeat:     httpHeartbeat,
 			HTTPCORSEnabled:   httpCORSEnabled,
 			HTTPCORSOrigins:   httpCORSOrigins,
+			ProgressInterval:  progressInterval,
 			AuthEnabled:       authEnabled,
 			AuthSecretKey:     authSecretKey,
 			MaxRetries:        maxRetries,

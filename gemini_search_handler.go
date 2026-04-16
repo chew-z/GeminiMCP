@@ -92,6 +92,12 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	seenURLs := make(map[string]bool)
 
 	// Non-streaming search request with metadata extraction
+	stop := startProgressReporter(ctx, req,
+		s.config.ProgressInterval,
+		s.config.HTTPTimeout.Seconds(),
+		progressLabel(modelName, config),
+		logger)
+	defer stop()
 	resp, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
 		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	})

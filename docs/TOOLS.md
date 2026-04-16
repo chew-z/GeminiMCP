@@ -335,6 +335,28 @@ jittered backoff rather than blocking.
 
 ---
 
+## Server-side timeouts and liveness
+
+Long pro-tier calls (thinking `high`, large repo context) can take 60–120 s.
+To keep the client aware the server is still working, the server emits
+spec-compliant MCP `notifications/progress` while `GenerateContent` is in
+flight:
+
+- Clients opt in by setting `_meta.progressToken` on the tool call. Claude
+  Code, Cursor, and `mcp-inspector` already do this automatically —
+  clients that don't send a token see no behaviour change.
+- The server emits one notification every `GEMINI_PROGRESS_INTERVAL`
+  (default `10s`) with `progress` = elapsed seconds and `total` =
+  `GEMINI_TIMEOUT`, along with a short `message` describing the active
+  model and thinking level.
+- Set `GEMINI_PROGRESS_INTERVAL=0` to disable notifications even for
+  progress-aware clients.
+- Notifications are per-session (never broadcast). The Streamable-HTTP
+  transport auto-upgrades the response to SSE on the first notification,
+  so no additional transport configuration is required.
+
+---
+
 ## Query Pre-Qualification
 
 `gemini_ask` automatically classifies every request into one of six categories
