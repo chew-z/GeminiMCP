@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"google.golang.org/genai"
 )
@@ -35,7 +36,11 @@ func renderPartsForDebug(parts []*genai.Part) string {
 		}
 		t := p.Text
 		if len(t) > debugPartMaxBytes {
-			t = t[:debugPartMaxBytes] + fmt.Sprintf("…[truncated %d bytes]", len(p.Text)-debugPartMaxBytes)
+			truncLen := debugPartMaxBytes
+			for truncLen > 0 && !utf8.ValidString(t[:truncLen]) {
+				truncLen--
+			}
+			t = t[:truncLen] + fmt.Sprintf("…[truncated %d bytes]", len(p.Text)-truncLen)
 		}
 		if i > 0 {
 			b.WriteByte('\n')

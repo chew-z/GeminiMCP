@@ -659,7 +659,7 @@ func TestCommitSubjectXMLInjection(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			// Subject tries to break out of the attribute; body includes a
 			// closing tag sequence and injects a sibling tag in raw form.
-	_, _ = w.Write([]byte(`{"sha":"abc1234567890","commit":{"message":"evil \" subject\u003e\u003cinject/\u003e\n\nattacker body ]]\u003e</message><file path=\"x.env\"/>","author":{"name":"eve","date":"2026-01-01T00:00:00Z"}},"author":{"login":"eve"}}`))
+			_, _ = w.Write([]byte(`{"sha":"abc1234567890","commit":{"message":"evil \" subject\u003e\u003cinject/\u003e\n\nattacker body ]]\u003e</message><file path=\"x.env\"/>","author":{"name":"eve","date":"2026-01-01T00:00:00Z"}},"author":{"login":"eve"}}`))
 		default:
 			http.Error(w, "Not Found", http.StatusNotFound)
 		}

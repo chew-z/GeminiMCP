@@ -489,8 +489,10 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolReq
 	logger.Debug("request shape: model=%s category=%s thinking=%v max_tokens=%d context_parts=%d file_parts=%d warnings=%d",
 		modelName, category, config.ThinkingConfig != nil, config.MaxOutputTokens,
 		len(contextParts), len(fileParts), len(warnings))
-	logger.Debug("envelope (with context): repo=%q parts=%d bytes=%d\n%s",
-		repo, len(parts), totalPartBytes(parts), renderPartsForDebug(parts))
+	if loggerDebugEnabled(logger) {
+		logger.Debug("envelope (with context): repo=%q parts=%d bytes=%d\n%s",
+			repo, len(parts), totalPartBytes(parts), renderPartsForDebug(parts))
+	}
 
 	contents := []*genai.Content{
 		genai.NewContentFromParts(parts, genai.RoleUser),
@@ -593,8 +595,10 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallTool
 
 	logger.Debug("request shape: model=%s category=%s thinking=%v max_tokens=%d context_parts=0 file_parts=0 warnings=0",
 		modelName, category, config.ThinkingConfig != nil, config.MaxOutputTokens)
-	logger.Debug("envelope (query-only): parts=%d bytes=%d\n%s",
-		len(parts), totalPartBytes(parts), renderPartsForDebug(parts))
+	if loggerDebugEnabled(logger) {
+		logger.Debug("envelope (query-only): parts=%d bytes=%d\n%s",
+			len(parts), totalPartBytes(parts), renderPartsForDebug(parts))
+	}
 
 	contents := []*genai.Content{
 		genai.NewContentFromParts(parts, genai.RoleUser),
@@ -617,4 +621,26 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallTool
 
 	checkModelStatus(ctx, response, modelName)
 	return convertGenaiResponseToMCPResult(response, logger), nil
+}
+
+func loggerDebugEnabled(logger Logger) bool {
+	if logger == nil {
+		return false
+	}
+
+	type debugLogger interface {
+		IsDebugEnabled() bool
+	}
+	if l, ok := logger.(debugLogger); ok {
+		return l.IsDebugEnabled()
+	}
+
+	switch l := logger.(type) {
+	case *scopedLogger:
+		return loggerDebugEnabled(l.inner)
+	case *StandardLogger:
+		return l.level <= LevelDebug
+	default:
+		return false
+	}
 }

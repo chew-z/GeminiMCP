@@ -183,10 +183,12 @@ func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Lo
 	logger.Warn("[%s] Rate limit exceeded. Reset in %v", filePath, waitTime)
 	if waitTime <= 2*time.Minute {
 		logger.Debug("[%s] ratelimit: waiting %v in-process before signalling retry", filePath, waitTime)
+		timer := time.NewTimer(waitTime)
+		defer timer.Stop()
 		select {
 		case <-ctx.Done():
 			return ctx.Err(), nil
-		case <-time.After(waitTime):
+		case <-timer.C:
 			return nil, fmt.Errorf("rate limit exceeded")
 		}
 	}
@@ -358,10 +360,12 @@ func waitBeforeRetry(ctx context.Context, logger Logger, filePath string, attemp
 	jitter := time.Duration(rand.Int63n(int64(500 * time.Millisecond)))
 	sleepTime := backoff + jitter
 	logger.Info("[%s] Retry attempt %d/%d. Sleeping for %v", filePath, attempt, maxRetries, sleepTime)
+	timer := time.NewTimer(sleepTime)
+	defer timer.Stop()
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(sleepTime):
+	case <-timer.C:
 		return nil
 	}
 }
