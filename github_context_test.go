@@ -691,7 +691,7 @@ func TestCommitSubjectXMLInjection(t *testing.T) {
 
 	// Body content is emitted raw, so the injected content is present as plain
 	// text in the assembled payload.
-	assert.Contains(t, text, "attacker body </message>")
+	assert.Contains(t, text, "attacker body ]]></message>")
 	assert.Contains(t, text, `<file path="x.env"/>`)
 }
 
