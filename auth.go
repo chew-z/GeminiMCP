@@ -108,7 +108,11 @@ func (a *AuthMiddleware) logAuthWarn(remoteAddr, errClass, format string, args .
 		a.logMu.Unlock()
 
 		if suppressed > 0 {
-			a.logger.Warn(format+" (×%d suppressed in last %s)", append(args, suppressed, authLogWindow)...)
+			// Defensive copy: never mutate the caller's args backing array.
+			annotated := make([]any, 0, len(args)+2)
+			annotated = append(annotated, args...)
+			annotated = append(annotated, suppressed, authLogWindow)
+			a.logger.Warn(format+" (×%d suppressed in last %s)", annotated...)
 		} else {
 			a.logger.Warn(format, args...)
 		}
@@ -116,24 +120,43 @@ func (a *AuthMiddleware) logAuthWarn(remoteAddr, errClass, format string, args .
 	}
 
 	// New key — enforce the cap by evicting the oldest entry by lastEmitted.
-	if len(a.logState) >= maxAuthLogKeys {
-		var oldestKey string
-		var oldestTime time.Time
-		first := true
-		for k, st := range a.logState {
-			if first || st.lastEmitted.Before(oldestTime) {
-				oldestKey = k
-				oldestTime = st.lastEmitted
-				first = false
-			}
-		}
-		delete(a.logState, oldestKey)
-	}
+	evictedKey, evictedSuppressed := a.evictOldestIfFullLocked()
 
 	a.logState[key] = &authLogState{firstSeen: now, lastEmitted: now}
 	a.logMu.Unlock()
 
+	if evictedSuppressed > 0 {
+		a.logger.Warn("auth log dedup evicted key %q with %d suppressed events (cap=%d)",
+			evictedKey, evictedSuppressed, maxAuthLogKeys)
+	}
 	a.logger.Warn(format, args...)
+}
+
+// evictOldestIfFullLocked evicts the entry with the oldest lastEmitted when the
+// map is at or above the cap. Returns the evicted key and its pending suppressed
+// count so the caller can flush a summary line outside the lock — a
+// high-cardinality attack that rotates keys must not silently drop signal.
+// Caller must hold a.logMu.
+func (a *AuthMiddleware) evictOldestIfFullLocked() (string, int) {
+	if len(a.logState) < maxAuthLogKeys {
+		return "", 0
+	}
+	var (
+		evictedKey        string
+		evictedSuppressed int
+		oldestTime        time.Time
+		first             = true
+	)
+	for k, st := range a.logState {
+		if first || st.lastEmitted.Before(oldestTime) {
+			evictedKey = k
+			oldestTime = st.lastEmitted
+			evictedSuppressed = st.suppressed
+			first = false
+		}
+	}
+	delete(a.logState, evictedKey)
+	return evictedKey, evictedSuppressed
 }
 
 // extractTokenFromHeader extracts the JWT token from Authorization header

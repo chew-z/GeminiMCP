@@ -96,22 +96,30 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 	// Track seen URLs to avoid duplicates
 	seenURLs := make(map[string]bool)
 
+	// Bound the outbound Gemini call with an explicit per-call deadline so
+	// server-induced timeouts manifest as ctx.Err() == DeadlineExceeded for
+	// the classifier rather than as the inbound-cancel that the HTTP server's
+	// WriteTimeout would produce. HTTPWriteTimeout (= HTTPTimeout + 60s) is
+	// the inbound defense-in-depth backstop.
+	callCtx, cancelCall := context.WithTimeout(ctx, s.config.HTTPTimeout)
+	defer cancelCall()
+
 	// Non-streaming search request with metadata extraction
-	stop := startProgressReporter(ctx, req,
+	stop := startProgressReporter(callCtx, req,
 		s.config.ProgressInterval,
 		s.config.HTTPTimeout.Seconds(),
 		progressLabel(modelName, config),
 		logger)
 	defer stop()
-	resp, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
+	resp, err := withRetry(callCtx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
 		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	})
 	if err != nil {
-		logGeminiAPIError(ctx, logger, "Gemini Search API error", err)
+		logGeminiAPIError(callCtx, logger, "Gemini Search API error", err)
 		return createErrorResult(fmt.Sprintf("Error from Gemini Search API: %v", err)), nil
 	}
 
-	checkModelStatus(ctx, resp, modelName)
+	checkModelStatus(callCtx, resp, modelName)
 	responseText := processSearchResponse(resp, &sources, &searchQueries, seenURLs)
 
 	// Build and return the search response

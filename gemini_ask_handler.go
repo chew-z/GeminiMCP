@@ -498,22 +498,32 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolReq
 		genai.NewContentFromParts(parts, genai.RoleUser),
 	}
 
+	// Bound the outbound Gemini call with an explicit per-call deadline. This
+	// makes server-induced timeouts surface as ctx.Err() == DeadlineExceeded
+	// (which logGeminiAPIError classifies as "deadline exceeded") rather than
+	// relying on the inbound HTTPWriteTimeout to kill the connection — that
+	// path manifests as context.Canceled and is indistinguishable from a
+	// client disconnect. HTTPWriteTimeout (= HTTPTimeout + 60s) remains as a
+	// defense-in-depth backstop on the inbound side.
+	callCtx, cancelCall := context.WithTimeout(ctx, s.config.HTTPTimeout)
+	defer cancelCall()
+
 	// Generate content with files
-	stop := startProgressReporter(ctx, req,
+	stop := startProgressReporter(callCtx, req,
 		s.config.ProgressInterval,
 		s.config.HTTPTimeout.Seconds(),
 		progressLabel(modelName, config),
 		logger)
 	defer stop()
-	response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
+	response, err := withRetry(callCtx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
 		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	})
 	if err != nil {
-		logGeminiAPIError(ctx, logger, "Gemini API error", err)
+		logGeminiAPIError(callCtx, logger, "Gemini API error", err)
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 
-	checkModelStatus(ctx, response, modelName)
+	checkModelStatus(callCtx, response, modelName)
 	return convertGenaiResponseToMCPResult(response, logger), nil
 }
 
@@ -604,22 +614,28 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallTool
 		genai.NewContentFromParts(parts, genai.RoleUser),
 	}
 
+	// Bound the outbound Gemini call with an explicit per-call deadline so
+	// server-induced timeouts manifest as ctx.Err() == DeadlineExceeded for
+	// the classifier (see processWithFiles for the full rationale).
+	callCtx, cancelCall := context.WithTimeout(ctx, s.config.HTTPTimeout)
+	defer cancelCall()
+
 	// Generate content
-	stop := startProgressReporter(ctx, req,
+	stop := startProgressReporter(callCtx, req,
 		s.config.ProgressInterval,
 		s.config.HTTPTimeout.Seconds(),
 		progressLabel(modelName, config),
 		logger)
 	defer stop()
-	response, err := withRetry(ctx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
+	response, err := withRetry(callCtx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
 		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	})
 	if err != nil {
-		logGeminiAPIError(ctx, logger, "Gemini API error", err)
+		logGeminiAPIError(callCtx, logger, "Gemini API error", err)
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 
-	checkModelStatus(ctx, response, modelName)
+	checkModelStatus(callCtx, response, modelName)
 	return convertGenaiResponseToMCPResult(response, logger), nil
 }
 

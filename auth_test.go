@@ -420,6 +420,44 @@ func TestLogAuthWarn_EvictsOldestWhenFull(t *testing.T) {
 	assert.True(t, newPresent, "new key was inserted")
 }
 
+func TestLogAuthWarn_EvictionFlushesSuppressedCount(t *testing.T) {
+	current := time.Unix(1_700_000_000, 0)
+	a, logger := newAuthForDedupTest(func() time.Time { return current })
+
+	// Plant one key with a non-zero suppressed count: emit once, then suppress
+	// twice within the window.
+	a.logAuthWarn("10.0.0.1:1000", "expired_token", "first")
+	a.logAuthWarn("10.0.0.1:1000", "expired_token", "suppressed-1")
+	a.logAuthWarn("10.0.0.1:1000", "expired_token", "suppressed-2")
+
+	// Fill the rest of the cap with distinct keys whose lastEmitted is later
+	// than the planted entry, so the planted entry is the oldest by
+	// lastEmitted and will be evicted next.
+	current = current.Add(time.Millisecond)
+	for i := range maxAuthLogKeys - 1 {
+		a.logAuthWarn(fmt.Sprintf("10.1.%d.%d:1000", i/256, i%256), "expired_token", "filler-%d", i)
+		current = current.Add(time.Millisecond)
+	}
+
+	beforeFlush := len(logger.snapshot())
+
+	// Trigger eviction with one more distinct key.
+	a.logAuthWarn("192.168.0.1:1000", "expired_token", "overflow")
+
+	entries := logger.snapshot()
+	require.Greater(t, len(entries), beforeFlush, "overflow call must emit at least one log")
+
+	// Find the eviction-flush line.
+	var foundFlush bool
+	for _, e := range entries {
+		if strings.Contains(e, "evicted key") && strings.Contains(e, "10.0.0.1|expired_token") {
+			assert.Contains(t, e, "2 suppressed events")
+			foundFlush = true
+		}
+	}
+	assert.True(t, foundFlush, "expected eviction-flush line for the planted suppressed entry")
+}
+
 func TestLogAuthWarn_TTLSweepRemovesStaleEntries(t *testing.T) {
 	current := time.Unix(1_700_000_000, 0)
 	a, _ := newAuthForDedupTest(func() time.Time { return current })
