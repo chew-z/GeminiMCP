@@ -184,55 +184,7 @@ func TestCreateHTTPMiddleware(t *testing.T) {
 }
 
 func TestCreateCustomHTTPHandler(t *testing.T) {
-	t.Run("oauth metadata endpoint returns metadata and CORS headers for allowed origin", func(t *testing.T) {
-		config := &Config{
-			HTTPCORSEnabled: true,
-			HTTPCORSOrigins: []string{"https://app.example.com"},
-		}
-		mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		})
-		handler := createCustomHTTPHandler(mcpHandler, config, NewLogger(LevelError))
-
-		req := httptest.NewRequest(http.MethodGet, "http://mcp.local/.well-known/oauth-authorization-server", nil)
-		req.Header.Set("Origin", "https://app.example.com")
-		rec := httptest.NewRecorder()
-
-		handler.ServeHTTP(rec, req)
-
-		require.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
-		assert.Equal(t, "public, max-age=3600", rec.Header().Get("Cache-Control"))
-		assert.Equal(t, "https://app.example.com", rec.Header().Get("Access-Control-Allow-Origin"))
-		assert.Equal(t, "GET, OPTIONS", rec.Header().Get("Access-Control-Allow-Methods"))
-		assert.Equal(t, "Content-Type, Authorization", rec.Header().Get("Access-Control-Allow-Headers"))
-
-		var metadata map[string]any
-		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &metadata))
-		assert.Equal(t, "http://mcp.local", metadata["issuer"])
-		assert.Equal(t, "http://mcp.local/oauth/authorize", metadata["authorization_endpoint"])
-		assert.Equal(t, "http://mcp.local/oauth/token", metadata["token_endpoint"])
-	})
-
-	t.Run("wildcard origin is blocked when auth is enabled", func(t *testing.T) {
-		config := &Config{
-			HTTPCORSEnabled: true,
-			HTTPCORSOrigins: []string{"*"},
-			AuthEnabled:     true,
-		}
-		handler := createCustomHTTPHandler(http.NotFoundHandler(), config, NewLogger(LevelError))
-
-		req := httptest.NewRequest(http.MethodGet, "http://mcp.local/.well-known/oauth-authorization-server", nil)
-		req.Header.Set("Origin", "https://app.example.com")
-		rec := httptest.NewRecorder()
-
-		handler.ServeHTTP(rec, req)
-
-		require.Equal(t, http.StatusOK, rec.Code)
-		assert.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"))
-	})
-
-	t.Run("non-oauth routes are delegated to MCP handler", func(t *testing.T) {
+	t.Run("non-well-known routes are delegated to MCP handler", func(t *testing.T) {
 		mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/mcp", r.URL.Path)
 			w.WriteHeader(http.StatusAccepted)

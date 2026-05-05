@@ -234,45 +234,10 @@ func resolvePublicURL(config *Config, r *http.Request) (string, bool) {
 	return scheme + "://" + r.Host, true
 }
 
-// createCustomHTTPHandler creates a custom HTTP handler that includes OAuth well-known endpoint
+// createCustomHTTPHandler creates a custom HTTP handler that includes the
+// RFC 9728 protected-resource metadata endpoint.
 func createCustomHTTPHandler(mcpHandler http.Handler, config *Config, logger Logger) http.Handler {
 	mux := http.NewServeMux()
-
-	// TODO(post-deploy): once the new /.well-known/oauth-protected-resource endpoint
-	// is verified end-to-end through the nginx stack in docs/nginx/ and any clients
-	// that probe this 8414 path have migrated, remove this stub. Tracking note in
-	// docs/reports/2026-05-05_dependency-bump-mcp-go-genai.md §4 #2.
-	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
-		logger.Info("OAuth well-known endpoint accessed from %s", r.RemoteAddr)
-
-		// Create OAuth authorization server metadata
-		metadata := map[string]any{
-			"issuer":                           fmt.Sprintf("http://%s", r.Host),
-			"authorization_endpoint":           fmt.Sprintf("http://%s/oauth/authorize", r.Host),
-			"token_endpoint":                   fmt.Sprintf("http://%s/oauth/token", r.Host),
-			"response_types_supported":         []string{"code"},
-			"grant_types_supported":            []string{"authorization_code"},
-			"code_challenge_methods_supported": []string{"S256"},
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-
-		// Add CORS headers if enabled
-		if config.HTTPCORSEnabled {
-			origin := r.Header.Get("Origin")
-			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins, config.AuthEnabled) {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			}
-		}
-
-		if err := json.NewEncoder(w).Encode(metadata); err != nil {
-			logger.Error("Failed to encode OAuth metadata: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
-	})
 
 	// RFC 9728 OAuth Protected Resource Metadata. Mounted only when JWT auth
 	// is enabled — otherwise the resource has nothing meaningful to advertise.
