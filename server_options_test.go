@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -139,18 +140,22 @@ func TestServerInitializeWithoutTasks(t *testing.T) {
 //
 // (c) a follow-up tools/list call on the same server still succeeds.
 func TestRecoveryShieldsPanickingHandler(t *testing.T) {
-	logger := NewLogger(LevelError)
+	capture := &recordingLogger{}
 	cfg := &Config{MaxConcurrentTasks: 1}
-	srv := server.NewMCPServer("gemini", "1.0.0", buildMCPServerOptions(cfg, logger)...)
+	srv := server.NewMCPServer("gemini", "1.0.0", buildMCPServerOptions(cfg, capture)...)
 
 	panicTool := mcp.NewTool(
 		"panic_tool",
 		mcp.WithDescription("test-only tool that always panics"),
 		mcp.WithString("query", mcp.Required()),
 	)
-	srv.AddTool(panicTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	panicHandler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		panic("intentional test panic")
-	})
+	}
+	// Wrap with the production middleware so the panic-audit defer in
+	// wrapHandlerWithLogger fires for this test the same way it does in
+	// real handler registrations.
+	srv.AddTool(panicTool, wrapHandlerWithLogger(panicHandler, "panic_tool", capture))
 
 	// Initialize first so the server enters a serving state for tools/call.
 	_ = initializeResult(t, srv)
@@ -172,6 +177,19 @@ func TestRecoveryShieldsPanickingHandler(t *testing.T) {
 		t.Fatalf("expected either a JSON-RPC error or a tool result, got neither")
 	}
 
+	// The panic must have produced exactly one ERROR audit line carrying
+	// the request-scoped prefix and the documented status=panic shape.
+	var panicLines []logEntry
+	for _, e := range capture.snapshot() {
+		if e.level == "ERROR" && strings.Contains(e.msg, "tool=panic_tool done status=panic") {
+			panicLines = append(panicLines, e)
+		}
+	}
+	require.Len(t, panicLines, 1, "expected exactly one panic audit line, got: %+v", capture.snapshot())
+	assert.Contains(t, panicLines[0].msg, "err=intentional test panic")
+	assert.Regexp(t, `^\[[0-9a-f]+\] `, panicLines[0].msg,
+		"panic audit line must carry the request-scoped [req-id] prefix")
+
 	// Session must remain usable after the recovered panic.
 	listRaw := rpcRequest(t, 3, "tools/list", map[string]any{})
 	listResp, listErr := dispatchRPC(t, srv, listRaw)
@@ -179,11 +197,18 @@ func TestRecoveryShieldsPanickingHandler(t *testing.T) {
 	require.NotNil(t, listResp)
 }
 
-// declaredHandlerParams maps each registered tool name to the parameter keys
-// the handler code actually reads from request arguments. Mirrors the audit
-// table in docs/reports/2026-05-05_dependency-bump-mcp-go-genai.md so that
-// any future handler reading a new key without declaring it in tools.go
-// fails this test rather than silently skipping schema validation.
+// declaredHandlerParams is the expected parameter set per registered tool.
+// It is a manual mirror of the audit in
+// docs/reports/2026-05-05_dependency-bump-mcp-go-genai.md.
+//
+// What this test catches: schema↔map drift — if tools.go drops or renames a
+// key, the test fails. So the tool inputSchema cannot silently diverge from
+// what we documented as the contract.
+//
+// What this test does NOT catch: handler↔map drift. If a handler starts
+// reading a brand-new key, this test will pass until both this map and
+// tools.go are updated. Any new extractArgumentString / GetArguments call
+// MUST be reflected here AND in tools.go in the same change.
 var declaredHandlerParams = map[string][]string{
 	"gemini_ask": {
 		"query", "model", "github_repo", "github_ref", "github_files",

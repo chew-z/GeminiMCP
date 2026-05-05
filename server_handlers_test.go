@@ -168,6 +168,12 @@ func TestRegisterErrorTools(t *testing.T) {
 			tool := mcpServer.GetTool(toolName)
 			require.NotNil(t, tool)
 
+			// Degraded mode does not advertise the tasks server capability,
+			// so the per-tool taskSupport annotation must also be absent.
+			assert.Nil(t, tool.Tool.Execution,
+				"degraded-mode tool %q must not carry TaskSupport when the server-level tasks capability is suppressed",
+				toolName)
+
 			ctx := context.WithValue(context.Background(), loggerKey, NewLogger(LevelError))
 			req := mcp.CallToolRequest{
 				Params: mcp.CallToolParams{

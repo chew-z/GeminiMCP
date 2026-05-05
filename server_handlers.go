@@ -145,6 +145,18 @@ func wrapHandlerWithLogger(handler server.ToolHandlerFunc, toolName string, logg
 		ctx, rlog := withRequestLogger(ctx, logger, reqID)
 		start := time.Now()
 
+		// Panics still need to surface as JSON-RPC errors via
+		// server.WithRecovery, but that path bypasses the completion-log
+		// switch below. Capture the audit line here and re-panic so the
+		// router-level recovery still runs.
+		defer func() {
+			if r := recover(); r != nil {
+				rlog.Error("tool=%s done status=panic duration=%s err=%v",
+					toolName, time.Since(start).Round(time.Millisecond), r)
+				panic(r)
+			}
+		}()
+
 		user, role := "-", "-"
 		if isAuthenticated(ctx) {
 			_, u, r := getUserInfo(ctx)
@@ -204,11 +216,21 @@ func wrapPromptHandlerWithLogger(handler server.PromptHandlerFunc, promptName st
 	}
 }
 
+// degradedTool returns a copy of t with Execution cleared. Degraded-mode
+// servers do not advertise the tasks server capability, so the per-tool
+// taskSupport annotation must not claim it either; otherwise strict clients
+// can object to the inconsistency.
+func degradedTool(t mcp.Tool) mcp.Tool {
+	t.Execution = nil
+	return t
+}
+
 // Register error handlers for all tools
 func registerErrorTools(mcpServer *server.MCPServer, errorServer *ErrorGeminiServer, logger Logger) {
-	// Register error handlers for all tools using shared tool definitions
-	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_ask", logger))
-	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_search", logger))
+	// Register error handlers for all tools using shared tool definitions,
+	// stripped of TaskSupport so the degraded server stays self-consistent.
+	mcpServer.AddTool(degradedTool(GeminiAskTool), wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_ask", logger))
+	mcpServer.AddTool(degradedTool(GeminiSearchTool), wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_search", logger))
 
 	logger.Info("Registered error handlers for all tools")
 }
