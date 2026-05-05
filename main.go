@@ -27,28 +27,47 @@ var (
 	serveStdioFn         = server.ServeStdio
 	getEnvFn             = os.Getenv
 	newMCPServerFn       = func(config *Config, logger Logger) *server.MCPServer {
-		opts := []server.ServerOption{
-			server.WithTitle("Gemini MCP"),
-			server.WithDescription("Gemini LLM for analysis, reasoning and research"),
-			server.WithInstructions(`gemini_ask: send a prompt to Gemini, optionally with GitHub repository context.
+		return server.NewMCPServer("gemini", "1.0.0", buildMCPServerOptions(config, logger)...)
+	}
+)
+
+// serverWebsiteURL is the canonical project URL advertised in serverInfo.
+const serverWebsiteURL = "https://github.com/RobertJ-RM/GeminiMCP"
+
+// buildMCPServerOptions assembles the server.ServerOption list used by both
+// the normal startup path and the degraded-mode fallback in
+// handleStartupError. Centralising the list guarantees that panic recovery,
+// schema validation, and capability advertisements stay in lockstep across
+// both servers.
+func buildMCPServerOptions(config *Config, logger Logger) []server.ServerOption {
+	opts := []server.ServerOption{
+		server.WithTitle("Gemini MCP"),
+		server.WithDescription("Gemini LLM for analysis, reasoning and research"),
+		server.WithWebsiteURL(serverWebsiteURL),
+		server.WithInstructions(`gemini_ask: send a prompt to Gemini, optionally with GitHub repository context.
 gemini_search: answer questions using web search with source citations.
 
 Defaults are optimized per model tier. Override parameters exist but are rarely needed.
 github_repo is required when using any github_* parameter. github_files requires github_ref.`),
-			server.WithCompletions(),
-			server.WithPromptCompletionProvider(&GeminiCompletionProvider{}),
-			server.WithToolCapabilities(true),
-		}
-		if config.MaxConcurrentTasks > 0 {
-			opts = append(opts,
-				server.WithTaskCapabilities(true, true, true),
-				server.WithMaxConcurrentTasks(config.MaxConcurrentTasks),
-				server.WithTaskHooks(newTaskHooks(logger)),
-			)
-		}
-		return server.NewMCPServer("gemini", "1.0.0", opts...)
+		server.WithCompletions(),
+		server.WithPromptCompletionProvider(&GeminiCompletionProvider{}),
+		server.WithToolCapabilities(true),
+		server.WithRecovery(),
+		server.WithInputSchemaValidation(),
 	}
-)
+	if config != nil && config.MaxConcurrentTasks > 0 {
+		opts = append(opts,
+			server.WithTaskCapabilities(
+				true, // list:          tasks/list discoverable
+				true, // cancel:        tasks/cancel honoured
+				true, // toolCallTasks: tools may declare task support
+			),
+			server.WithMaxConcurrentTasks(config.MaxConcurrentTasks),
+			server.WithTaskHooks(newTaskHooks(logger)),
+		)
+	}
+	return opts
+}
 
 // main is the entry point for the application.
 // It sets up the MCP server with the appropriate handlers and starts it.

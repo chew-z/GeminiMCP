@@ -71,10 +71,9 @@ func buildPrequalifyConfig(modelName, thinkingLevel string) *genai.GenerateConte
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(prequalifySystemPrompt, ""),
 		ResponseMIMEType:  "application/json",
-		ResponseSchema: &genai.Schema{
-			Type:   genai.TypeString,
-			Format: "enum",
-			Enum:   []string{"general", "analyze", "review", "security", "debug", "tests"},
+		ResponseJsonSchema: map[string]any{
+			"type": "string",
+			"enum": []string{"general", "analyze", "review", "security", "debug", "tests"},
 		},
 		ServiceTier: genai.ServiceTierPriority,
 	}

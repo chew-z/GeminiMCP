@@ -68,10 +68,13 @@ func handleStartupError(ctx context.Context, err error) {
 
 	logger.Error("Initialization error: %v", err)
 
-	// Create MCP server in degraded mode
+	// Create MCP server in degraded mode using the same option list as the
+	// normal path so panic recovery, schema validation, and capability
+	// advertisements stay consistent across both servers.
 	mcpServer := server.NewMCPServer(
 		"gemini",
 		"1.0.0",
+		buildMCPServerOptions(nil, logger)...,
 	)
 
 	// Create error server
