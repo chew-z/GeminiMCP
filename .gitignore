@@ -7,6 +7,7 @@ bin/**
 
 logs/
 docs/reports/
+docs/nginx
 
 AGENTS.md
 GOLANG.md
