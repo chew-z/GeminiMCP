@@ -134,7 +134,9 @@ func TestServerInitializeWithoutTasks(t *testing.T) {
 // against a server built from buildMCPServerOptions and asserts (Step 2) that
 // (a) the call returns rather than crashing the process,
 // (b) the response signals a non-success outcome through *either* IsError on
-//     the CallToolResult *or* a JSON-RPC error envelope, and
+//
+//	the CallToolResult *or* a JSON-RPC error envelope, and
+//
 // (c) a follow-up tools/list call on the same server still succeeds.
 func TestRecoveryShieldsPanickingHandler(t *testing.T) {
 	logger := NewLogger(LevelError)
@@ -273,8 +275,8 @@ func TestInputSchemaValidationRejectsBadCalls(t *testing.T) {
 		{
 			name: "rejects wrong-type github_pr",
 			arguments: map[string]any{
-				"query":      "hello",
-				"github_pr":  "not-a-number",
+				"query":       "hello",
+				"github_pr":   "not-a-number",
 				"github_repo": "owner/repo",
 			},
 			wantFail: true,
