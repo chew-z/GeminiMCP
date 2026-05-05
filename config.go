@@ -325,6 +325,10 @@ func NewConfig(logger Logger) (*Config, error) {
 	}
 
 	timeout := parseEnvVarDuration("GEMINI_TIMEOUT", 300*time.Second, logger)
+	// HTTPWriteTimeout must outlive the outbound per-call budget so the
+	// inbound connection can still write a response that finishes near the
+	// deadline. Default = HTTPTimeout + 60s slack.
+	httpWriteTimeout := parseEnvVarDuration("GEMINI_HTTP_WRITE_TIMEOUT", timeout+60*time.Second, logger)
 	maxRetries := parseEnvVarInt("GEMINI_MAX_RETRIES", 2, logger)
 	initialBackoff := parseEnvVarDuration("GEMINI_INITIAL_BACKOFF", 1*time.Second, logger)
 	maxBackoff := parseEnvVarDuration("GEMINI_MAX_BACKOFF", 10*time.Second, logger)
@@ -344,6 +348,7 @@ func NewConfig(logger Logger) (*Config, error) {
 		GeminiSearchModel: geminiSearchModel,
 		GeminiTemperature: geminiTemperature,
 		HTTPTimeout:       timeout,
+		HTTPWriteTimeout:  httpWriteTimeout,
 		EnableHTTP:        httpCfg.enableHTTP,
 		HTTPAddress:       httpCfg.address,
 		HTTPPath:          httpCfg.path,

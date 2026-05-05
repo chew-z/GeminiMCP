@@ -509,7 +509,7 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolReq
 		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	})
 	if err != nil {
-		logGeminiAPIError(logger, "Gemini API error", err)
+		logGeminiAPIError(ctx, logger, "Gemini API error", err)
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 
@@ -615,7 +615,7 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallTool
 		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	})
 	if err != nil {
-		logGeminiAPIError(logger, "Gemini API error", err)
+		logGeminiAPIError(ctx, logger, "Gemini API error", err)
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 

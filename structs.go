@@ -83,6 +83,11 @@ type Config struct {
 	// HTTP client settings
 	HTTPTimeout time.Duration
 
+	// HTTPWriteTimeout bounds the inbound HTTP server WriteTimeout independently
+	// from the outbound per-call budget (HTTPTimeout). It must outlive the
+	// outbound budget so a long tool call can deliver its response.
+	HTTPWriteTimeout time.Duration
+
 	// HTTP transport settings
 	EnableHTTP      bool          // Enable HTTP transport
 	HTTPAddress     string        // Server address (default: ":8080")

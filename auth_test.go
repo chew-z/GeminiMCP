@@ -3,9 +3,13 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
@@ -315,5 +319,161 @@ func TestExtractTokenFromHeader(t *testing.T) {
 			result := extractTokenFromHeader(tc.authHeader)
 			assert.Equal(t, tc.expectedToken, result)
 		})
+	}
+}
+
+// dedupCaptureLogger is a thread-safe logger used by the auth dedup tests.
+type dedupCaptureLogger struct {
+	mu       sync.Mutex
+	warnings []string
+}
+
+func (d *dedupCaptureLogger) Debug(format string, args ...any) {}
+func (d *dedupCaptureLogger) Info(format string, args ...any)  {}
+func (d *dedupCaptureLogger) Warn(format string, args ...any) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.warnings = append(d.warnings, fmt.Sprintf(format, args...))
+}
+func (d *dedupCaptureLogger) Warnf(format string, args ...any) { d.Warn(format, args...) }
+func (d *dedupCaptureLogger) Error(format string, args ...any) {}
+
+func (d *dedupCaptureLogger) snapshot() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	out := make([]string, len(d.warnings))
+	copy(out, d.warnings)
+	return out
+}
+
+func newAuthForDedupTest(now func() time.Time) (*AuthMiddleware, *dedupCaptureLogger) {
+	logger := &dedupCaptureLogger{}
+	a := NewAuthMiddleware("secret", true, logger)
+	a.nowFn = now
+	return a, logger
+}
+
+func TestLogAuthWarn_DedupesWithinWindow(t *testing.T) {
+	current := time.Unix(1_700_000_000, 0)
+	a, logger := newAuthForDedupTest(func() time.Time { return current })
+
+	for range 5 {
+		a.logAuthWarn("10.0.0.1:1000", "expired_token", "Invalid token from %s", "10.0.0.1:1000")
+		current = current.Add(5 * time.Second)
+	}
+
+	require.Len(t, logger.snapshot(), 1, "only one log emitted within the window")
+
+	// Cross the window boundary; the next call must emit a new line annotated
+	// with the suppressed count.
+	current = current.Add(authLogWindow + time.Second)
+	a.logAuthWarn("10.0.0.1:1000", "expired_token", "Invalid token from %s", "10.0.0.1:1000")
+
+	entries := logger.snapshot()
+	require.Len(t, entries, 2)
+	assert.Contains(t, entries[1], "×4 suppressed")
+}
+
+func TestLogAuthWarn_DistinctErrClassesEmitIndependently(t *testing.T) {
+	current := time.Unix(1_700_000_000, 0)
+	a, logger := newAuthForDedupTest(func() time.Time { return current })
+
+	a.logAuthWarn("10.0.0.1:1234", "expired_token", "Invalid token from %s", "10.0.0.1:1234")
+	a.logAuthWarn("10.0.0.1:1234", "malformed_token", "Invalid token from %s", "10.0.0.1:1234")
+	a.logAuthWarn("10.0.0.1:5678", "expired_token", "Invalid token from %s", "10.0.0.1:5678")
+	a.logAuthWarn("10.0.0.2:1234", "expired_token", "Invalid token from %s", "10.0.0.2:1234")
+
+	entries := logger.snapshot()
+	// Same host+port-different-port collapses to single host key, so the second
+	// expired_token from 10.0.0.1 is deduped. Distinct (host, errClass) and
+	// distinct host both emit.
+	require.Len(t, entries, 3)
+}
+
+func TestLogAuthWarn_EvictsOldestWhenFull(t *testing.T) {
+	current := time.Unix(1_700_000_000, 0)
+	a, _ := newAuthForDedupTest(func() time.Time { return current })
+
+	// Fill the map to capacity, advancing time so each key has a distinct
+	// lastEmitted (in-window check still defers to the per-key window, but
+	// these all have unique keys).
+	for i := range maxAuthLogKeys {
+		a.logAuthWarn(fmt.Sprintf("10.0.%d.%d:1000", i/256, i%256), "expired_token", "k%d", i)
+		current = current.Add(time.Millisecond)
+	}
+
+	a.logMu.Lock()
+	require.Equal(t, maxAuthLogKeys, len(a.logState))
+	_, oldestPresent := a.logState["10.0.0.0|expired_token"]
+	a.logMu.Unlock()
+	require.True(t, oldestPresent, "oldest key should still be present pre-eviction")
+
+	// One more distinct key must trigger eviction of the oldest.
+	a.logAuthWarn("192.168.0.1:1000", "expired_token", "overflow")
+
+	a.logMu.Lock()
+	defer a.logMu.Unlock()
+	assert.LessOrEqual(t, len(a.logState), maxAuthLogKeys, "map size never exceeds the cap")
+	_, evictedAbsent := a.logState["10.0.0.0|expired_token"]
+	assert.False(t, evictedAbsent, "oldest key was evicted")
+	_, newPresent := a.logState["192.168.0.1|expired_token"]
+	assert.True(t, newPresent, "new key was inserted")
+}
+
+func TestLogAuthWarn_TTLSweepRemovesStaleEntries(t *testing.T) {
+	current := time.Unix(1_700_000_000, 0)
+	a, _ := newAuthForDedupTest(func() time.Time { return current })
+
+	a.logAuthWarn("10.0.0.1:1000", "expired_token", "stale")
+
+	current = current.Add(authLogTTL + time.Second)
+	a.logAuthWarn("10.0.0.2:1000", "expired_token", "fresh")
+
+	a.logMu.Lock()
+	defer a.logMu.Unlock()
+	_, staleStillPresent := a.logState["10.0.0.1|expired_token"]
+	assert.False(t, staleStillPresent, "stale entry should be swept on subsequent call")
+	_, freshPresent := a.logState["10.0.0.2|expired_token"]
+	assert.True(t, freshPresent)
+}
+
+func TestLogAuthWarn_ConcurrentSafe(t *testing.T) {
+	t.Parallel()
+
+	current := time.Unix(1_700_000_000, 0)
+	a, logger := newAuthForDedupTest(func() time.Time { return current })
+
+	const goroutines = 32
+	const perGoroutine = 50
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for g := range goroutines {
+		go func(id int) {
+			defer wg.Done()
+			host := fmt.Sprintf("10.0.%d.1:1000", id) // distinct key per goroutine
+			for range perGoroutine {
+				a.logAuthWarn(host, "expired_token", "from %s", host)
+			}
+		}(g)
+	}
+	wg.Wait()
+
+	// Each distinct host emits exactly once within the window; suppressed
+	// increments don't emit.
+	entries := logger.snapshot()
+	assert.Equal(t, goroutines, len(entries), "one log per distinct key in the window")
+	for _, e := range entries {
+		assert.False(t, strings.Contains(e, "suppressed"),
+			"first emission per key should not include suppressed annotation")
+	}
+
+	// Verify suppressed counts were correctly tracked per key.
+	a.logMu.Lock()
+	defer a.logMu.Unlock()
+	require.Len(t, a.logState, goroutines)
+	for _, st := range a.logState {
+		assert.Equal(t, perGoroutine-1, st.suppressed,
+			"each goroutine emits once and suppresses the rest")
 	}
 }

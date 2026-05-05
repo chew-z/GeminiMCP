@@ -4,19 +4,43 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
+
+// Bounded dedup of auth WARN logs. A misconfigured client can otherwise emit
+// dozens of identical lines in seconds, drowning out real auth incidents. The
+// state is bounded by maxAuthLogKeys + authLogTTL so a public-facing server
+// cannot be turned into a memory-pressure vector by high-cardinality input.
+const (
+	maxAuthLogKeys = 1024
+	authLogTTL     = 5 * time.Minute
+	authLogWindow  = 60 * time.Second
+)
+
+type authLogState struct {
+	firstSeen   time.Time
+	lastEmitted time.Time
+	suppressed  int
+}
 
 // AuthMiddleware handles JWT-based authentication for HTTP transport
 type AuthMiddleware struct {
 	secretKey []byte
 	enabled   bool
 	logger    Logger
+
+	// Injectable clock so tests can step time deterministically.
+	nowFn func() time.Time
+
+	logMu    sync.Mutex
+	logState map[string]*authLogState
 }
 
 // Claims represents JWT token claims
@@ -33,7 +57,83 @@ func NewAuthMiddleware(secretKey string, enabled bool, logger Logger) *AuthMiddl
 		secretKey: []byte(secretKey),
 		enabled:   enabled,
 		logger:    logger,
+		logState:  make(map[string]*authLogState),
 	}
+}
+
+// now returns the current time, honoring the injectable clock if set.
+func (a *AuthMiddleware) now() time.Time {
+	if a.nowFn != nil {
+		return a.nowFn()
+	}
+	return time.Now()
+}
+
+// remoteHost returns the host portion of a "host:port" address, or the input
+// as-is if it can't be split. Used as a stable dedup key so transient ephemeral
+// ports don't fragment the per-client rate limit.
+func remoteHost(addr string) string {
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+	return addr
+}
+
+// logAuthWarn emits a WARN log deduplicated by (host, errClass) within
+// authLogWindow. State is bounded by maxAuthLogKeys with TTL eviction; on
+// overflow the entry with the oldest lastEmitted is dropped.
+func (a *AuthMiddleware) logAuthWarn(remoteAddr, errClass, format string, args ...any) {
+	key := remoteHost(remoteAddr) + "|" + errClass
+	now := a.now()
+
+	a.logMu.Lock()
+
+	// Opportunistic TTL sweep — cheap because we already hold the lock and the
+	// map is hard-capped at maxAuthLogKeys.
+	for k, st := range a.logState {
+		if now.Sub(st.lastEmitted) >= authLogTTL {
+			delete(a.logState, k)
+		}
+	}
+
+	if st, ok := a.logState[key]; ok {
+		if now.Sub(st.lastEmitted) < authLogWindow {
+			st.suppressed++
+			a.logMu.Unlock()
+			return
+		}
+		suppressed := st.suppressed
+		st.lastEmitted = now
+		st.suppressed = 0
+		a.logMu.Unlock()
+
+		if suppressed > 0 {
+			a.logger.Warn(format+" (×%d suppressed in last %s)", append(args, suppressed, authLogWindow)...)
+		} else {
+			a.logger.Warn(format, args...)
+		}
+		return
+	}
+
+	// New key — enforce the cap by evicting the oldest entry by lastEmitted.
+	if len(a.logState) >= maxAuthLogKeys {
+		var oldestKey string
+		var oldestTime time.Time
+		first := true
+		for k, st := range a.logState {
+			if first || st.lastEmitted.Before(oldestTime) {
+				oldestKey = k
+				oldestTime = st.lastEmitted
+				first = false
+			}
+		}
+		delete(a.logState, oldestKey)
+	}
+
+	a.logState[key] = &authLogState{firstSeen: now, lastEmitted: now}
+	a.logMu.Unlock()
+
+	a.logger.Warn(format, args...)
 }
 
 // extractTokenFromHeader extracts the JWT token from Authorization header
@@ -58,14 +158,14 @@ func (a *AuthMiddleware) HTTPContextFunc(
 
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			a.logger.Warn("Missing authorization header from %s", r.RemoteAddr)
+			a.logAuthWarn(r.RemoteAddr, "missing_header", "Missing authorization header from %s", r.RemoteAddr)
 			ctx = context.WithValue(ctx, authErrorKey, "missing_token")
 			return next(ctx, r)
 		}
 
 		tokenString := extractTokenFromHeader(authHeader)
 		if tokenString == "" {
-			a.logger.Warn("Invalid authorization header from %s", r.RemoteAddr)
+			a.logAuthWarn(r.RemoteAddr, "invalid_header", "Invalid authorization header from %s", r.RemoteAddr)
 			// Set authentication error in context instead of failing the request
 			ctx = context.WithValue(ctx, authErrorKey, "invalid_token")
 			return next(ctx, r)
@@ -74,7 +174,6 @@ func (a *AuthMiddleware) HTTPContextFunc(
 		// Validate JWT token
 		claims, err := a.validateJWT(tokenString)
 		if err != nil {
-			a.logger.Warn("Invalid token from %s: %v", r.RemoteAddr, err)
 			var authErr string
 			switch {
 			case errors.Is(err, jwt.ErrTokenExpired):
@@ -88,6 +187,7 @@ func (a *AuthMiddleware) HTTPContextFunc(
 			default:
 				authErr = "invalid_token"
 			}
+			a.logAuthWarn(r.RemoteAddr, authErr, "Invalid token from %s: %v", r.RemoteAddr, err)
 			ctx = context.WithValue(ctx, authErrorKey, authErr)
 			return next(ctx, r)
 		}

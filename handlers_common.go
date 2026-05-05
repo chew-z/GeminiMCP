@@ -294,15 +294,28 @@ func createErrorResult(message string) *mcp.CallToolResult {
 	return mcp.NewToolResultError(message)
 }
 
-// logGeminiAPIError logs a failure from the Gemini API. Caller-initiated
-// cancellations (MCP client disconnect, deadline expiry upstream) are logged
-// at Info to keep the error channel signal-heavy; everything else is Error.
-func logGeminiAPIError(logger Logger, prefix string, err error) {
-	if errors.Is(err, context.Canceled) {
-		logger.Info("%s canceled by caller: %v", prefix, err)
-		return
+// logGeminiAPIError logs a failure from the Gemini API. The wrapped error is
+// the authoritative signal of how the call ended; ctx.Err() is supplementary
+// and used to disambiguate context.Canceled (which can be either a client
+// disconnect or a propagated server-side deadline). Caller-initiated cancels
+// and deadline expiries are logged at Info to keep the error channel
+// signal-heavy; everything else is Error.
+//
+// ctx may be nil — defensive callers pass it to disambiguate but the function
+// must not panic if it is missing.
+func logGeminiAPIError(ctx context.Context, logger Logger, prefix string, err error) {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		logger.Info("%s deadline exceeded: %v", prefix, err)
+	case errors.Is(err, context.Canceled):
+		if ctx != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			logger.Info("%s canceled by server deadline: %v", prefix, err)
+			return
+		}
+		logger.Info("%s canceled by caller (client disconnect or upstream cancel): %v", prefix, err)
+	default:
+		logger.Error("%s: %v", prefix, err)
 	}
-	logger.Error("%s: %v", prefix, err)
 }
 
 // convertGenaiResponseToMCPResult converts a Gemini API response to an MCP result.

@@ -107,7 +107,7 @@ func (s *GeminiServer) GeminiSearchHandler(ctx context.Context, req mcp.CallTool
 		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
 	})
 	if err != nil {
-		logGeminiAPIError(logger, "Gemini Search API error", err)
+		logGeminiAPIError(ctx, logger, "Gemini Search API error", err)
 		return createErrorResult(fmt.Sprintf("Error from Gemini Search API: %v", err)), nil
 	}
 

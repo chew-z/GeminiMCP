@@ -76,6 +76,7 @@ func TestNewConfig(t *testing.T) {
 				assert.Equal(t, "test-key", cfg.GeminiAPIKey)
 				assert.Equal(t, defaultGeminiModel, cfg.GeminiModel)
 				assert.Equal(t, 300*time.Second, cfg.HTTPTimeout)
+				assert.Equal(t, 360*time.Second, cfg.HTTPWriteTimeout, "default HTTPWriteTimeout = HTTPTimeout + 60s slack")
 				assert.Equal(t, 2, cfg.MaxRetries)
 				assert.Equal(t, defaultThinkingLevel, cfg.ThinkingLevel)
 			},
@@ -94,9 +95,22 @@ func TestNewConfig(t *testing.T) {
 				assert.Equal(t, "custom-key", cfg.GeminiAPIKey)
 				assert.Equal(t, "gemini-1.5-pro", cfg.GeminiModel)
 				assert.Equal(t, 120*time.Second, cfg.HTTPTimeout)
+				assert.Equal(t, 180*time.Second, cfg.HTTPWriteTimeout, "HTTPWriteTimeout follows HTTPTimeout + 60s when unset")
 				assert.Equal(t, 5, cfg.MaxRetries)
 				assert.Equal(t, 2*time.Second, cfg.InitialBackoff)
 				assert.Equal(t, 20*time.Second, cfg.MaxBackoff)
+			},
+		},
+		{
+			name: "explicit GEMINI_HTTP_WRITE_TIMEOUT override",
+			env: map[string]string{
+				"GEMINI_API_KEY":            "key",
+				"GEMINI_TIMEOUT":            "30s",
+				"GEMINI_HTTP_WRITE_TIMEOUT": "5m",
+			},
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, 30*time.Second, cfg.HTTPTimeout)
+				assert.Equal(t, 5*time.Minute, cfg.HTTPWriteTimeout, "explicit value wins over the default formula")
 			},
 		},
 		{

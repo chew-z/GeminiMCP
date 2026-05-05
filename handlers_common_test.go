@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,6 +15,116 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
 )
+
+// captureLogger captures (level, message) tuples for assertions in tests.
+type captureLogger struct {
+	mu      sync.Mutex
+	entries []capturedLogEntry
+}
+
+type capturedLogEntry struct {
+	level   string
+	message string
+}
+
+func (c *captureLogger) record(level, format string, args ...any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = append(c.entries, capturedLogEntry{
+		level:   level,
+		message: fmt.Sprintf(format, args...),
+	})
+}
+
+func (c *captureLogger) Debug(format string, args ...any) { c.record("DEBUG", format, args...) }
+func (c *captureLogger) Info(format string, args ...any)  { c.record("INFO", format, args...) }
+func (c *captureLogger) Warn(format string, args ...any)  { c.record("WARN", format, args...) }
+func (c *captureLogger) Warnf(format string, args ...any) { c.record("WARN", format, args...) }
+func (c *captureLogger) Error(format string, args ...any) { c.record("ERROR", format, args...) }
+
+func (c *captureLogger) snapshot() []capturedLogEntry {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]capturedLogEntry, len(c.entries))
+	copy(out, c.entries)
+	return out
+}
+
+func TestLogGeminiAPIError(t *testing.T) {
+	background := context.Background()
+
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	deadlineCtx, cancelDeadline := context.WithDeadline(context.Background(), time.Unix(0, 1))
+	defer cancelDeadline()
+	// Allow the deadline to actually fire so ctx.Err() == DeadlineExceeded.
+	<-deadlineCtx.Done()
+
+	tests := []struct {
+		name        string
+		ctx         context.Context
+		err         error
+		wantLevel   string
+		wantContain string
+	}{
+		{
+			name:        "wrapped DeadlineExceeded with arbitrary ctx err",
+			ctx:         background,
+			err:         fmt.Errorf("upstream: %w", context.DeadlineExceeded),
+			wantLevel:   "INFO",
+			wantContain: "deadline exceeded",
+		},
+		{
+			name:        "wrapped Canceled with ctx DeadlineExceeded → server deadline",
+			ctx:         deadlineCtx,
+			err:         fmt.Errorf("transport: %w", context.Canceled),
+			wantLevel:   "INFO",
+			wantContain: "canceled by server deadline",
+		},
+		{
+			name:        "wrapped Canceled with ctx Canceled → caller cancel",
+			ctx:         canceledCtx,
+			err:         fmt.Errorf("transport: %w", context.Canceled),
+			wantLevel:   "INFO",
+			wantContain: "canceled by caller",
+		},
+		{
+			name:        "wrapped Canceled with uncancelled ctx → caller cancel",
+			ctx:         background,
+			err:         fmt.Errorf("transport: %w", context.Canceled),
+			wantLevel:   "INFO",
+			wantContain: "canceled by caller",
+		},
+		{
+			name:        "generic error → ERROR",
+			ctx:         background,
+			err:         errors.New("boom"),
+			wantLevel:   "ERROR",
+			wantContain: "Gemini API",
+		},
+		{
+			name:        "nil ctx (defensive) does not panic",
+			ctx:         nil,
+			err:         fmt.Errorf("transport: %w", context.Canceled),
+			wantLevel:   "INFO",
+			wantContain: "canceled by caller",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := &captureLogger{}
+			require.NotPanics(t, func() {
+				logGeminiAPIError(tc.ctx, logger, "Gemini API", tc.err)
+			})
+			entries := logger.snapshot()
+			require.Len(t, entries, 1)
+			assert.Equal(t, tc.wantLevel, entries[0].level)
+			assert.Contains(t, entries[0].message, tc.wantContain)
+		})
+	}
+}
 
 func TestExtractArgumentStringArray(t *testing.T) {
 	tests := []struct {

@@ -47,7 +47,7 @@ func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *C
 		Addr:         config.HTTPAddress,
 		Handler:      createCustomHTTPHandler(httpServer, config, logger),
 		ReadTimeout:  config.HTTPTimeout,
-		WriteTimeout: config.HTTPTimeout,
+		WriteTimeout: config.HTTPWriteTimeout,
 		IdleTimeout:  config.HTTPTimeout * 2, // Typically longer
 	}
 
