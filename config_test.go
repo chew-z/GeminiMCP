@@ -55,6 +55,44 @@ func withCleanEnv(t *testing.T) {
 	})
 }
 
+func TestParseHTTPPublicURL(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{name: "empty input is allowed", input: "", want: ""},
+		{name: "https no path", input: "https://example.com", want: "https://example.com"},
+		{name: "https with path", input: "https://example.com/gemini", want: "https://example.com/gemini"},
+		{name: "trailing slash trimmed", input: "https://example.com/gemini/", want: "https://example.com/gemini"},
+		{name: "loopback localhost http", input: "http://localhost:8080", want: "http://localhost:8080"},
+		{name: "loopback 127.0.0.1 http", input: "http://127.0.0.1:8080", want: "http://127.0.0.1:8080"},
+		{name: "loopback ipv6 http", input: "http://[::1]:8080", want: "http://[::1]:8080"},
+		{name: "non-loopback http rejected", input: "http://example.com", wantErr: true},
+		{name: "non-loopback http with path rejected", input: "http://example.com/gemini", wantErr: true},
+		{name: "ftp scheme rejected", input: "ftp://example.com", wantErr: true},
+		{name: "missing scheme rejected", input: "example.com/gemini", wantErr: true},
+		{name: "empty host rejected", input: "https://", wantErr: true},
+		{name: "malformed url rejected", input: "://example.com", wantErr: true},
+		{name: "query rejected", input: "https://example.com?foo=bar", wantErr: true},
+		{name: "fragment rejected", input: "https://example.com#frag", wantErr: true},
+		{name: "whitespace trimmed", input: "   https://example.com   ", want: "https://example.com"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseHTTPPublicURL(tc.input)
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "GEMINI_HTTP_PUBLIC_URL")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func TestNewConfig(t *testing.T) {
 	logger := NewLogger(LevelDebug)
 
@@ -165,6 +203,34 @@ func TestNewConfig(t *testing.T) {
 			env: map[string]string{
 				"GEMINI_API_KEY":      "key",
 				"GEMINI_AUTH_ENABLED": "true",
+			},
+			expectErr: true,
+		},
+		{
+			name: "http public URL stored verbatim when valid",
+			env: map[string]string{
+				"GEMINI_API_KEY":         "key",
+				"GEMINI_HTTP_PUBLIC_URL": "https://example.test/gemini",
+			},
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, "https://example.test/gemini", cfg.HTTPPublicURL)
+			},
+		},
+		{
+			name: "trust forwarded proto opt-in",
+			env: map[string]string{
+				"GEMINI_API_KEY":                    "key",
+				"GEMINI_HTTP_TRUST_FORWARDED_PROTO": "true",
+			},
+			check: func(t *testing.T, cfg *Config) {
+				assert.True(t, cfg.HTTPTrustForwardedProto)
+			},
+		},
+		{
+			name: "invalid http public URL fails NewConfig",
+			env: map[string]string{
+				"GEMINI_API_KEY":         "key",
+				"GEMINI_HTTP_PUBLIC_URL": "http://example.com",
 			},
 			expectErr: true,
 		},

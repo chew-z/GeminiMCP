@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -246,6 +247,155 @@ func TestCreateCustomHTTPHandler(t *testing.T) {
 
 		require.Equal(t, http.StatusAccepted, rec.Code)
 		assert.Equal(t, "mcp-ok", rec.Body.String())
+	})
+}
+
+func TestProtectedResourceMetadata(t *testing.T) {
+	t.Run("returns expected fields with HTTPPublicURL configured", func(t *testing.T) {
+		config := &Config{
+			AuthEnabled:   true,
+			HTTPPublicURL: "https://example.test/gemini",
+		}
+		handler := createCustomHTTPHandler(http.NotFoundHandler(), config, NewLogger(LevelError))
+
+		req := httptest.NewRequest(http.MethodGet, "http://mcp.local/.well-known/oauth-protected-resource", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+		assert.Equal(t, "public, max-age=3600", rec.Header().Get("Cache-Control"))
+
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		assert.Equal(t, "https://example.test/gemini", body["resource"])
+		assert.Equal(t, []any{"header"}, body["bearer_methods_supported"])
+	})
+
+	t.Run("reachable at the path-suffixed canonical URL", func(t *testing.T) {
+		config := &Config{
+			AuthEnabled:   true,
+			HTTPPublicURL: "https://example.test/gemini",
+		}
+		handler := createCustomHTTPHandler(http.NotFoundHandler(), config, NewLogger(LevelError))
+
+		req := httptest.NewRequest(http.MethodGet, "http://mcp.local/.well-known/oauth-protected-resource/gemini", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		assert.Equal(t, "https://example.test/gemini", body["resource"])
+	})
+
+	t.Run("uses https when r.TLS is set", func(t *testing.T) {
+		config := &Config{AuthEnabled: true}
+		handler := createCustomHTTPHandler(http.NotFoundHandler(), config, NewLogger(LevelError))
+
+		ts := httptest.NewTLSServer(handler)
+		defer ts.Close()
+
+		resp, err := ts.Client().Get(ts.URL + "/.well-known/oauth-protected-resource")
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		resource, _ := body["resource"].(string)
+		assert.True(t, strings.HasPrefix(resource, "https://"), "expected https:// scheme, got %q", resource)
+	})
+
+	t.Run("refuses non-loopback http requests", func(t *testing.T) {
+		config := &Config{AuthEnabled: true, HTTPTrustForwardedProto: false}
+		handler := createCustomHTTPHandler(http.NotFoundHandler(), config, NewLogger(LevelError))
+
+		req := httptest.NewRequest(http.MethodGet, "http://remote.example/.well-known/oauth-protected-resource", nil)
+		req.Host = "remote.example"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	})
+
+	t.Run("permits loopback http for local dev", func(t *testing.T) {
+		config := &Config{AuthEnabled: true}
+		handler := createCustomHTTPHandler(http.NotFoundHandler(), config, NewLogger(LevelError))
+
+		req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/.well-known/oauth-protected-resource", nil)
+		req.Host = "127.0.0.1:8080"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		assert.Equal(t, "http://127.0.0.1:8080", body["resource"])
+	})
+
+	t.Run("ignores X-Forwarded-Proto when trust is off", func(t *testing.T) {
+		config := &Config{AuthEnabled: true, HTTPTrustForwardedProto: false}
+		handler := createCustomHTTPHandler(http.NotFoundHandler(), config, NewLogger(LevelError))
+
+		req := httptest.NewRequest(http.MethodGet, "http://remote.example/.well-known/oauth-protected-resource", nil)
+		req.Host = "remote.example"
+		req.Header.Set("X-Forwarded-Proto", "https")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	})
+
+	t.Run("honours X-Forwarded-Proto when trust is on", func(t *testing.T) {
+		config := &Config{AuthEnabled: true, HTTPTrustForwardedProto: true}
+		handler := createCustomHTTPHandler(http.NotFoundHandler(), config, NewLogger(LevelError))
+
+		req := httptest.NewRequest(http.MethodGet, "http://remote.example/.well-known/oauth-protected-resource", nil)
+		req.Host = "remote.example"
+		req.Header.Set("X-Forwarded-Proto", "https")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		assert.Equal(t, "https://remote.example", body["resource"])
+	})
+
+	t.Run("returns 404 when AuthEnabled is false", func(t *testing.T) {
+		config := &Config{AuthEnabled: false, HTTPPublicURL: "https://example.test/gemini"}
+		handler := createCustomHTTPHandler(http.NotFoundHandler(), config, NewLogger(LevelError))
+
+		for _, p := range []string{
+			"/.well-known/oauth-protected-resource",
+			"/.well-known/oauth-protected-resource/gemini",
+		} {
+			req := httptest.NewRequest(http.MethodGet, "http://mcp.local"+p, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			assert.Equal(t, http.StatusNotFound, rec.Code, "path %s", p)
+		}
+	})
+
+	t.Run("sets CORS headers for allowed origin", func(t *testing.T) {
+		config := &Config{
+			AuthEnabled:     true,
+			HTTPPublicURL:   "https://example.test/gemini",
+			HTTPCORSEnabled: true,
+			HTTPCORSOrigins: []string{"https://app.example.com"},
+		}
+		handler := createCustomHTTPHandler(http.NotFoundHandler(), config, NewLogger(LevelError))
+
+		req := httptest.NewRequest(http.MethodGet, "http://mcp.local/.well-known/oauth-protected-resource", nil)
+		req.Header.Set("Origin", "https://app.example.com")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "https://app.example.com", rec.Header().Get("Access-Control-Allow-Origin"))
+		assert.Equal(t, "GET, OPTIONS", rec.Header().Get("Access-Control-Allow-Methods"))
+		assert.Equal(t, "Content-Type, Authorization", rec.Header().Get("Access-Control-Allow-Headers"))
 	})
 }
 

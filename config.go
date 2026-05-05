@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -130,19 +132,77 @@ func parseEnvVarBool(key string, defaultValue bool, logger Logger) bool {
 	return defaultValue
 }
 
-// httpTransportConfig captures HTTP-transport env values.
-type httpTransportConfig struct {
-	enableHTTP       bool
-	address          string
-	path             string
-	stateless        bool
-	heartbeat        time.Duration
-	corsEnabled      bool
-	corsOrigins      []string
-	progressInterval time.Duration
+// isLoopbackHost reports whether host (with or without a port) resolves to a
+// loopback identifier per the RFC 9728 startup-validation rule. The accepted
+// set is intentionally narrow: "localhost", "127.0.0.1", and "::1". Used both
+// at startup (parseHTTPPublicURL) and at request time (resolvePublicURL) so
+// the rule has a single source of truth.
+func isLoopbackHost(host string) bool {
+	if host == "" {
+		return false
+	}
+	h, _, err := net.SplitHostPort(host)
+	if err != nil {
+		h = host
+	}
+	h = strings.Trim(strings.ToLower(h), "[]")
+	switch h {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
 }
 
-func loadHTTPConfig(logger Logger) httpTransportConfig {
+// parseHTTPPublicURL validates GEMINI_HTTP_PUBLIC_URL. Empty input is allowed
+// and signals "derive from request". Non-empty input must be an absolute URL
+// with https scheme (or http when the host is loopback), no query, and no
+// fragment. A trailing slash is trimmed from the stored path so registration
+// and comparison are deterministic.
+func parseHTTPPublicURL(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", nil
+	}
+
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("GEMINI_HTTP_PUBLIC_URL is not a valid URL: %q: %w", raw, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("GEMINI_HTTP_PUBLIC_URL must use http or https scheme: got %q", raw)
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("GEMINI_HTTP_PUBLIC_URL must include a host: got %q", raw)
+	}
+	if u.Scheme == "http" && !isLoopbackHost(u.Host) {
+		return "", fmt.Errorf("GEMINI_HTTP_PUBLIC_URL must use https (or http for loopback): got %q", raw)
+	}
+	if u.RawQuery != "" {
+		return "", fmt.Errorf("GEMINI_HTTP_PUBLIC_URL must not include a query: got %q", raw)
+	}
+	if u.Fragment != "" {
+		return "", fmt.Errorf("GEMINI_HTTP_PUBLIC_URL must not include a fragment: got %q", raw)
+	}
+
+	u.Path = strings.TrimRight(u.Path, "/")
+	return u.String(), nil
+}
+
+// httpTransportConfig captures HTTP-transport env values.
+type httpTransportConfig struct {
+	enableHTTP          bool
+	address             string
+	path                string
+	stateless           bool
+	heartbeat           time.Duration
+	corsEnabled         bool
+	corsOrigins         []string
+	progressInterval    time.Duration
+	publicURL           string
+	trustForwardedProto bool
+}
+
+func loadHTTPConfig(logger Logger) (httpTransportConfig, error) {
 	enableHTTP := parseEnvVarBool("GEMINI_ENABLE_HTTP", defaultEnableHTTP, logger)
 	address := os.Getenv("GEMINI_HTTP_ADDRESS")
 	if address == "" {
@@ -172,16 +232,24 @@ func loadHTTPConfig(logger Logger) httpTransportConfig {
 		corsOrigins = []string{"*"}
 	}
 
-	return httpTransportConfig{
-		enableHTTP:       enableHTTP,
-		address:          address,
-		path:             path,
-		stateless:        stateless,
-		heartbeat:        heartbeat,
-		corsEnabled:      corsEnabled,
-		corsOrigins:      corsOrigins,
-		progressInterval: parseEnvVarDuration("GEMINI_PROGRESS_INTERVAL", defaultProgressInterval, logger),
+	publicURL, err := parseHTTPPublicURL(os.Getenv("GEMINI_HTTP_PUBLIC_URL"))
+	if err != nil {
+		return httpTransportConfig{}, err
 	}
+	trustForwardedProto := parseEnvVarBool("GEMINI_HTTP_TRUST_FORWARDED_PROTO", false, logger)
+
+	return httpTransportConfig{
+		enableHTTP:          enableHTTP,
+		address:             address,
+		path:                path,
+		stateless:           stateless,
+		heartbeat:           heartbeat,
+		corsEnabled:         corsEnabled,
+		corsOrigins:         corsOrigins,
+		progressInterval:    parseEnvVarDuration("GEMINI_PROGRESS_INTERVAL", defaultProgressInterval, logger),
+		publicURL:           publicURL,
+		trustForwardedProto: trustForwardedProto,
+	}, nil
 }
 
 // authConfig captures authentication env values.
@@ -302,6 +370,29 @@ func loadGitHubConfig(logger Logger) githubSettings {
 	}
 }
 
+// timeoutAndRetryConfig captures HTTP timeout + retry env values.
+type timeoutAndRetryConfig struct {
+	timeout          time.Duration
+	httpWriteTimeout time.Duration
+	maxRetries       int
+	initialBackoff   time.Duration
+	maxBackoff       time.Duration
+}
+
+func loadTimeoutAndRetryConfig(logger Logger) timeoutAndRetryConfig {
+	timeout := parseEnvVarDuration("GEMINI_TIMEOUT", 300*time.Second, logger)
+	// HTTPWriteTimeout must outlive the outbound per-call budget so the
+	// inbound connection can still write a response that finishes near the
+	// deadline. Default = HTTPTimeout + 60s slack.
+	return timeoutAndRetryConfig{
+		timeout:          timeout,
+		httpWriteTimeout: parseEnvVarDuration("GEMINI_HTTP_WRITE_TIMEOUT", timeout+60*time.Second, logger),
+		maxRetries:       parseEnvVarInt("GEMINI_MAX_RETRIES", 2, logger),
+		initialBackoff:   parseEnvVarDuration("GEMINI_INITIAL_BACKOFF", 1*time.Second, logger),
+		maxBackoff:       parseEnvVarDuration("GEMINI_MAX_BACKOFF", 10*time.Second, logger),
+	}
+}
+
 // NewConfig creates a new configuration from environment variables
 func NewConfig(logger Logger) (*Config, error) {
 	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
@@ -324,47 +415,43 @@ func NewConfig(logger Logger) (*Config, error) {
 		return nil, fmt.Errorf("GEMINI_TEMPERATURE must be between 0.0 and 1.0, got %v", geminiTemperature)
 	}
 
-	timeout := parseEnvVarDuration("GEMINI_TIMEOUT", 300*time.Second, logger)
-	// HTTPWriteTimeout must outlive the outbound per-call budget so the
-	// inbound connection can still write a response that finishes near the
-	// deadline. Default = HTTPTimeout + 60s slack.
-	httpWriteTimeout := parseEnvVarDuration("GEMINI_HTTP_WRITE_TIMEOUT", timeout+60*time.Second, logger)
-	maxRetries := parseEnvVarInt("GEMINI_MAX_RETRIES", 2, logger)
-	initialBackoff := parseEnvVarDuration("GEMINI_INITIAL_BACKOFF", 1*time.Second, logger)
-	maxBackoff := parseEnvVarDuration("GEMINI_MAX_BACKOFF", 10*time.Second, logger)
-
+	tr := loadTimeoutAndRetryConfig(logger)
 	github := loadGitHubConfig(logger)
 	thinking := loadThinkingConfig(logger)
 	task := loadTaskConfig(logger)
-	httpCfg := loadHTTPConfig(logger)
+	httpCfg, err := loadHTTPConfig(logger)
+	if err != nil {
+		return nil, err
+	}
 	auth, err := loadAuthConfig(logger)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Config{
-		GeminiAPIKey:      geminiAPIKey,
-		GeminiModel:       geminiModel,
-		GeminiSearchModel: geminiSearchModel,
-		GeminiTemperature: geminiTemperature,
-		HTTPTimeout:       timeout,
-		HTTPWriteTimeout:  httpWriteTimeout,
-		EnableHTTP:        httpCfg.enableHTTP,
-		HTTPAddress:       httpCfg.address,
-		HTTPPath:          httpCfg.path,
-		HTTPStateless:     httpCfg.stateless,
-		HTTPHeartbeat:     httpCfg.heartbeat,
-		HTTPCORSEnabled:   httpCfg.corsEnabled,
-		HTTPCORSOrigins:   httpCfg.corsOrigins,
-		ProgressInterval:  httpCfg.progressInterval,
-
-		MaxConcurrentTasks: task.maxConcurrentTasks,
+		GeminiAPIKey:            geminiAPIKey,
+		GeminiModel:             geminiModel,
+		GeminiSearchModel:       geminiSearchModel,
+		GeminiTemperature:       geminiTemperature,
+		HTTPTimeout:             tr.timeout,
+		HTTPWriteTimeout:        tr.httpWriteTimeout,
+		EnableHTTP:              httpCfg.enableHTTP,
+		HTTPAddress:             httpCfg.address,
+		HTTPPath:                httpCfg.path,
+		HTTPStateless:           httpCfg.stateless,
+		HTTPHeartbeat:           httpCfg.heartbeat,
+		HTTPCORSEnabled:         httpCfg.corsEnabled,
+		HTTPCORSOrigins:         httpCfg.corsOrigins,
+		ProgressInterval:        httpCfg.progressInterval,
+		HTTPPublicURL:           httpCfg.publicURL,
+		HTTPTrustForwardedProto: httpCfg.trustForwardedProto,
+		MaxConcurrentTasks:      task.maxConcurrentTasks,
 
 		AuthEnabled:    auth.enabled,
 		AuthSecretKey:  auth.secretKey,
-		MaxRetries:     maxRetries,
-		InitialBackoff: initialBackoff,
-		MaxBackoff:     maxBackoff,
+		MaxRetries:     tr.maxRetries,
+		InitialBackoff: tr.initialBackoff,
+		MaxBackoff:     tr.maxBackoff,
 
 		GitHubToken:               github.token,
 		GitHubAPIBaseURL:          github.apiBaseURL,

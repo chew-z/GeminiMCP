@@ -96,6 +96,13 @@ type Config struct {
 	HTTPHeartbeat   time.Duration // Heartbeat interval
 	HTTPCORSEnabled bool          // Enable CORS
 	HTTPCORSOrigins []string      // Allowed origins
+	// HTTPPublicURL is the externally-facing resource identifier per RFC 9728.
+	// Validated at startup: scheme must be https for any host, OR http only when
+	// host is loopback (localhost, 127.0.0.1, [::1]). Empty → derive from request.
+	HTTPPublicURL string
+	// HTTPTrustForwardedProto enables honouring X-Forwarded-Proto for scheme
+	// detection. Set true when behind a trusted reverse proxy (e.g. nginx).
+	HTTPTrustForwardedProto bool
 
 	// Progress notification settings
 	ProgressInterval time.Duration // Interval for notifications/progress; <=0 disables.

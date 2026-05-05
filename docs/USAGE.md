@@ -196,6 +196,8 @@ fetching and picks a tailored system prompt server-side (see
 | `GEMINI_HTTP_HEARTBEAT` | — | Heartbeat interval (e.g. `30s`) |
 | `GEMINI_HTTP_CORS_ENABLED` | `false` | Enable CORS |
 | `GEMINI_HTTP_CORS_ORIGINS` | — | Comma-separated allowed origins. Supports exact origins (e.g. `https://app.example.com`) and wildcard subdomains (e.g. `*.example.com`), with exact host boundary checks |
+| `GEMINI_HTTP_PUBLIC_URL` | — | Externally-facing resource identifier per RFC 9728 (e.g. `https://your.host/path-prefix`). Validated at startup: scheme must be `https` for any host, or `http` only when host is loopback (`localhost`, `127.0.0.1`, `[::1]`). Required behind a reverse proxy that strips a path prefix; otherwise the request-derived URL is used. |
+| `GEMINI_HTTP_TRUST_FORWARDED_PROTO` | `false` | Honour `X-Forwarded-Proto` for scheme detection in the RFC 9728 metadata fallback. Set to `true` only when behind a trusted reverse proxy (e.g. nginx). Without this, the metadata document is refused (503) on non-loopback HTTP requests. |
 
 ### Authentication
 
