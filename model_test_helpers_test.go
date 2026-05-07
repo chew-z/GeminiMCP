@@ -28,14 +28,14 @@ func testModelCatalog() []GeminiModelInfo {
 			},
 		},
 		{
-			FamilyID:          "gemini-3.1-flash-lite-preview",
+			FamilyID:          "gemini-3.1-flash-lite",
 			Name:              "Gemini 3.1 Flash Lite",
 			Description:       "Low-latency lightweight model.",
 			SupportsThinking:  false,
 			ContextWindowSize: 524288,
 			MaxOutputTokens:   2048,
 			Versions: []ModelVersion{
-				{ID: "gemini-3.1-flash-lite-preview-0417", IsPreferred: true},
+				{ID: "gemini-3.1-flash-lite", IsPreferred: true},
 			},
 		},
 	}

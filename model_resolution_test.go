@@ -57,7 +57,7 @@ func TestResolveAndValidateModel(t *testing.T) {
 		{
 			name:        "deprecated 2.5 flash-lite redirects to current flash-lite winner",
 			input:       "gemini-2.5-flash-lite",
-			wantModelID: "gemini-3.1-flash-lite-preview",
+			wantModelID: "gemini-3.1-flash-lite",
 		},
 		{
 			name:        "dated 2.5 flash preview redirects to current flash winner",
@@ -153,10 +153,10 @@ func TestCreateModelConfig(t *testing.T) {
 		{
 			name: "model without thinking support skips thinking config",
 			args: map[string]any{
-				"model": "gemini-3.1-flash-lite-preview",
+				"model": "gemini-3.1-flash-lite",
 			},
 			defaultModel:  "gemini-3.1-pro-preview",
-			wantModelName: "gemini-3.1-flash-lite-preview-0417",
+			wantModelName: "gemini-3.1-flash-lite",
 			wantMaxTokens: 2048,
 			wantThinking:  false,
 		},

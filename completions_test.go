@@ -14,8 +14,8 @@ func TestCompleteModel(t *testing.T) {
 			Versions: []ModelVersion{{ID: "gemini-3.1-pro-preview", IsPreferred: true}}},
 		{FamilyID: "gemini-3-flash-preview", Name: "Gemini 3 Flash", SupportsThinking: true, ContextWindowSize: 1048576,
 			Versions: []ModelVersion{{ID: "gemini-3-flash-preview", IsPreferred: true}, {ID: "gemini-flash-latest"}}},
-		{FamilyID: "gemini-3.1-flash-lite-preview", Name: "Gemini 3.1 Flash Lite", SupportsThinking: true, ContextWindowSize: 1048576,
-			Versions: []ModelVersion{{ID: "gemini-3.1-flash-lite-preview", IsPreferred: true}, {ID: "gemini-flash-lite-latest"}}},
+		{FamilyID: "gemini-3.1-flash-lite", Name: "Gemini 3.1 Flash Lite", SupportsThinking: true, ContextWindowSize: 1048576,
+			Versions: []ModelVersion{{ID: "gemini-3.1-flash-lite", IsPreferred: true}, {ID: "gemini-flash-lite-latest"}}},
 	})
 
 	tests := []struct {

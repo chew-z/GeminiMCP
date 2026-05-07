@@ -16,7 +16,7 @@ func TestClassifyModel(t *testing.T) {
 	}{
 		{"pro model", "gemini-3.1-pro-preview", tierPro, true},
 		{"flash model", "gemini-3-flash-preview", tierFlash, true},
-		{"flash-lite model", "gemini-3.1-flash-lite-preview", tierFlashLite, true},
+		{"flash-lite model", "gemini-3.1-flash-lite", tierFlashLite, true},
 		// Non-canonical punctuation is tolerated — the substring classifier
 		// honors intent and the version regex has no parseable version here,
 		// so the generation floor is not triggered.
@@ -54,7 +54,7 @@ func TestInferModelTier(t *testing.T) {
 		// Current Gemini 3+ models resolve normally.
 		{"3.1 pro", "gemini-3.1-pro-preview", tierPro, true},
 		{"3 flash", "gemini-3-flash-preview", tierFlash, true},
-		{"3.1 flash-lite", "gemini-3.1-flash-lite-preview", tierFlashLite, true},
+		{"3.1 flash-lite", "gemini-3.1-flash-lite", tierFlashLite, true},
 		// Tier aliases without an explicit version also resolve (no floor to enforce).
 		{"pro-latest alias", "gemini-pro-latest", tierPro, true},
 		{"flash-latest alias", "gemini-flash-latest", tierFlash, true},
@@ -148,7 +148,7 @@ func TestParseModelVersion(t *testing.T) {
 		{"major only", "gemini-3-pro-preview", 3, 0, "-preview", true},
 		{"major.minor", "gemini-3.1-pro-preview", 3, 1, "-preview", true},
 		{"double digit minor", "gemini-3.10-flash-preview", 3, 10, "-preview", true},
-		{"flash-lite", "gemini-3.1-flash-lite-preview", 3, 1, "-preview", true},
+		{"flash-lite", "gemini-3.1-flash-lite", 3, 1, "", true},
 		{"2.5 flash dated preview", "gemini-2.5-flash-preview-09-2025", 2, 5, "-preview-09-2025", true},
 		{"latest alias has no version", "gemini-flash-latest", 0, 0, "", false},
 		{"no match", "palm-2-pro", 0, 0, "", false},

@@ -403,7 +403,7 @@ func TestTierDefaultThinkingLevel(t *testing.T) {
 
 	assert.Equal(t, "high", tierDefaultThinkingLevel("gemini-3.1-pro-preview", "fallback"))
 	assert.Equal(t, "medium", tierDefaultThinkingLevel("gemini-3-flash-preview", "fallback"))
-	assert.Equal(t, "medium", tierDefaultThinkingLevel("gemini-3.1-flash-lite-preview", "fallback"))
+	assert.Equal(t, "medium", tierDefaultThinkingLevel("gemini-3.1-flash-lite", "fallback"))
 	assert.Equal(t, "fallback", tierDefaultThinkingLevel("not-a-gemini-model", "fallback"))
 }
 
