@@ -134,9 +134,8 @@ func parseEnvVarBool(key string, defaultValue bool, logger Logger) bool {
 
 // isLoopbackHost reports whether host (with or without a port) resolves to a
 // loopback identifier per the RFC 9728 startup-validation rule. The accepted
-// set is intentionally narrow: "localhost", "127.0.0.1", and "::1". Used both
-// at startup (parseHTTPPublicURL) and at request time (resolvePublicURL) so
-// the rule has a single source of truth.
+// set is intentionally narrow: "localhost", "127.0.0.1", and "::1". Used
+// at startup (parseHTTPPublicURL) to validate the rule.
 func isLoopbackHost(host string) bool {
 	if host == "" {
 		return false

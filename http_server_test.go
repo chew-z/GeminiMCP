@@ -263,13 +263,12 @@ func TestProtectedResourceMetadata(t *testing.T) {
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 		assert.Equal(t, "https://example.test/api/v2/mcp", body["resource"])
 
+		// The mux only registers the suffixed canonical path for a
+		// path-qualified resource; the bare well-known path is not
+		// registered and returns 404.
 		rec = metadataRequest(t, cfg, "/.well-known/oauth-protected-resource")
-		if rec.Code == http.StatusOK {
-			var bareBody map[string]any
-			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &bareBody))
-			assert.NotEqual(t, "https://example.test/api/v2/mcp", bareBody["resource"],
-				"bare well-known path must not advertise path-qualified resource: got %v", bareBody)
-		}
+		assert.Equal(t, http.StatusNotFound, rec.Code,
+			"bare well-known path must return 404 for path-qualified resource")
 	})
 
 	t.Run("not served when auth is disabled", func(t *testing.T) {
