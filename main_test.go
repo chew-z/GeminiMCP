@@ -280,6 +280,19 @@ func TestRunMainFlagAndTransportPaths(t *testing.T) {
 	t.Run("auth enabled with missing secret returns error code", func(t *testing.T) {
 		cfg := baseMainTestConfig()
 		cfg.AuthSecretKey = ""
+		cfg.HTTPPublicURL = "https://mcp.example.com/mcp"
+		calls := installMainHooksForTest(t, cfg)
+
+		code := runMain([]string{"-auth-enabled"})
+
+		assert.Equal(t, 1, code)
+		assert.False(t, calls.setupCalled)
+	})
+
+	t.Run("auth enabled with missing public URL returns error code", func(t *testing.T) {
+		cfg := baseMainTestConfig()
+		cfg.AuthSecretKey = "secret-present"
+		cfg.HTTPPublicURL = ""
 		calls := installMainHooksForTest(t, cfg)
 
 		code := runMain([]string{"-auth-enabled"})
@@ -401,6 +414,7 @@ func TestRunMainModelFlagValidation(t *testing.T) {
 	t.Run("applies non-model flag overrides and known model branch", func(t *testing.T) {
 		cfg := baseMainTestConfig()
 		cfg.AuthSecretKey = "secret-present"
+		cfg.HTTPPublicURL = "https://mcp.example.com/mcp"
 		calls := installMainHooksForTest(t, cfg)
 		validateModelIDFn = func(model string) (string, bool, error) {
 			calls.validateCalls = append(calls.validateCalls, model)

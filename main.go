@@ -54,6 +54,7 @@ github_repo is required when using any github_* parameter. github_files requires
 		server.WithToolCapabilities(true),
 		server.WithRecovery(),
 		server.WithInputSchemaValidation(),
+		server.WithStrictInputSchemaDefault(),
 	}
 	if config != nil && config.MaxConcurrentTasks > 0 {
 		opts = append(opts,
@@ -152,6 +153,24 @@ func resolveDefaultModels(ctx context.Context, config *Config) error {
 	return nil
 }
 
+// validateAuthPostOverride enforces the post-CLI-override invariants that
+// authentication requires. The canonical config loader rejects these cases
+// earlier; this guard catches hand-rolled Config values (tests, future
+// internal callers) plus the --auth-enabled flag flipping AuthEnabled after
+// the loader ran.
+func validateAuthPostOverride(config *Config, logger Logger) bool {
+	if config.AuthEnabled && config.AuthSecretKey == "" {
+		logger.Error("CRITICAL: Authentication is enabled, but GEMINI_AUTH_SECRET_KEY is not set. Server is shutting down.")
+		return false
+	}
+	if config.AuthEnabled && config.HTTPPublicURL == "" {
+		logger.Error("CRITICAL: Authentication is enabled, but GEMINI_HTTP_PUBLIC_URL is not set. " +
+			"Set it to the externally-facing resource URL (e.g. https://mcp.example.com/mcp) so RFC 9728 metadata can be served.")
+		return false
+	}
+	return true
+}
+
 // runTransport starts the requested transport and returns the process exit code.
 func runTransport(ctx context.Context, mcpServer *server.MCPServer, config *Config, logger Logger, transport string) int {
 	if transport != "stdio" && transport != "http" {
@@ -218,10 +237,10 @@ func runMain(args []string) int {
 		return 0
 	}
 
-	// Fatal post-override check: authentication demands a secret key; we must
-	// never enter degraded mode while advertising auth.
-	if config.AuthEnabled && config.AuthSecretKey == "" {
-		logger.Error("CRITICAL: Authentication is enabled, but GEMINI_AUTH_SECRET_KEY is not set. Server is shutting down.")
+	// Fatal post-override checks: authentication demands a secret key and a
+	// stable public URL; we must never enter degraded mode while advertising
+	// auth.
+	if !validateAuthPostOverride(config, logger) {
 		return 1
 	}
 

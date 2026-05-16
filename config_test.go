@@ -207,6 +207,28 @@ func TestNewConfig(t *testing.T) {
 			expectErr: true,
 		},
 		{
+			name: "auth enabled requires HTTPPublicURL",
+			env: map[string]string{
+				"GEMINI_API_KEY":         "key",
+				"GEMINI_AUTH_ENABLED":    "true",
+				"GEMINI_AUTH_SECRET_KEY": "12345678901234567890123456789012",
+			},
+			expectErr: true,
+		},
+		{
+			name: "auth enabled with secret and public URL is accepted",
+			env: map[string]string{
+				"GEMINI_API_KEY":         "key",
+				"GEMINI_AUTH_ENABLED":    "true",
+				"GEMINI_AUTH_SECRET_KEY": "12345678901234567890123456789012",
+				"GEMINI_HTTP_PUBLIC_URL": "https://mcp.example.com/mcp",
+			},
+			check: func(t *testing.T, cfg *Config) {
+				assert.True(t, cfg.AuthEnabled)
+				assert.Equal(t, "https://mcp.example.com/mcp", cfg.HTTPPublicURL)
+			},
+		},
+		{
 			name: "http public URL stored verbatim when valid",
 			env: map[string]string{
 				"GEMINI_API_KEY":         "key",

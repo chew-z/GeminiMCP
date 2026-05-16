@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -20,10 +19,9 @@ import (
 func startHTTPServer(ctx context.Context, mcpServer *server.MCPServer, config *Config, logger Logger) error {
 	httpServer := server.NewStreamableHTTPServer(mcpServer, buildStreamableHTTPOptions(config, logger)...)
 
-	// Create custom HTTP server with OAuth well-known endpoint
 	customServer := &http.Server{
 		Addr:         config.HTTPAddress,
-		Handler:      createCustomHTTPHandler(httpServer, config, logger),
+		Handler:      httpServer,
 		ReadTimeout:  config.HTTPTimeout,
 		WriteTimeout: config.HTTPWriteTimeout,
 		IdleTimeout:  config.HTTPTimeout * 2, // Typically longer
@@ -91,6 +89,23 @@ func buildStreamableHTTPOptions(config *Config, logger Logger) []server.Streamab
 	}
 	if config.HTTPCORSEnabled || config.AuthEnabled {
 		opts = append(opts, server.WithHTTPContextFunc(createHTTPMiddleware(config, logger)))
+	}
+
+	// RFC 9728 OAuth Protected Resource Metadata. The library handler emits
+	// Cache-Control: no-store (spec-aligned) and permissive CORS on the
+	// .well-known endpoint. HTTPPublicURL is required at startup when auth is
+	// on (Config validation + runMain guard); this branch defends against
+	// hand-rolled Config values reaching the builder.
+	if config.AuthEnabled {
+		if config.HTTPPublicURL == "" {
+			logger.Warn("RFC 9728 metadata endpoint skipped: AuthEnabled=true but HTTPPublicURL is empty — " +
+				"this is a config bug; runtime metadata discovery will fail")
+		} else {
+			opts = append(opts, server.WithProtectedResourceMetadata(server.ProtectedResourceMetadataConfig{
+				Resource:               config.HTTPPublicURL,
+				BearerMethodsSupported: []string{"header"},
+			}))
+		}
 	}
 	return opts
 }
@@ -288,94 +303,4 @@ func isSubdomainMatch(originHost, patternHost string) bool {
 		return false
 	}
 	return strings.HasSuffix(originHost, "."+patternHost)
-}
-
-// resolvePublicURL returns the canonical resource identifier for the RFC 9728
-// metadata document. Returns ("", false) when the request cannot produce a
-// spec-compliant identifier — caller must respond 503 in that case.
-//
-// HTTPPublicURL was already validated at startup (https any host, or http only
-// for loopback) and is returned verbatim. The fallback branch enforces the same
-// rule at request time using r.TLS and (when trust is enabled)
-// X-Forwarded-Proto.
-func resolvePublicURL(config *Config, r *http.Request) (string, bool) {
-	if config.HTTPPublicURL != "" {
-		return config.HTTPPublicURL, true
-	}
-	scheme := "http"
-	switch {
-	case r.TLS != nil:
-		scheme = "https"
-	case config.HTTPTrustForwardedProto:
-		if r.Header.Get("X-Forwarded-Proto") == "https" {
-			scheme = "https"
-		}
-	}
-	if scheme == "http" && !isLoopbackHost(r.Host) {
-		return "", false
-	}
-	return scheme + "://" + r.Host, true
-}
-
-// createCustomHTTPHandler creates a custom HTTP handler that includes the
-// RFC 9728 protected-resource metadata endpoint.
-func createCustomHTTPHandler(mcpHandler http.Handler, config *Config, logger Logger) http.Handler {
-	mux := http.NewServeMux()
-
-	// RFC 9728 OAuth Protected Resource Metadata. Mounted only when JWT auth
-	// is enabled — otherwise the resource has nothing meaningful to advertise.
-	if config.AuthEnabled {
-		registerProtectedResourceMetadata(mux, config, logger)
-	}
-
-	// Handle all other requests with the MCP handler
-	mux.Handle("/", mcpHandler)
-
-	return mux
-}
-
-// registerProtectedResourceMetadata wires the RFC 9728 endpoint at the
-// host-rooted path and (when HTTPPublicURL has a non-empty path) at the
-// spec-canonical path-suffixed form via mcp-go's helper.
-func registerProtectedResourceMetadata(mux *http.ServeMux, config *Config, logger Logger) {
-	handle := func(w http.ResponseWriter, r *http.Request) {
-		resource, ok := resolvePublicURL(config, r)
-		if !ok {
-			logger.Warn("9728 metadata refused: cannot derive HTTPS resource for host %q "+
-				"(set GEMINI_HTTP_PUBLIC_URL or GEMINI_HTTP_TRUST_FORWARDED_PROTO=true)", r.Host)
-			http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		metadata := map[string]any{
-			"resource":                 resource,
-			"bearer_methods_supported": []string{"header"},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-		if config.HTTPCORSEnabled {
-			origin := r.Header.Get("Origin")
-			if origin != "" && isOriginAllowed(origin, config.HTTPCORSOrigins, config.AuthEnabled) {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			}
-		}
-		if err := json.NewEncoder(w).Encode(metadata); err != nil {
-			logger.Error("Failed to encode 9728 metadata: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
-	}
-	mux.HandleFunc("/.well-known/oauth-protected-resource", handle)
-	if config.HTTPPublicURL == "" {
-		return
-	}
-	u, err := url.Parse(config.HTTPPublicURL)
-	if err != nil {
-		logger.Error("invalid GEMINI_HTTP_PUBLIC_URL %q: %v — only host-rooted 9728 path will be served",
-			config.HTTPPublicURL, err)
-		return
-	}
-	if u.Path != "" && u.Path != "/" {
-		mux.HandleFunc(server.ProtectedResourceMetadataPath(config.HTTPPublicURL), handle)
-	}
 }

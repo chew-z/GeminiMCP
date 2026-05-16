@@ -240,16 +240,45 @@ func schemaProperties(t *testing.T, tool mcp.Tool) (map[string]any, any) {
 // the tool's inputSchema, otherwise enabling
 // WithInputSchemaValidation+additionalProperties=false would reject
 // legitimate calls that the handlers silently consume.
+//
+// additionalProperties:false is now set server-wide via
+// WithStrictInputSchemaDefault — the option applies during AddTool, not on
+// the raw tool variable — so we register the tools on a server built from
+// buildMCPServerOptions and read the schema back via tools/list.
 func TestToolSchemasCoverHandlerParams(t *testing.T) {
-	tools := map[string]mcp.Tool{
-		"gemini_ask":    GeminiAskTool,
-		"gemini_search": GeminiSearchTool,
+	logger := NewLogger(LevelError)
+	cfg := &Config{MaxConcurrentTasks: 1}
+	srv := server.NewMCPServer("gemini", "1.0.0", buildMCPServerOptions(cfg, logger)...)
+
+	stub := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return mcp.NewToolResultText("stub"), nil
+	}
+	srv.AddTool(GeminiAskTool, stub)
+	srv.AddTool(GeminiSearchTool, stub)
+
+	_ = initializeResult(t, srv)
+
+	listRaw := rpcRequest(t, 100, "tools/list", map[string]any{})
+	resp, rpcErr := dispatchRPC(t, srv, listRaw)
+	require.Nil(t, rpcErr, "tools/list returned a JSON-RPC error: %+v", rpcErr)
+	require.NotNil(t, resp)
+
+	encoded, err := json.Marshal(resp.Result)
+	require.NoError(t, err)
+	var listResult struct {
+		Tools []mcp.Tool `json:"tools"`
+	}
+	require.NoError(t, json.Unmarshal(encoded, &listResult))
+
+	byName := make(map[string]mcp.Tool, len(listResult.Tools))
+	for _, tool := range listResult.Tools {
+		byName[tool.Name] = tool
 	}
 
 	for name, expected := range declaredHandlerParams {
 		t.Run(name, func(t *testing.T) {
-			tool, ok := tools[name]
-			require.True(t, ok, "tool %q not found", name)
+			tool, ok := byName[name]
+			require.True(t, ok, "tool %q not found in tools/list", name)
 			props, additional := schemaProperties(t, tool)
 
 			for _, key := range expected {
@@ -257,9 +286,9 @@ func TestToolSchemasCoverHandlerParams(t *testing.T) {
 					"handler reads %q for tool %q but inputSchema does not declare it",
 					key, name)
 			}
-			// additionalProperties=false is required so undeclared keys are
-			// rejected. mcp.WithSchemaAdditionalProperties(false) marshals
-			// to a literal JSON false.
+			// WithStrictInputSchemaDefault must set additionalProperties:false
+			// on tools that don't configure it explicitly. The library marshals
+			// it as a literal JSON false.
 			assert.Equal(t, false, additional,
 				"tool %q must set additionalProperties:false to lock down input shape", name)
 		})

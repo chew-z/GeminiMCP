@@ -393,6 +393,19 @@ func loadTimeoutAndRetryConfig(logger Logger) timeoutAndRetryConfig {
 	}
 }
 
+// validateAuthInterop enforces cross-section invariants between the auth and
+// HTTP transport sub-configs. Currently: when auth is on, HTTPPublicURL must
+// be set so RFC 9728 metadata can advertise a stable resource identifier.
+func validateAuthInterop(auth authConfig, httpCfg httpTransportConfig) error {
+	if auth.enabled && httpCfg.publicURL == "" {
+		return fmt.Errorf(
+			"GEMINI_HTTP_PUBLIC_URL is required when authentication is enabled: " +
+				"set it to the externally-facing resource URL (e.g. https://mcp.example.com/mcp) " +
+				"so RFC 9728 metadata can be served")
+	}
+	return nil
+}
+
 // NewConfig creates a new configuration from environment variables
 func NewConfig(logger Logger) (*Config, error) {
 	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
@@ -427,7 +440,25 @@ func NewConfig(logger Logger) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateAuthInterop(auth, httpCfg); err != nil {
+		return nil, err
+	}
+	return assembleConfig(geminiAPIKey, geminiModel, geminiSearchModel, geminiTemperature, tr, github, thinking, task, httpCfg, auth), nil
+}
 
+// assembleConfig builds the public Config struct from the sub-section values
+// loaded by NewConfig. Factored out so NewConfig stays focused on env parsing
+// and cross-section validation.
+func assembleConfig(
+	geminiAPIKey, geminiModel, geminiSearchModel string,
+	geminiTemperature float64,
+	tr timeoutAndRetryConfig,
+	github githubSettings,
+	thinking thinkingAndTierConfig,
+	task taskExecConfig,
+	httpCfg httpTransportConfig,
+	auth authConfig,
+) *Config {
 	return &Config{
 		GeminiAPIKey:            geminiAPIKey,
 		GeminiModel:             geminiModel,
@@ -468,5 +499,5 @@ func NewConfig(logger Logger) (*Config, error) {
 		Prequalify:              task.prequalify,
 		PrequalifyModel:         task.prequalifyModel,
 		PrequalifyThinkingLevel: task.prequalifyThinkingLevel,
-	}, nil
+	}
 }
