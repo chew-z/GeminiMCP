@@ -58,10 +58,19 @@ func extractGitHubPRNumber(req mcp.CallToolRequest) (int, bool) {
 	args := req.GetArguments()
 	switch v := args["github_pr"].(type) {
 	case float64:
+		if v == 0 {
+			return 0, false
+		}
 		return int(v), true
 	case int:
+		if v == 0 {
+			return 0, false
+		}
 		return v, true
 	case int64:
+		if v == 0 {
+			return 0, false
+		}
 		return int(v), true
 	case string:
 		if v == "" {
