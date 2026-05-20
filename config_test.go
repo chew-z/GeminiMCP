@@ -239,16 +239,6 @@ func TestNewConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "trust forwarded proto opt-in",
-			env: map[string]string{
-				"GEMINI_API_KEY":                    "key",
-				"GEMINI_HTTP_TRUST_FORWARDED_PROTO": "true",
-			},
-			check: func(t *testing.T, cfg *Config) {
-				assert.True(t, cfg.HTTPTrustForwardedProto)
-			},
-		},
-		{
 			name: "invalid http public URL fails NewConfig",
 			env: map[string]string{
 				"GEMINI_API_KEY":         "key",

@@ -189,16 +189,15 @@ func parseHTTPPublicURL(raw string) (string, error) {
 
 // httpTransportConfig captures HTTP-transport env values.
 type httpTransportConfig struct {
-	enableHTTP          bool
-	address             string
-	path                string
-	stateless           bool
-	heartbeat           time.Duration
-	corsEnabled         bool
-	corsOrigins         []string
-	progressInterval    time.Duration
-	publicURL           string
-	trustForwardedProto bool
+	enableHTTP       bool
+	address          string
+	path             string
+	stateless        bool
+	heartbeat        time.Duration
+	corsEnabled      bool
+	corsOrigins      []string
+	progressInterval time.Duration
+	publicURL        string
 }
 
 func loadHTTPConfig(logger Logger) (httpTransportConfig, error) {
@@ -235,19 +234,17 @@ func loadHTTPConfig(logger Logger) (httpTransportConfig, error) {
 	if err != nil {
 		return httpTransportConfig{}, err
 	}
-	trustForwardedProto := parseEnvVarBool("GEMINI_HTTP_TRUST_FORWARDED_PROTO", false, logger)
 
 	return httpTransportConfig{
-		enableHTTP:          enableHTTP,
-		address:             address,
-		path:                path,
-		stateless:           stateless,
-		heartbeat:           heartbeat,
-		corsEnabled:         corsEnabled,
-		corsOrigins:         corsOrigins,
-		progressInterval:    parseEnvVarDuration("GEMINI_PROGRESS_INTERVAL", defaultProgressInterval, logger),
-		publicURL:           publicURL,
-		trustForwardedProto: trustForwardedProto,
+		enableHTTP:       enableHTTP,
+		address:          address,
+		path:             path,
+		stateless:        stateless,
+		heartbeat:        heartbeat,
+		corsEnabled:      corsEnabled,
+		corsOrigins:      corsOrigins,
+		progressInterval: parseEnvVarDuration("GEMINI_PROGRESS_INTERVAL", defaultProgressInterval, logger),
+		publicURL:        publicURL,
 	}, nil
 }
 
@@ -265,7 +262,7 @@ func loadAuthConfig(logger Logger) (authConfig, error) {
 		return authConfig{}, fmt.Errorf("GEMINI_AUTH_SECRET_KEY is required when GEMINI_AUTH_ENABLED=true")
 	}
 	if enabled && len(secretKey) < 32 {
-		logger.Warnf("GEMINI_AUTH_SECRET_KEY should be at least 32 characters for security")
+		return authConfig{}, fmt.Errorf("GEMINI_AUTH_SECRET_KEY must be at least 32 bytes for HS256 (got %d)", len(secretKey))
 	}
 	return authConfig{enabled: enabled, secretKey: secretKey}, nil
 }
@@ -459,23 +456,22 @@ func assembleConfig(
 	auth authConfig,
 ) *Config {
 	return &Config{
-		GeminiAPIKey:            geminiAPIKey,
-		GeminiModel:             geminiModel,
-		GeminiSearchModel:       geminiSearchModel,
-		GeminiTemperature:       geminiTemperature,
-		HTTPTimeout:             tr.timeout,
-		HTTPWriteTimeout:        tr.httpWriteTimeout,
-		EnableHTTP:              httpCfg.enableHTTP,
-		HTTPAddress:             httpCfg.address,
-		HTTPPath:                httpCfg.path,
-		HTTPStateless:           httpCfg.stateless,
-		HTTPHeartbeat:           httpCfg.heartbeat,
-		HTTPCORSEnabled:         httpCfg.corsEnabled,
-		HTTPCORSOrigins:         httpCfg.corsOrigins,
-		ProgressInterval:        httpCfg.progressInterval,
-		HTTPPublicURL:           httpCfg.publicURL,
-		HTTPTrustForwardedProto: httpCfg.trustForwardedProto,
-		MaxConcurrentTasks:      task.maxConcurrentTasks,
+		GeminiAPIKey:       geminiAPIKey,
+		GeminiModel:        geminiModel,
+		GeminiSearchModel:  geminiSearchModel,
+		GeminiTemperature:  geminiTemperature,
+		HTTPTimeout:        tr.timeout,
+		HTTPWriteTimeout:   tr.httpWriteTimeout,
+		EnableHTTP:         httpCfg.enableHTTP,
+		HTTPAddress:        httpCfg.address,
+		HTTPPath:           httpCfg.path,
+		HTTPStateless:      httpCfg.stateless,
+		HTTPHeartbeat:      httpCfg.heartbeat,
+		HTTPCORSEnabled:    httpCfg.corsEnabled,
+		HTTPCORSOrigins:    httpCfg.corsOrigins,
+		ProgressInterval:   httpCfg.progressInterval,
+		HTTPPublicURL:      httpCfg.publicURL,
+		MaxConcurrentTasks: task.maxConcurrentTasks,
 
 		AuthEnabled:    auth.enabled,
 		AuthSecretKey:  auth.secretKey,

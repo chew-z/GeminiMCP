@@ -159,6 +159,16 @@ func (a *AuthMiddleware) evictOldestIfFullLocked() (string, int) {
 	return evictedKey, evictedSuppressed
 }
 
+// logSanitizer strips newline/CR characters from JWT claim strings before they
+// are written to logs. A token issuer who embeds "\n" in a username could
+// otherwise forge log lines (CRLF / log-injection).
+var logSanitizer = strings.NewReplacer("\r", "", "\n", "")
+
+// sanitizeClaim returns a claim value safe to embed in a log line.
+func sanitizeClaim(v string) string {
+	return logSanitizer.Replace(v)
+}
+
 // extractTokenFromHeader extracts the JWT token from Authorization header
 // Handles case-insensitivity and multiple spaces robustly
 func extractTokenFromHeader(authHeader string) string {
@@ -215,13 +225,16 @@ func (a *AuthMiddleware) HTTPContextFunc(
 			return next(ctx, r)
 		}
 
-		a.logger.Info("Authenticated user %s (%s) from %s", claims.Username, claims.Role, r.RemoteAddr)
+		safeUser := sanitizeClaim(claims.Username)
+		safeRole := sanitizeClaim(claims.Role)
+		safeID := sanitizeClaim(claims.UserID)
+		a.logger.Info("Authenticated user %s (%s) from %s", safeUser, safeRole, r.RemoteAddr)
 		exp := "none"
 		if claims.ExpiresAt != nil {
 			exp = claims.ExpiresAt.Time.Format(time.RFC3339)
 		}
 		a.logger.Debug("auth ok: subject=%s username=%s role=%s exp=%s from=%s",
-			claims.UserID, claims.Username, claims.Role, exp, r.RemoteAddr)
+			safeID, safeUser, safeRole, exp, r.RemoteAddr)
 
 		// Add user to request context
 		ctx = context.WithValue(ctx, authenticatedKey, true)
