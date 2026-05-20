@@ -236,11 +236,12 @@ func (a *AuthMiddleware) HTTPContextFunc(
 		a.logger.Debug("auth ok: subject=%s username=%s role=%s exp=%s from=%s",
 			safeID, safeUser, safeRole, exp, r.RemoteAddr)
 
-		// Add user to request context
+		// Sanitize before storing so any downstream consumer that logs these
+		// values is automatically safe from CR/LF injection.
 		ctx = context.WithValue(ctx, authenticatedKey, true)
-		ctx = context.WithValue(ctx, userIDKey, claims.UserID)
-		ctx = context.WithValue(ctx, usernameKey, claims.Username)
-		ctx = context.WithValue(ctx, userRoleKey, claims.Role)
+		ctx = context.WithValue(ctx, userIDKey, safeID)
+		ctx = context.WithValue(ctx, usernameKey, safeUser)
+		ctx = context.WithValue(ctx, userRoleKey, safeRole)
 
 		return next(ctx, r)
 	}
