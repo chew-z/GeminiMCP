@@ -120,12 +120,24 @@ func TestIsNewerModel(t *testing.T) {
 		{"3 < 3.1", "gemini-3-pro-preview", "gemini-3.1-pro-preview", false},
 		{"3.10 > 3.2 (numeric)", "gemini-3.10-pro-preview", "gemini-3.2-pro-preview", true},
 		{"3.2 < 3.10 (numeric)", "gemini-3.2-pro-preview", "gemini-3.10-pro-preview", false},
+		{"3.5 > 3.1", "gemini-3.5-flash", "gemini-3.1-flash-preview", true},
+		{"3.5 > 3 preview", "gemini-3.5-flash", "gemini-3-flash-preview", true},
 		{"latest loses to concrete", "gemini-3-pro-latest", "gemini-3-pro-preview", false},
 		{"concrete beats latest", "gemini-3-pro-preview", "gemini-3-pro-latest", true},
 		{"equal names", "gemini-3-pro-preview", "gemini-3-pro-preview", false},
 		{"higher major wins", "gemini-4-pro-preview", "gemini-3.9-pro-preview", true},
 		{"suffix comparison at equal version", "gemini-3-pro-preview", "gemini-3-pro-exp", true},
-		{"preview beats stable at equal version", "gemini-3-flash-preview", "gemini-3-flash", true},
+		// Stable wins over pre-release at equal version — flipped from the
+		// older preview-era expectation. Once Google ships gemini-3.5-flash
+		// stable alongside gemini-3.5-flash-preview, the stable model must
+		// take over the Flash tier.
+		{"stable beats preview at equal version", "gemini-3-flash", "gemini-3-flash-preview", true},
+		{"preview loses to stable at equal version", "gemini-3-flash-preview", "gemini-3-flash", false},
+		{"stable 3.5 beats preview 3.5", "gemini-3.5-flash", "gemini-3.5-flash-preview", true},
+		// Patch-version awareness.
+		{"3.5.1 > 3.5", "gemini-3.5.1-flash", "gemini-3.5-flash", true},
+		{"3.5 < 3.5.1", "gemini-3.5-flash", "gemini-3.5.1-flash", false},
+		{"3.5.2 > 3.5.1", "gemini-3.5.2-flash", "gemini-3.5.1-flash", true},
 		{"flash-latest loses to concrete 3.x preview", "gemini-flash-latest", "gemini-3-flash-preview", false},
 	}
 
@@ -142,17 +154,21 @@ func TestParseModelVersion(t *testing.T) {
 		input      string
 		wantMajor  int
 		wantMinor  int
+		wantPatch  int
 		wantSuffix string
 		wantOK     bool
 	}{
-		{"major only", "gemini-3-pro-preview", 3, 0, "-preview", true},
-		{"major.minor", "gemini-3.1-pro-preview", 3, 1, "-preview", true},
-		{"double digit minor", "gemini-3.10-flash-preview", 3, 10, "-preview", true},
-		{"flash-lite", "gemini-3.1-flash-lite", 3, 1, "", true},
-		{"2.5 flash dated preview", "gemini-2.5-flash-preview-09-2025", 2, 5, "-preview-09-2025", true},
-		{"latest alias has no version", "gemini-flash-latest", 0, 0, "", false},
-		{"no match", "palm-2-pro", 0, 0, "", false},
-		{"no match - no dash after version", "gemini-3pro", 0, 0, "", false},
+		{"major only", "gemini-3-pro-preview", 3, 0, 0, "-preview", true},
+		{"major.minor", "gemini-3.1-pro-preview", 3, 1, 0, "-preview", true},
+		{"double digit minor", "gemini-3.10-flash-preview", 3, 10, 0, "-preview", true},
+		{"flash-lite", "gemini-3.1-flash-lite", 3, 1, 0, "", true},
+		{"3.5 flash stable", "gemini-3.5-flash", 3, 5, 0, "", true},
+		{"3.5.1 flash with patch", "gemini-3.5.1-flash", 3, 5, 1, "", true},
+		{"3.5.2 flash patch preview", "gemini-3.5.2-flash-preview", 3, 5, 2, "-preview", true},
+		{"2.5 flash dated preview", "gemini-2.5-flash-preview-09-2025", 2, 5, 0, "-preview-09-2025", true},
+		{"latest alias has no version", "gemini-flash-latest", 0, 0, 0, "", false},
+		{"no match", "palm-2-pro", 0, 0, 0, "", false},
+		{"no match - no dash after version", "gemini-3pro", 0, 0, 0, "", false},
 	}
 
 	for _, tc := range tests {
@@ -162,6 +178,7 @@ func TestParseModelVersion(t *testing.T) {
 			if ok {
 				assert.Equal(t, tc.wantMajor, v.major)
 				assert.Equal(t, tc.wantMinor, v.minor)
+				assert.Equal(t, tc.wantPatch, v.patch)
 				assert.Equal(t, tc.wantSuffix, v.suffix)
 			}
 		})

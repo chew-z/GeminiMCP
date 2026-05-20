@@ -11,8 +11,10 @@ import (
 	"google.golang.org/genai"
 )
 
-// versionRe matches "gemini-{major}[.{minor}]-..." and captures major/minor.
-var versionRe = regexp.MustCompile(`gemini-(\d+)(?:\.(\d+))?-`)
+// versionRe matches "gemini-{major}[.{minor}[.{patch}]]-..." and captures
+// major/minor/patch. Patch is optional so both "gemini-3.5-flash" and a future
+// "gemini-3.5.1-flash" parse cleanly.
+var versionRe = regexp.MustCompile(`gemini-(\d+)(?:\.(\d+))?(?:\.(\d+))?-`)
 
 // modelTier represents one of the three supported model tiers.
 type modelTier int
@@ -196,6 +198,7 @@ func classifyModel(name string) (modelTier, bool) {
 type modelVersion struct {
 	major  int
 	minor  int
+	patch  int
 	suffix string // everything after the tier identifier (e.g. "-preview", "-exp-03-25")
 }
 
@@ -220,6 +223,13 @@ func parseModelVersion(name string) (modelVersion, bool) {
 			return modelVersion{}, false
 		}
 	}
+	patch := 0
+	if m[3] != "" {
+		patch, err = strconv.Atoi(m[3])
+		if err != nil {
+			return modelVersion{}, false
+		}
+	}
 
 	// Extract suffix: everything after the tier keyword (pro/flash-lite/flash).
 	// Find the tier portion and take what follows it. Gemini model IDs use
@@ -233,7 +243,7 @@ func parseModelVersion(name string) (modelVersion, bool) {
 		}
 	}
 
-	return modelVersion{major: major, minor: minor, suffix: suffix}, true
+	return modelVersion{major: major, minor: minor, patch: patch, suffix: suffix}, true
 }
 
 // isNewerModel returns true if candidate is a newer version than current.
@@ -254,18 +264,37 @@ func isNewerModel(candidate, current string) bool {
 	rv, rOK := parseModelVersion(current)
 
 	if cOK && rOK {
-		if cv.major != rv.major {
-			return cv.major > rv.major
-		}
-		if cv.minor != rv.minor {
-			return cv.minor > rv.minor
-		}
-		// Same major.minor — compare suffix lexicographically
-		return cv.suffix > rv.suffix
+		return compareModelVersions(cv, rv)
 	}
 
 	// Fallback: lexicographic for unparseable names
 	return candidate > current
+}
+
+// compareModelVersions returns true if cv is newer than rv. Numeric ordering on
+// major.minor.patch; at equal version, a stable release (empty suffix) outranks
+// any pre-release, and otherwise the suffix is compared lexicographically so a
+// newer dated preview (e.g. "-preview-09-2025") wins over an older one.
+func compareModelVersions(cv, rv modelVersion) bool {
+	if cv.major != rv.major {
+		return cv.major > rv.major
+	}
+	if cv.minor != rv.minor {
+		return cv.minor > rv.minor
+	}
+	if cv.patch != rv.patch {
+		return cv.patch > rv.patch
+	}
+	if cv.suffix == rv.suffix {
+		return false
+	}
+	if cv.suffix == "" {
+		return true
+	}
+	if rv.suffix == "" {
+		return false
+	}
+	return cv.suffix > rv.suffix
 }
 
 // supportsGenerateContent checks if a model supports text generation.
