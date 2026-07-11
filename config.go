@@ -35,6 +35,10 @@ const (
 	defaultHTTPStateless   = false
 	defaultHTTPHeartbeat   = 20 * time.Second // Keeps nginx proxy_read_timeout and client idle timers quiet on long pro-tier requests.
 	defaultHTTPCORSEnabled = true
+	// Gemini MCP is typically deployed behind an nginx reverse proxy that forwards
+	// the Host header from external clients. mcp-go's localhost-protection check
+	// will reject those proxied requests unless disabled for loopback servers.
+	defaultHTTPDisableLocalhostProtection = true
 
 	// Progress notification defaults
 	defaultProgressInterval = 10 * time.Second // Cadence for notifications/progress; <=0 disables.
@@ -189,15 +193,16 @@ func parseHTTPPublicURL(raw string) (string, error) {
 
 // httpTransportConfig captures HTTP-transport env values.
 type httpTransportConfig struct {
-	enableHTTP       bool
-	address          string
-	path             string
-	stateless        bool
-	heartbeat        time.Duration
-	corsEnabled      bool
-	corsOrigins      []string
-	progressInterval time.Duration
-	publicURL        string
+	enableHTTP                 bool
+	address                    string
+	path                       string
+	stateless                  bool
+	heartbeat                  time.Duration
+	corsEnabled                bool
+	corsOrigins                []string
+	progressInterval           time.Duration
+	publicURL                  string
+	disableLocalhostProtection bool
 }
 
 func loadHTTPConfig(logger Logger) (httpTransportConfig, error) {
@@ -217,6 +222,11 @@ func loadHTTPConfig(logger Logger) (httpTransportConfig, error) {
 		heartbeat = defaultHTTPHeartbeat
 	}
 	corsEnabled := parseEnvVarBool("GEMINI_HTTP_CORS_ENABLED", defaultHTTPCORSEnabled, logger)
+	disableLocalhostProtection := parseEnvVarBool(
+		"GEMINI_HTTP_DISABLE_LOCALHOST_PROTECTION",
+		defaultHTTPDisableLocalhostProtection,
+		logger,
+	)
 
 	var corsOrigins []string
 	if originsStr := os.Getenv("GEMINI_HTTP_CORS_ORIGINS"); originsStr != "" {
@@ -236,15 +246,16 @@ func loadHTTPConfig(logger Logger) (httpTransportConfig, error) {
 	}
 
 	return httpTransportConfig{
-		enableHTTP:       enableHTTP,
-		address:          address,
-		path:             path,
-		stateless:        stateless,
-		heartbeat:        heartbeat,
-		corsEnabled:      corsEnabled,
-		corsOrigins:      corsOrigins,
-		progressInterval: parseEnvVarDuration("GEMINI_PROGRESS_INTERVAL", defaultProgressInterval, logger),
-		publicURL:        publicURL,
+		enableHTTP:                 enableHTTP,
+		address:                    address,
+		path:                       path,
+		stateless:                  stateless,
+		heartbeat:                  heartbeat,
+		corsEnabled:                corsEnabled,
+		corsOrigins:                corsOrigins,
+		progressInterval:           parseEnvVarDuration("GEMINI_PROGRESS_INTERVAL", defaultProgressInterval, logger),
+		publicURL:                  publicURL,
+		disableLocalhostProtection: disableLocalhostProtection,
 	}, nil
 }
 
@@ -456,22 +467,23 @@ func assembleConfig(
 	auth authConfig,
 ) *Config {
 	return &Config{
-		GeminiAPIKey:       geminiAPIKey,
-		GeminiModel:        geminiModel,
-		GeminiSearchModel:  geminiSearchModel,
-		GeminiTemperature:  geminiTemperature,
-		HTTPTimeout:        tr.timeout,
-		HTTPWriteTimeout:   tr.httpWriteTimeout,
-		EnableHTTP:         httpCfg.enableHTTP,
-		HTTPAddress:        httpCfg.address,
-		HTTPPath:           httpCfg.path,
-		HTTPStateless:      httpCfg.stateless,
-		HTTPHeartbeat:      httpCfg.heartbeat,
-		HTTPCORSEnabled:    httpCfg.corsEnabled,
-		HTTPCORSOrigins:    httpCfg.corsOrigins,
-		ProgressInterval:   httpCfg.progressInterval,
-		HTTPPublicURL:      httpCfg.publicURL,
-		MaxConcurrentTasks: task.maxConcurrentTasks,
+		GeminiAPIKey:                   geminiAPIKey,
+		GeminiModel:                    geminiModel,
+		GeminiSearchModel:              geminiSearchModel,
+		GeminiTemperature:              geminiTemperature,
+		HTTPTimeout:                    tr.timeout,
+		HTTPWriteTimeout:               tr.httpWriteTimeout,
+		EnableHTTP:                     httpCfg.enableHTTP,
+		HTTPAddress:                    httpCfg.address,
+		HTTPPath:                       httpCfg.path,
+		HTTPStateless:                  httpCfg.stateless,
+		HTTPHeartbeat:                  httpCfg.heartbeat,
+		HTTPCORSEnabled:                httpCfg.corsEnabled,
+		HTTPCORSOrigins:                httpCfg.corsOrigins,
+		ProgressInterval:               httpCfg.progressInterval,
+		HTTPPublicURL:                  httpCfg.publicURL,
+		HTTPDisableLocalhostProtection: httpCfg.disableLocalhostProtection,
+		MaxConcurrentTasks:             task.maxConcurrentTasks,
 
 		AuthEnabled:    auth.enabled,
 		AuthSecretKey:  auth.secretKey,

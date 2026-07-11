@@ -197,7 +197,7 @@ func wrapPromptHandlerWithLogger(handler server.PromptHandlerFunc, promptName st
 
 		if err := enforceHTTPAuth(ctx, "prompt", promptName, logger); err != nil {
 			return &mcp.GetPromptResult{
-				Description: err.Error(),
+				Description: "authentication required",
 				Messages:    []mcp.PromptMessage{},
 			}, nil
 		}

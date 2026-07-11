@@ -79,6 +79,14 @@ func buildStreamableHTTPOptions(config *Config, logger Logger) []server.Streamab
 	}
 	opts = append(opts, server.WithEndpointPath(config.HTTPPath))
 
+	// Default is true because production usually runs behind nginx on localhost.
+	// mcp-go v0.56 enables DNS-rebinding localhost protection by default, and
+	// that check 403s reverse-proxy traffic when Host is not a strict loopback
+	// host.
+	if config.HTTPDisableLocalhostProtection {
+		opts = append(opts, server.WithDisableLocalhostProtection(true))
+	}
+
 	// CORS must be registered before the context function so preflight
 	// (OPTIONS) short-circuits inside the CORS layer — the CORS spec
 	// forbids browsers from sending Authorization on preflight.

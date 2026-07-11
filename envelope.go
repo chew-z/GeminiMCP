@@ -21,6 +21,15 @@ func xmlAttr(v string) string {
 	return r.Replace(v)
 }
 
+func xmlText(v string) string {
+	r := strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+	)
+	return r.Replace(v)
+}
+
 // debugPartMaxBytes caps each Part body when rendering for DEBUG logs, so an
 // envelope dump cannot flood the log stream with multi-megabyte diffs.
 const debugPartMaxBytes = 2048
@@ -90,7 +99,7 @@ func wrapUserTurnWithContext(
 	parts = append(parts, fileParts...)
 	parts = append(parts, partText("</context>\n\n"))
 	parts = append(parts, partText("USING THE CONTEXT PROVIDED ABOVE, YOUR TASK IS:\n\n"))
-	parts = append(parts, partText("<task>\n  <query>"+query+"</query>\n"))
+	parts = append(parts, partText("<task>\n  <query>"+xmlText(query)+"</query>\n"))
 	if len(warnings) > 0 {
 		parts = append(parts, partText(renderUnloadedContext(warnings)))
 	}
@@ -102,7 +111,7 @@ func wrapUserTurnWithContext(
 // wrapUserTurnQueryOnly builds the Parts for a request with no context.
 func wrapUserTurnQueryOnly(query string, finalInstruction string) []*genai.Part {
 	return []*genai.Part{
-		partText("<task>\n  <query>" + query + "</query>\n</task>\n\n"),
+		partText("<task>\n  <query>" + xmlText(query) + "</query>\n</task>\n\n"),
 		partText("<final_instruction>\n" + finalInstruction + "\n</final_instruction>\n"),
 	}
 }

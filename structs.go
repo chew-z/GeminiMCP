@@ -100,6 +100,9 @@ type Config struct {
 	// Validated at startup: scheme must be https for any host, OR http only when
 	// host is loopback (localhost, 127.0.0.1, [::1]). Empty → derive from request.
 	HTTPPublicURL string
+	// HTTPDisableLocalhostProtection disables mcp-go's DNS-rebinding guard for
+	// loopback-bound deployments behind a trusted reverse proxy.
+	HTTPDisableLocalhostProtection bool
 
 	// Progress notification settings
 	ProgressInterval time.Duration // Interval for notifications/progress; <=0 disables.

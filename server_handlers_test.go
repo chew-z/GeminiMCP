@@ -64,7 +64,7 @@ func TestWrapHandlerWithLogger(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		assert.True(t, result.IsError)
-		assert.Contains(t, toolResultText(t, result), "authentication required: missing_token")
+		assert.Contains(t, toolResultText(t, result), "authentication required")
 		assert.False(t, called)
 	})
 
@@ -119,7 +119,7 @@ func TestWrapPromptHandlerWithLogger(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		assert.Contains(t, result.Description, "authentication required: missing_token")
+		assert.Equal(t, "authentication required", result.Description)
 		assert.Empty(t, result.Messages)
 		assert.False(t, called)
 	})

@@ -179,6 +179,9 @@ func runTransport(ctx context.Context, mcpServer *server.MCPServer, config *Conf
 	}
 
 	if transport == "http" || (config.EnableHTTP && transport == "stdio") {
+		if config.EnableHTTP && transport == "stdio" {
+			logger.Warn("Transport 'stdio' requested but GEMINI_ENABLE_HTTP=true; starting HTTP transport instead")
+		}
 		logger.Info("Starting Gemini MCP server with HTTP transport on %s%s", config.HTTPAddress, config.HTTPPath)
 		if err := startHTTPServerFn(ctx, mcpServer, config, logger); err != nil {
 			logger.Error("HTTP server error: %v", err)

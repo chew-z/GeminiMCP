@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,20 +16,14 @@ import (
 // parseGitHubRepo parses a GitHub repository string into owner and repo.
 // It accepts "owner/repo" or a full GitHub URL.
 func parseGitHubRepo(repoStr string) (owner string, repo string, err error) {
-	// Handle SSH URLs: git@github.com:owner/repo.git
-	if strings.HasPrefix(repoStr, "git@") {
-		repoStr = strings.Replace(repoStr, ":", "/", 1)
-		repoStr = strings.Replace(repoStr, "git@", "https://", 1)
+	repoStr, err = rewriteSCPStyleURL(repoStr)
+	if err != nil {
+		return "", "", err
 	}
 
 	u, err := url.Parse(repoStr)
 	if err != nil || u.Host == "" {
-		// If parsing as a URL fails, it might be in "owner/repo" format
-		parts := strings.Split(repoStr, "/")
-		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
-			return parts[0], parts[1], nil
-		}
-		return "", "", fmt.Errorf("invalid github_repo format: %s", repoStr)
+		return parseOwnerRepoFallback(repoStr)
 	}
 
 	path := strings.TrimSuffix(u.Path, ".git")
@@ -39,6 +32,32 @@ func parseGitHubRepo(repoStr string) (owner string, repo string, err error) {
 		return "", "", fmt.Errorf("invalid github_repo URL path: %s", u.Path)
 	}
 	return parts[0], parts[1], nil
+}
+
+// rewriteSCPStyleURL converts a scp-like git@github.com:owner/repo.git
+// syntax into an HTTPS URL suitable for url.Parse.
+func rewriteSCPStyleURL(repoStr string) (string, error) {
+	if !strings.HasPrefix(repoStr, "git@") {
+		return repoStr, nil
+	}
+
+	parts := strings.SplitN(repoStr, ":", 2)
+	if len(parts) != 2 || parts[1] == "" || strings.Contains(parts[1], ":") {
+		return "", fmt.Errorf("unsupported github_repo SSH format: %s (use owner/repo or an https URL)", repoStr)
+	}
+	return "https://" + parts[0] + "/" + parts[1], nil
+}
+
+// parseOwnerRepoFallback parses a raw "owner/repo" string and applies the
+// same component validation as before attempting URL parsing.
+func parseOwnerRepoFallback(repoStr string) (string, string, error) {
+	parts := strings.Split(repoStr, "/")
+	if len(parts) == 2 && parts[0] != "" && parts[1] != "" &&
+		parts[0] != "." && parts[0] != ".." &&
+		parts[1] != "." && parts[1] != ".." {
+		return parts[0], parts[1], nil
+	}
+	return "", "", fmt.Errorf("invalid github_repo format: %s", repoStr)
 }
 
 // buildHTTPClient creates a reusable HTTP client with the configured timeout.
@@ -155,20 +174,19 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 //     body is left OPEN so the caller's status-code handler can read the genuine GitHub error payload.
 func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Logger, filePath string) (ctxErr, retryErr error) {
 	remaining := resp.Header.Get("X-RateLimit-Remaining")
+	retryAfter := resp.Header.Get("Retry-After")
 	logger.Debug("[%s] ratelimit headers: status=%d remaining=%q reset=%q",
 		filePath, resp.StatusCode, remaining, resp.Header.Get("X-RateLimit-Reset"))
-	if remaining != "0" && resp.StatusCode != http.StatusTooManyRequests {
+	if remaining != "0" && resp.StatusCode != http.StatusTooManyRequests && retryAfter == "" {
 		logger.Debug("[%s] ratelimit: not throttled, caller owns body", filePath)
 		return nil, nil
 	}
 
-	resetTimeStr := resp.Header.Get("X-RateLimit-Reset")
-	resetTime, parseErr := strconv.ParseInt(resetTimeStr, 10, 64)
-	if parseErr != nil {
-		resetTime = time.Now().Add(5 * time.Minute).Unix()
-		logger.Debug("[%s] Failed to parse reset time '%s': %v, using fallback", filePath, resetTimeStr, parseErr)
+	waitTime, source := rateLimitWaitFromHeaders(resp.Header)
+	if waitTime == 0 {
+		waitTime = 5 * time.Minute
+		source = "fallback"
 	}
-	waitTime := time.Until(time.Unix(resetTime, 0))
 
 	if waitTime <= 0 {
 		logger.Debug("[%s] ratelimit: reset window already elapsed, caller owns body", filePath)
@@ -180,9 +198,9 @@ func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Lo
 		logger.Debug("[%s] Error closing response body during rate limit handling: %v", filePath, closeErr)
 	}
 
-	logger.Warn("[%s] Rate limit exceeded. Reset in %v", filePath, waitTime)
+	logger.Warn("[%s] Rate limit exceeded (via %s). Reset in %v", filePath, source, waitTime)
 	if waitTime <= 2*time.Minute {
-		logger.Debug("[%s] ratelimit: waiting %v in-process before signalling retry", filePath, waitTime)
+		logger.Debug("[%s] ratelimit: waiting %v in-process before signalling retry (%s)", filePath, waitTime, source)
 		timer := time.NewTimer(waitTime)
 		defer timer.Stop()
 		select {
@@ -192,7 +210,7 @@ func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Lo
 			return nil, fmt.Errorf("rate limit exceeded")
 		}
 	}
-	logger.Debug("[%s] ratelimit: wait %v exceeds 2m cap, returning retryable error", filePath, waitTime)
+	logger.Debug("[%s] ratelimit: wait %v exceeds 2m cap via %s, returning retryable error", filePath, waitTime, source)
 	return nil, fmt.Errorf("rate limit exceeded")
 }
 

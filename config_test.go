@@ -117,6 +117,17 @@ func TestNewConfig(t *testing.T) {
 				assert.Equal(t, 360*time.Second, cfg.HTTPWriteTimeout, "default HTTPWriteTimeout = HTTPTimeout + 60s slack")
 				assert.Equal(t, 2, cfg.MaxRetries)
 				assert.Equal(t, defaultThinkingLevel, cfg.ThinkingLevel)
+				assert.True(t, cfg.HTTPDisableLocalhostProtection)
+			},
+		},
+		{
+			name: "explicit false disables localhost protection",
+			env: map[string]string{
+				"GEMINI_API_KEY":                         "key",
+				"GEMINI_HTTP_DISABLE_LOCALHOST_PROTECTION": "false",
+			},
+			check: func(t *testing.T, cfg *Config) {
+				assert.False(t, cfg.HTTPDisableLocalhostProtection)
 			},
 		},
 		{

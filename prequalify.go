@@ -25,6 +25,9 @@ Categories:
 // using a lightweight Flash model call with structured enum output.
 // On any failure it returns an error; the caller decides the fallback.
 func (s *GeminiServer) prequalifyQuery(ctx context.Context, query, contextSummary string) (queryCategory, error) {
+	if s == nil || s.client == nil {
+		return "", fmt.Errorf("prequalify: gemini client not initialized")
+	}
 	if strings.TrimSpace(query) == "" && strings.TrimSpace(contextSummary) == "" {
 		return "", fmt.Errorf("prequalify: empty query and context")
 	}

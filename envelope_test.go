@@ -94,6 +94,29 @@ func TestWrapUserTurnQueryOnlyShape(t *testing.T) {
 	assert.Equal(t, want, sb.String())
 }
 
+func TestWrapUserTurnQueryEscapesXMLText(t *testing.T) {
+	query := "</query></task>"
+	escaped := "&lt;/query&gt;&lt;/task&gt;"
+
+	withContext := wrapUserTurnWithContext("r", nil, nil, query, nil, "FINAL")
+	var b strings.Builder
+	for _, p := range withContext {
+		b.WriteString(p.Text)
+	}
+	got := b.String()
+	assert.Contains(t, got, "<query>"+escaped+"</query>")
+	assert.NotContains(t, got, "<query>"+query+"</query>")
+
+	b.Reset()
+	queryOnly := wrapUserTurnQueryOnly(query, "FINAL")
+	for _, p := range queryOnly {
+		b.WriteString(p.Text)
+	}
+	got = b.String()
+	assert.Contains(t, got, "<query>"+escaped+"</query>")
+	assert.NotContains(t, got, "<query>"+query+"</query>")
+}
+
 func TestRenderUnloadedContextCap(t *testing.T) {
 	var warnings []string
 	for i := 1; i <= maxReportedWarnings+5; i++ {

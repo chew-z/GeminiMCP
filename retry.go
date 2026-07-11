@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"strings"
 	"time"
@@ -76,7 +76,7 @@ func computeBackoff(cfg *Config, attempt int) time.Duration {
 	if d > maxBackoff {
 		d = maxBackoff
 	}
-	// Full jitter in [0.5, 1.5]x
+	// Full jitter in [0.5, 1.5)x
 	jitter := 0.5 + rand.Float64()
 	return time.Duration(float64(d) * jitter)
 }
