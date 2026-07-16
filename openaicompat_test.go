@@ -18,15 +18,93 @@ import (
 // newTestOpenAIProvider creates a provider and server whose handler receives
 // the raw chat-completions request body.
 func newTestOpenAIProvider(t *testing.T, handler http.HandlerFunc) (*openaiProvider, *httptest.Server) {
+	return newTestOpenAIProviderWithDialect(t, deepseekDialect{}, "deepseek-v4-pro", handler)
+}
+
+// newTestOpenAIProviderWithDialect creates a provider with the given dialect.
+func newTestOpenAIProviderWithDialect(
+	t *testing.T, dialect vendorDialect, model string, handler http.HandlerFunc,
+) (*openaiProvider, *httptest.Server) {
 	t.Helper()
 	server := httptest.NewServer(handler)
 	p := &openaiProvider{
 		client:  openai.NewClient(option.WithAPIKey("test"), option.WithBaseURL(server.URL), option.WithMaxRetries(0)),
-		model:   "deepseek-v4-pro",
-		dialect: deepseekDialect{},
+		model:   model,
+		dialect: dialect,
 		logger:  NewLogger(LevelError),
 	}
 	return p, server
+}
+
+func TestQwenDialectRequestShape(t *testing.T) {
+	tests := []struct {
+		name  string
+		req   GenerationRequest
+		check func(t *testing.T, body map[string]any)
+	}{
+		{
+			"thinking on with budget",
+			GenerationRequest{Parts: []ContentPart{{Text: "user"}}, Thinking: ThinkingSpec{Enabled: true, Budget: 4096}},
+			func(t *testing.T, body map[string]any) {
+				assert.Equal(t, true, body["enable_thinking"])
+				assert.Equal(t, float64(4096), body["thinking_budget"])
+				_, exists := body["reasoning_effort"]
+				assert.False(t, exists)
+				_, exists = body["thinking"]
+				assert.False(t, exists)
+			},
+		},
+		{
+			"thinking on without budget",
+			GenerationRequest{Parts: []ContentPart{{Text: "user"}}, Thinking: ThinkingSpec{Enabled: true}},
+			func(t *testing.T, body map[string]any) {
+				assert.Equal(t, true, body["enable_thinking"])
+				_, exists := body["thinking_budget"]
+				assert.False(t, exists)
+			},
+		},
+		{
+			"thinking off",
+			GenerationRequest{Parts: []ContentPart{{Text: "user"}}},
+			func(t *testing.T, body map[string]any) { assert.Equal(t, false, body["enable_thinking"]) },
+		},
+		{
+			"json mode disables thinking",
+			GenerationRequest{Parts: []ContentPart{{Text: "user"}}, Thinking: ThinkingSpec{Enabled: true}, ResponseFormat: "json_object"},
+			func(t *testing.T, body map[string]any) {
+				assert.Equal(t, false, body["enable_thinking"])
+				assert.Equal(t, "json_object", body["response_format"].(map[string]any)["type"])
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, server := newTestOpenAIProviderWithDialect(t, qwenDialect{}, "qwen3.7-max", func(w http.ResponseWriter, r *http.Request) {
+				defer r.Body.Close()
+				var body map[string]any
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				tt.check(t, body)
+				writeCompletion(t, w, `{"model":"served","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"OK"}}]}`)
+			})
+			defer server.Close()
+			_, err := p.Generate(context.Background(), tt.req)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestQwenThinkingEnabled(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		req  GenerationRequest
+		want bool
+	}{
+		{"disabled", GenerationRequest{}, false},
+		{"enabled", GenerationRequest{Thinking: ThinkingSpec{Enabled: true}}, true},
+		{"json mode guard", GenerationRequest{Thinking: ThinkingSpec{Enabled: true}, ResponseFormat: "json_object"}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) { assert.Equal(t, tt.want, qwenThinkingEnabled(tt.req)) })
+	}
 }
 
 func writeCompletion(t *testing.T, w http.ResponseWriter, body string) {
@@ -157,6 +235,19 @@ func TestDeepSeekLive(t *testing.T) {
 	cfg, err := NewConfig(NewLogger(LevelError))
 	require.NoError(t, err)
 	p := newOpenAIProvider(cfg.Provider, deepseekDialect{}, NewLogger(LevelError))
+	resp, err := p.Generate(context.Background(), GenerationRequest{Parts: []ContentPart{{Text: "Say OK"}}})
+	require.NoError(t, err)
+	assert.NotEmpty(t, resp.Text)
+}
+
+// TestQwenLive exercises the configured Qwen backend when explicitly enabled.
+func TestQwenLive(t *testing.T) {
+	if os.Getenv("PROVIDER") != "qwen" || os.Getenv("PROVIDER_API_KEY") == "" {
+		t.Skip("set PROVIDER=qwen and PROVIDER_API_KEY to run the Qwen live test")
+	}
+	cfg, err := NewConfig(NewLogger(LevelError))
+	require.NoError(t, err)
+	p := newOpenAIProvider(cfg.Provider, qwenDialect{}, NewLogger(LevelError))
 	resp, err := p.Generate(context.Background(), GenerationRequest{Parts: []ContentPart{{Text: "Say OK"}}})
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.Text)

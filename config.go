@@ -401,8 +401,10 @@ func loadProviderConfig(logger Logger) (ProviderConfig, error) {
 		return provider, nil
 	case "deepseek":
 		return loadDeepSeekProviderConfig(providerAPIKey, providerBaseURL, providerModel)
+	case "qwen":
+		return loadQwenProviderConfig(providerAPIKey, providerBaseURL, providerModel)
 	default:
-		return ProviderConfig{}, fmt.Errorf("unsupported PROVIDER value %q; valid values: gemini, deepseek", vendor)
+		return ProviderConfig{}, fmt.Errorf("unsupported PROVIDER value %q; valid values: gemini, deepseek, qwen", vendor)
 	}
 }
 
@@ -431,6 +433,25 @@ func loadDeepSeekProviderConfig(apiKey, baseURL, model string) (ProviderConfig, 
 		baseURL = defaultDeepSeekBaseURL
 	}
 	return ProviderConfig{Vendor: "deepseek", APIKey: apiKey, BaseURL: baseURL, Model: model}, nil
+}
+
+// loadQwenProviderConfig validates Qwen settings. Its endpoint is deployment
+// specific, so PROVIDER_BASE_URL has no global default.
+func loadQwenProviderConfig(apiKey, baseURL, model string) (ProviderConfig, error) {
+	if apiKey == "" {
+		return ProviderConfig{}, errors.New("PROVIDER_API_KEY environment variable is required when PROVIDER=qwen")
+	}
+	if model == "" {
+		return ProviderConfig{}, errors.New("PROVIDER_MODEL environment variable is required when PROVIDER=qwen")
+	}
+	if !slices.Contains(qwenModels, model) {
+		return ProviderConfig{}, fmt.Errorf("PROVIDER_MODEL %q is unsupported for qwen; allowed values: %s", model,
+			strings.Join(qwenModels, ", "))
+	}
+	if baseURL == "" {
+		return ProviderConfig{}, errors.New("PROVIDER_BASE_URL is required when PROVIDER=qwen; set PROVIDER_BASE_URL to your DashScope-compatible endpoint")
+	}
+	return ProviderConfig{Vendor: "qwen", APIKey: apiKey, BaseURL: baseURL, Model: model}, nil
 }
 
 // assembleConfig builds the public Config struct from the sub-section values

@@ -47,6 +47,22 @@ func TestNewConfigProviderSelection(t *testing.T) {
 			"deepseek",
 		},
 		{"gemini default", map[string]string{"GEMINI_API_KEY": "key"}, "", "gemini"},
+		{
+			"qwen missing key",
+			map[string]string{"PROVIDER": "qwen", "PROVIDER_MODEL": "qwen3.7-max", "PROVIDER_BASE_URL": "https://qwen.example"},
+			"PROVIDER_API_KEY", "",
+		},
+		{"qwen missing base URL", map[string]string{"PROVIDER": "qwen", "PROVIDER_API_KEY": "key", "PROVIDER_MODEL": "qwen3.7-max"}, "PROVIDER_BASE_URL", ""},
+		{
+			"qwen rejected model",
+			map[string]string{"PROVIDER": "qwen", "PROVIDER_API_KEY": "key", "PROVIDER_MODEL": "foo", "PROVIDER_BASE_URL": "https://qwen.example"},
+			"allowed values", "",
+		},
+		{
+			"qwen happy path",
+			map[string]string{"PROVIDER": "qwen", "PROVIDER_API_KEY": "key", "PROVIDER_MODEL": "qwen3.7-max", "PROVIDER_BASE_URL": "https://qwen.example"},
+			"", "qwen",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -62,6 +78,10 @@ func TestNewConfigProviderSelection(t *testing.T) {
 			assert.Equal(t, tt.vendor, cfg.Provider.Vendor)
 			if tt.vendor == "deepseek" {
 				assert.Equal(t, defaultDeepSeekBaseURL, cfg.Provider.BaseURL)
+				assert.Equal(t, "key", cfg.Provider.APIKey)
+			}
+			if tt.vendor == "qwen" {
+				assert.Equal(t, "https://qwen.example", cfg.Provider.BaseURL)
 				assert.Equal(t, "key", cfg.Provider.APIKey)
 			}
 		})

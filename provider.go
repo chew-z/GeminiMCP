@@ -21,6 +21,9 @@ type ProviderConfig struct {
 // deepseekModels is the temporary DeepSeek model allowlist for Phase 2.
 var deepseekModels = []string{"deepseek-v4-pro"}
 
+// qwenModels is the Qwen model allowlist for Phase 3.
+var qwenModels = []string{"qwen3.7-max", "qwen3.7-plus"}
+
 // NewProvider creates the configured model provider.
 func NewProvider(ctx context.Context, cfg *Config, logger Logger) (Provider, error) {
 	if cfg == nil {
@@ -30,6 +33,8 @@ func NewProvider(ctx context.Context, cfg *Config, logger Logger) (Provider, err
 	switch cfg.Provider.Vendor {
 	case "deepseek":
 		return newOpenAIProvider(cfg.Provider, deepseekDialect{}, logger), nil
+	case "qwen":
+		return newOpenAIProvider(cfg.Provider, qwenDialect{}, logger), nil
 	case "", "gemini":
 		client, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: cfg.GeminiAPIKey})
 		if err != nil {

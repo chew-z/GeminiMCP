@@ -12,8 +12,7 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 )
 
-// vendorDialect isolates OpenAI-compatible API differences. DeepSeek uses it
-// now; Qwen will add another dialect in Phase 3 without widening Provider.
+// vendorDialect isolates OpenAI-compatible API differences for each vendor.
 type vendorDialect interface {
 	name() string
 	buildRequest(params *openai.ChatCompletionNewParams, req GenerationRequest) []option.RequestOption
@@ -150,4 +149,26 @@ func (deepseekDialect) buildRequest(params *openai.ChatCompletionNewParams, req 
 		return []option.RequestOption{option.WithJSONSet("thinking", map[string]any{"type": "enabled"})}
 	}
 	return []option.RequestOption{option.WithJSONSet("thinking", map[string]any{"type": "disabled"})}
+}
+
+// qwenDialect maps provider-neutral thinking to Qwen's compatible API fields.
+type qwenDialect struct{}
+
+func (qwenDialect) name() string { return "qwen" }
+
+func (qwenDialect) buildRequest(_ *openai.ChatCompletionNewParams, req GenerationRequest) []option.RequestOption {
+	if !qwenThinkingEnabled(req) {
+		return []option.RequestOption{option.WithJSONSet("enable_thinking", false)}
+	}
+	options := []option.RequestOption{option.WithJSONSet("enable_thinking", true)}
+	if req.Thinking.Budget > 0 {
+		options = append(options, option.WithJSONSet("thinking_budget", req.Thinking.Budget))
+	}
+	return options
+}
+
+// qwenThinkingEnabled reports whether Qwen thinking may be enabled. Qwen
+// rejects JSON-object mode combined with thinking, so JSON mode always wins.
+func qwenThinkingEnabled(req GenerationRequest) bool {
+	return req.Thinking.Enabled && req.ResponseFormat != "json_object"
 }
