@@ -20,7 +20,7 @@ Categories:
 - debug: Bug fixing, error analysis, troubleshooting, test failures
 - tests: Generating new unit/integration tests or test cases for existing code
 
-Respond with a JSON string containing exactly one category name, e.g. "analyze".`
+Respond with JSON in exactly this form: {"category": "<one category name>"}.`
 
 // prequalifyQuery classifies a user query into one of the five categories
 // using the configured provider model with thinking disabled and JSON mode.
@@ -62,27 +62,76 @@ func (s *GeminiServer) prequalifyQuery(ctx context.Context, query, contextSummar
 }
 
 // parsePrequalifyResponse extracts and validates the category from an API
-// response. The second return is the raw classifier text (post-JSON-unquote)
-// so callers can surface it in DEBUG logs when the parse fails.
+// response. The second return is the raw classifier text so callers can
+// surface it in DEBUG logs when parsing fails.
 func parsePrequalifyResponse(resp *GenerationResponse) (queryCategory, string, error) {
 	if resp == nil {
 		return "", "", fmt.Errorf("prequalify returned empty response")
 	}
 
 	raw := strings.TrimSpace(resp.Text)
-
-	// Try JSON-unquoting (structured output wraps the value in quotes)
-	var parsed string
-	if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
-		raw = parsed
+	if raw == "" {
+		return "", raw, fmt.Errorf("prequalify returned unknown category: %q", raw)
 	}
 
-	cat := queryCategory(strings.ToLower(strings.TrimSpace(raw)))
+	if category, ok := decodePrequalifyCategory(raw); ok {
+		return validatePrequalifyCategory(category, raw)
+	}
+	if strings.HasPrefix(raw, "{") {
+		return "", raw, fmt.Errorf("prequalify returned JSON object without a string category")
+	}
+	return validatePrequalifyCategory(raw, raw)
+}
+
+// decodePrequalifyCategory extracts a category from supported JSON response
+// shapes: a category object, a single-key string object, or a JSON string.
+func decodePrequalifyCategory(raw string) (string, bool) {
+	if strings.HasPrefix(raw, "{") {
+		return decodePrequalifyObject(raw)
+	}
+
+	var category string
+	if err := json.Unmarshal([]byte(raw), &category); err == nil {
+		return category, true
+	}
+	return "", false
+}
+
+// decodePrequalifyObject extracts a string category from supported JSON object shapes.
+func decodePrequalifyObject(raw string) (string, bool) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &object); err != nil {
+		return "", false
+	}
+	if value, ok := object["category"]; ok {
+		return decodeJSONString(value)
+	}
+	if len(object) != 1 {
+		return "", false
+	}
+	for _, value := range object {
+		return decodeJSONString(value)
+	}
+	return "", false
+}
+
+// decodeJSONString decodes one JSON value only when it is a string.
+func decodeJSONString(value json.RawMessage) (string, bool) {
+	var decoded string
+	if err := json.Unmarshal(value, &decoded); err != nil {
+		return "", false
+	}
+	return decoded, true
+}
+
+// validatePrequalifyCategory normalizes and validates one classifier category.
+func validatePrequalifyCategory(value, raw string) (queryCategory, string, error) {
+	cat := queryCategory(strings.ToLower(strings.TrimSpace(value)))
 	switch cat {
 	case categoryGeneral, categoryAnalyze, categoryReview, categorySecurity, categoryDebug, categoryTests:
 		return cat, raw, nil
 	default:
-		return "", raw, fmt.Errorf("prequalify returned unknown category: %q", raw)
+		return "", raw, fmt.Errorf("prequalify returned unknown category: %q", value)
 	}
 }
 

@@ -12,7 +12,7 @@ import (
 
 func TestPrequalifyQuery(t *testing.T) {
 	provider := &mockProvider{generateFn: func(_ context.Context, req GenerationRequest) (*GenerationResponse, error) {
-		return &GenerationResponse{Text: `"analyze"`, FinishReason: "STOP"}, nil
+		return &GenerationResponse{Text: `{"category":"analyze"}`, FinishReason: "STOP"}, nil
 	}}
 	s := &GeminiServer{config: &Config{Provider: ProviderConfig{Model: "test"}}, provider: provider}
 	category, err := s.prequalifyQuery(context.Background(), "explain this", "")
@@ -30,6 +30,34 @@ func TestPrequalifyQueryUnknownCategory(t *testing.T) {
 	}}}
 	_, err := s.prequalifyQuery(context.Background(), "question", "")
 	require.Error(t, err)
+}
+
+func TestParsePrequalifyResponse(t *testing.T) {
+	tests := []struct {
+		name    string
+		text    string
+		want    queryCategory
+		wantErr bool
+	}{
+		{"category object", `{"category":"analyze"}`, categoryAnalyze, false},
+		{"single key object", `{"result":"debug"}`, categoryDebug, false},
+		{"quoted string", `"review"`, categoryReview, false},
+		{"bare word", "tests", categoryTests, false},
+		{"unknown value", `{"category":"other"}`, "", true},
+		{"non-string category", `{"category":42}`, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			category, raw, err := parsePrequalifyResponse(&GenerationResponse{Text: tt.text})
+			assert.Equal(t, tt.text, raw)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, category)
+		})
+	}
 }
 
 func TestResolveSystemPromptAsyncFallback(t *testing.T) {
