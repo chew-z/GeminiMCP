@@ -35,3 +35,4 @@ run_*.sh
 run_format.sh
 run_lint.sh
 run_test.sh
+.task/
