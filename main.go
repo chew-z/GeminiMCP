@@ -30,7 +30,7 @@ var (
 )
 
 // serverWebsiteURL is the canonical project URL advertised in serverInfo.
-const serverWebsiteURL = "https://github.com/RobertJ-RM/GeminiMCP"
+const serverWebsiteURL = "https://github.com/chew-z/GeminiMCP"
 
 // buildMCPServerOptions assembles the server.ServerOption list used by both
 // the normal startup path and the degraded-mode fallback in
