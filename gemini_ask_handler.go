@@ -460,7 +460,7 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolReq
 	parts := wrapUserTurnWithContext(repo, contextParts, fileParts, query, warnings, finalInstructionFor(category))
 
 	logger.Debug("request shape: model=%s category=%s thinking=%v max_tokens=%d context_parts=%d file_parts=%d warnings=%d",
-		s.config.GeminiModel, category, true, s.config.ProviderMaxTokens,
+		s.config.ActiveModel(), category, true, s.config.ProviderMaxTokens,
 		len(contextParts), len(fileParts), len(warnings))
 	if loggerDebugEnabled(logger) {
 		logger.Debug("envelope (with context): repo=%q parts=%d bytes=%d\n%s",
@@ -489,7 +489,7 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolReq
 	stop := startProgressReporter(callCtx, req,
 		s.config.ProgressInterval,
 		s.config.HTTPTimeout.Seconds(),
-		progressLabel(s.config.GeminiModel),
+		progressLabel(s.config.ActiveModel()),
 		logger)
 	defer stop()
 	response, err := withRetryClassified(
@@ -554,7 +554,7 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallTool
 	parts := wrapUserTurnQueryOnly(query, finalInstructionFor(category))
 
 	logger.Debug("request shape: model=%s category=%s thinking=%v max_tokens=%d context_parts=0 file_parts=0 warnings=0",
-		s.config.GeminiModel, category, true, s.config.ProviderMaxTokens)
+		s.config.ActiveModel(), category, true, s.config.ProviderMaxTokens)
 	if loggerDebugEnabled(logger) {
 		logger.Debug("envelope (query-only): parts=%d bytes=%d\n%s",
 			len(parts), totalPartBytes(parts), renderPartsForDebug(parts))
@@ -578,7 +578,7 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallTool
 	stop := startProgressReporter(callCtx, req,
 		s.config.ProgressInterval,
 		s.config.HTTPTimeout.Seconds(),
-		progressLabel(s.config.GeminiModel),
+		progressLabel(s.config.ActiveModel()),
 		logger)
 	defer stop()
 	response, err := withRetryClassified(

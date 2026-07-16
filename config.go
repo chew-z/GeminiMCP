@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 // Default configuration values
 const (
 	defaultGeminiModel       = "gemini-3.1-pro-preview"
+	defaultDeepSeekBaseURL   = "https://api.deepseek.com"
 	defaultGeminiTemperature = 1.0 // Gemini 3 default temperature
 	// Pre-qualification defaults
 	defaultPrequalify = true
@@ -342,11 +344,11 @@ func validateAuthInterop(auth authConfig, httpCfg httpTransportConfig) error {
 
 // NewConfig creates a new configuration from environment variables
 func NewConfig(logger Logger) (*Config, error) {
-	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
-	if geminiAPIKey == "" {
-		return nil, errors.New("GEMINI_API_KEY environment variable is required")
+	provider, err := loadProviderConfig(logger)
+	if err != nil {
+		return nil, err
 	}
-
+	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
 	geminiModel := os.Getenv("GEMINI_MODEL")
 	if geminiModel == "" {
 		geminiModel = defaultGeminiModel
@@ -376,13 +378,66 @@ func NewConfig(logger Logger) (*Config, error) {
 	if err := validateAuthInterop(auth, httpCfg); err != nil {
 		return nil, err
 	}
-	return assembleConfig(geminiAPIKey, geminiModel, geminiTemperature, int32(providerMaxTokens), tr, github, task, httpCfg, auth), nil
+	return assembleConfig(provider, geminiAPIKey, geminiModel, geminiTemperature, int32(providerMaxTokens), tr, github, task, httpCfg, auth), nil
+}
+
+// loadProviderConfig parses and validates the provider-specific environment.
+func loadProviderConfig(logger Logger) (ProviderConfig, error) {
+	vendor := strings.ToLower(strings.TrimSpace(os.Getenv("PROVIDER")))
+	if vendor == "" {
+		vendor = "gemini"
+	}
+	provider := ProviderConfig{Vendor: vendor}
+	providerAPIKey := os.Getenv("PROVIDER_API_KEY")
+	providerBaseURL := os.Getenv("PROVIDER_BASE_URL")
+	providerModel := os.Getenv("PROVIDER_MODEL")
+
+	switch vendor {
+	case "gemini":
+		if os.Getenv("GEMINI_API_KEY") == "" {
+			return ProviderConfig{}, errors.New("GEMINI_API_KEY environment variable is required")
+		}
+		warnIgnoredProviderVars(logger, providerAPIKey, providerBaseURL, providerModel)
+		return provider, nil
+	case "deepseek":
+		return loadDeepSeekProviderConfig(providerAPIKey, providerBaseURL, providerModel)
+	default:
+		return ProviderConfig{}, fmt.Errorf("unsupported PROVIDER value %q; valid values: gemini, deepseek", vendor)
+	}
+}
+
+// warnIgnoredProviderVars reports provider-specific settings that do not apply
+// while Gemini remains the selected backend.
+func warnIgnoredProviderVars(logger Logger, apiKey, baseURL, model string) {
+	if apiKey != "" || baseURL != "" || model != "" {
+		logger.Warnf("PROVIDER_API_KEY, PROVIDER_BASE_URL, and PROVIDER_MODEL are ignored when PROVIDER=gemini")
+	}
+}
+
+// loadDeepSeekProviderConfig validates DeepSeek settings and applies its base
+// URL default.
+func loadDeepSeekProviderConfig(apiKey, baseURL, model string) (ProviderConfig, error) {
+	if apiKey == "" {
+		return ProviderConfig{}, errors.New("PROVIDER_API_KEY environment variable is required when PROVIDER=deepseek")
+	}
+	if model == "" {
+		return ProviderConfig{}, errors.New("PROVIDER_MODEL environment variable is required when PROVIDER=deepseek")
+	}
+	if !slices.Contains(deepseekModels, model) {
+		return ProviderConfig{}, fmt.Errorf("PROVIDER_MODEL %q is unsupported for deepseek; allowed values: %s", model,
+			strings.Join(deepseekModels, ", "))
+	}
+	if baseURL == "" {
+		baseURL = defaultDeepSeekBaseURL
+	}
+	return ProviderConfig{Vendor: "deepseek", APIKey: apiKey, BaseURL: baseURL, Model: model}, nil
 }
 
 // assembleConfig builds the public Config struct from the sub-section values
 // loaded by NewConfig. Factored out so NewConfig stays focused on env parsing
 // and cross-section validation.
 func assembleConfig(
+	provider ProviderConfig,
 	geminiAPIKey, geminiModel string,
 	geminiTemperature float64,
 	providerMaxTokens int32,
@@ -393,6 +448,7 @@ func assembleConfig(
 	auth authConfig,
 ) *Config {
 	return &Config{
+		Provider:                       provider,
 		GeminiAPIKey:                   geminiAPIKey,
 		GeminiModel:                    geminiModel,
 		GeminiTemperature:              geminiTemperature,

@@ -56,7 +56,7 @@ func (s *GeminiServer) prequalifyQuery(ctx context.Context, query, contextSummar
 		logger.Debug("prequalify: raw=%q parse error: %v", raw, err)
 		return "", err
 	}
-	logger.Debug("prequalify: raw=%q parsed=%s model=%s", raw, cat, s.config.GeminiModel)
+	logger.Debug("prequalify: raw=%q parsed=%s model=%s", raw, cat, s.config.ActiveModel())
 	logger.Info("Pre-qualified query as '%s'", cat)
 	return cat, nil
 }

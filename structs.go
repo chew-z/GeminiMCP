@@ -52,6 +52,9 @@ type GeminiServer struct {
 
 // Config holds all configuration parameters for the application
 type Config struct {
+	// Provider selects the model backend and carries non-Gemini provider settings.
+	Provider ProviderConfig
+
 	// Gemini API settings
 	GeminiAPIKey      string
 	GeminiModel       string // Default model for 'gemini_ask'
@@ -108,6 +111,17 @@ type Config struct {
 
 	// Pre-qualification settings
 	Prequalify bool // Enable query pre-qualification for automatic system prompt selection
+}
+
+// ActiveModel returns the configured model for the selected provider.
+func (c *Config) ActiveModel() string {
+	if c != nil && c.Provider.Vendor != "" && c.Provider.Vendor != "gemini" {
+		return c.Provider.Model
+	}
+	if c == nil {
+		return ""
+	}
+	return c.GeminiModel
 }
 
 // FileUploadRequest represents a request to upload a file

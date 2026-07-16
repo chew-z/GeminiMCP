@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"google.golang.org/genai"
 )
 
 // NewGeminiServer creates a new GeminiServer with the provided configuration
@@ -14,21 +12,13 @@ func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error)
 		return nil, errors.New("config cannot be nil")
 	}
 
-	if config.GeminiAPIKey == "" {
-		return nil, errors.New("gemini API key is required")
-	}
-
-	// Initialize the Gemini client
-	clientConfig := &genai.ClientConfig{
-		APIKey: config.GeminiAPIKey,
-	}
-	client, err := genai.NewClient(ctx, clientConfig)
+	provider, err := NewProvider(ctx, config, getLoggerFromContext(ctx))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
+		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
 
 	return &GeminiServer{
 		config:   config,
-		provider: NewGeminiProvider(client, config.GeminiModel),
+		provider: provider,
 	}, nil
 }

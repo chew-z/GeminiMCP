@@ -9,6 +9,38 @@ import (
 	"google.golang.org/genai"
 )
 
+// ProviderConfig contains credentials and endpoint settings for a selected
+// model provider. Gemini continues to use its dedicated configuration fields.
+type ProviderConfig struct {
+	Vendor  string
+	APIKey  string
+	BaseURL string
+	Model   string
+}
+
+// deepseekModels is the temporary DeepSeek model allowlist for Phase 2.
+var deepseekModels = []string{"deepseek-v4-pro"}
+
+// NewProvider creates the configured model provider.
+func NewProvider(ctx context.Context, cfg *Config, logger Logger) (Provider, error) {
+	if cfg == nil {
+		return nil, errors.New("config cannot be nil")
+	}
+
+	switch cfg.Provider.Vendor {
+	case "deepseek":
+		return newOpenAIProvider(cfg.Provider, deepseekDialect{}, logger), nil
+	case "", "gemini":
+		client, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: cfg.GeminiAPIKey})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Gemini client: %w", err)
+		}
+		return NewGeminiProvider(client, cfg.GeminiModel), nil
+	default:
+		return nil, fmt.Errorf("unsupported provider vendor %q", cfg.Provider.Vendor)
+	}
+}
+
 // Provider is the minimal LLM-backend seam. Implementations own all
 // vendor-specific request shaping (thinking, JSON mode, temperature) and
 // error classification; the rest of the server speaks only these types.
