@@ -6,7 +6,7 @@ An MCP server that exposes configured DeepSeek or Qwen models to MCP clients (Cl
 
 - **`gemini_ask`** — coding/analysis question answering with composable GitHub context (PRs, commits, diffs, files)
 - **3 workflow prompts** — `review_pr`, `explain_commit`, `compare_refs`
-- **8 coding prompts** — code review, explain, debug, refactor, architecture, tests, security, research
+- **7 coding prompts** — code review, explain, debug, refactor, architecture, tests, security
 - **Structured XML envelope** — every user turn is rendered as `<context>` / `<task>` / `<final_instruction>` with attacker-controllable bodies emitted as raw text
 - **Server-side system-prompt selection** — a classifier picks a category-specific instruction and matching `<final_instruction>` body
 - Two transports: **HTTP** (JWT-secured, preferred) and **stdio** (local fallback)

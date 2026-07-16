@@ -4,7 +4,7 @@
 
 Workflow prompts are `review_pr`, `explain_commit`, and `compare_refs`. Generic
 coding prompts include code review, explanation, debugging, refactoring,
-architecture, tests, security, and research. They collect task arguments and
+architecture, tests, and security. They collect task arguments and
 forward a provider-backed `gemini_ask` request.
 
 ## Server-side prompt selection

@@ -44,7 +44,6 @@ func buildMCPServerOptions(config *Config, logger Logger) []server.ServerOption 
 		server.WithWebsiteURL(serverWebsiteURL),
 		server.WithInstructions(`gemini_ask: send a prompt to the configured provider, optionally with GitHub repository context.
 github_repo is required when using any github_* parameter. github_files requires github_ref.`),
-		server.WithCompletions(),
 		server.WithToolCapabilities(true),
 		server.WithRecovery(),
 		server.WithInputSchemaValidation(),

@@ -5,14 +5,14 @@ import "github.com/mark3labs/mcp-go/mcp"
 var GeminiAskTool = mcp.NewTool(
 	"gemini_ask",
 	mcp.WithDescription(
-		"Send a prompt to Gemini, optionally enriched with GitHub repository context "+
+		"Send a prompt to the configured LLM provider, optionally enriched with GitHub repository context "+
 			"(files, PRs, commits, diffs). All github_* parameters are independent and combinable."),
-	mcp.WithTitleAnnotation("Ask Gemini a Question"),
+	mcp.WithTitleAnnotation("Ask the LLM a Question"),
 	mcp.WithReadOnlyHintAnnotation(true),
 	mcp.WithDestructiveHintAnnotation(false),
 	mcp.WithIdempotentHintAnnotation(true),
 	mcp.WithOpenWorldHintAnnotation(true),
-	mcp.WithString("query", mcp.Required(), mcp.Description("The coding question or task for Gemini")),
+	mcp.WithString("query", mcp.Required(), mcp.Description("The coding question or task")),
 	mcp.WithString("github_repo", mcp.Description("Required. Must be always provided when any github_* context parameter is used!")),
 	mcp.WithString("github_ref", mcp.Description("Optional: Git branch, tag, or commit SHA. Applies only to 'github_files'.")),
 	mcp.WithArray(
