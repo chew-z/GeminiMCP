@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-Go 1.25+, an MCP client, and a configured provider are required. Set
+Go 1.26+, an MCP client, and a configured provider are required. Set
 `PROVIDER`, `PROVIDER_API_KEY`, and `PROVIDER_MODEL`; Qwen also requires
 `PROVIDER_BASE_URL`.
 

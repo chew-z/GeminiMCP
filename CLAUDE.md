@@ -22,6 +22,7 @@
 ## Environment
 
 Required:
+
 - `PROVIDER`, `PROVIDER_API_KEY`, `PROVIDER_MODEL` — model provider selection and credentials
 - `GEMINI_GITHUB_TOKEN` — needed for all `github_*` parameters; optional for public repos
 
@@ -32,7 +33,7 @@ Copy `.env.example` to `.env` and fill in required values.
 - `docs/reports/` is gitignored — do not use `git diff` to verify edits there.
 - `docs/nginx/` is documentation only. The live nginx config is on the remote server (`karma.rrj.pl`).
 - After any deploy, curl the production endpoint directly before closing the task.
-- When diagnosing runtime behavior, read `logs/Gemini.log` before making assumptions.
+- The server logs to stderr. `logs/Gemini.log` is only populated where stderr is redirected there (production); locally, capture stderr when diagnosing runtime behavior.
 
 ## Known architectural constraints
 
@@ -44,3 +45,4 @@ Copy `.env.example` to `.env` and fill in required values.
 
 @./GOLANG.md
 @./CODANNA.md
+@./LSP.md
