@@ -20,11 +20,19 @@ Categories:
 - debug: Bug fixing, error analysis, troubleshooting, test failures
 - tests: Generating new unit/integration tests or test cases for existing code
 
-Respond with JSON in exactly this form: {"category": "<one category name>"}.`
+Respond with JSON in exactly this form: {"category": "<one category name>"}.
+
+EXAMPLE INPUT:
+Why is my unit test failing with a nil pointer dereference?
+
+EXAMPLE JSON OUTPUT:
+{"category": "debug"}`
 
 // prequalifyQuery classifies a user query into one of the five categories
 // using the configured provider model with thinking disabled and JSON mode.
 // On any failure it returns an error; the caller decides the fallback.
+// DeepSeek JSON mode may occasionally return empty content, which becomes a
+// parse error and falls back to the default category.
 func (s *GeminiServer) prequalifyQuery(ctx context.Context, query, contextSummary string) (queryCategory, error) {
 	if s == nil || s.provider == nil {
 		return "", fmt.Errorf("prequalify: provider not initialized")
