@@ -12,7 +12,7 @@ import (
 
 func TestGeminiAskHandlerIgnoresLegacyParameters(t *testing.T) {
 	provider := &mockProvider{}
-	s := &GeminiServer{config: &Config{GeminiModel: "test", HTTPTimeout: time.Second, GeminiTemperature: 0.5}, provider: provider}
+	s := &GeminiServer{config: &Config{Provider: ProviderConfig{Model: "test"}, HTTPTimeout: time.Second, GeminiTemperature: 0.5}, provider: provider}
 	req := mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"query": "hello", "model": "old", "thinking_level": "low"}}}
 	_, err := s.GeminiAskHandler(context.Background(), req)
 	require.NoError(t, err)

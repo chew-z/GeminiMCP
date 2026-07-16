@@ -46,7 +46,8 @@ func TestNewConfigProviderSelection(t *testing.T) {
 			"",
 			"deepseek",
 		},
-		{"gemini default", map[string]string{"GEMINI_API_KEY": "key"}, "", "gemini"},
+		{"provider required", map[string]string{}, "PROVIDER environment variable is required", ""},
+		{"gemini removed", map[string]string{"PROVIDER": "gemini"}, "valid values: deepseek, qwen", ""},
 		{
 			"qwen missing key",
 			map[string]string{"PROVIDER": "qwen", "PROVIDER_MODEL": "qwen3.7-max", "PROVIDER_BASE_URL": "https://qwen.example"},
@@ -96,7 +97,7 @@ func TestNewConfigProviderMaxTokens(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			withCleanEnv(t)
-			setupEnv(t, map[string]string{"GEMINI_API_KEY": "key", "PROVIDER_MAX_TOKENS": tt.value})
+			setupEnv(t, map[string]string{"PROVIDER": "deepseek", "PROVIDER_API_KEY": "key", "PROVIDER_MODEL": "deepseek-v4-pro", "PROVIDER_MAX_TOKENS": tt.value})
 			cfg, err := NewConfig(NewLogger(LevelError))
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, cfg.ProviderMaxTokens)
@@ -110,8 +111,8 @@ func TestConfigActiveModel(t *testing.T) {
 		cfg  Config
 		want string
 	}{
-		{"gemini", Config{Provider: ProviderConfig{Vendor: "gemini"}, GeminiModel: "gemini-model"}, "gemini-model"},
-		{"deepseek", Config{Provider: ProviderConfig{Vendor: "deepseek", Model: "deepseek-model"}, GeminiModel: "gemini-model"}, "deepseek-model"},
+		{"deepseek", Config{Provider: ProviderConfig{Vendor: "deepseek", Model: "deepseek-model"}}, "deepseek-model"},
+		{"qwen", Config{Provider: ProviderConfig{Vendor: "qwen", Model: "qwen-model"}}, "qwen-model"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) { assert.Equal(t, tt.want, tt.cfg.ActiveModel()) })

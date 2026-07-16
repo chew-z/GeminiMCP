@@ -30,12 +30,12 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 	if err != nil {
 		return createErrorResult(err.Error()), nil
 	}
-
 	for _, name := range []string{"model", "thinking_level"} {
 		if _, ok := req.GetArguments()[name]; ok {
 			logger.Debug("ignoring legacy parameter %s", name)
 		}
 	}
+
 	promptCtx, cancelPrompt := context.WithCancel(ctx)
 	defer cancelPrompt()
 	promptCh := s.resolveSystemPromptAsync(promptCtx, req, query, logger)
@@ -142,7 +142,7 @@ func consolidatedContextError(
 
 // gatherGitHubContext fetches the github_pr / github_commits / github_diff
 // parameters (independently and in parallel-friendly order) and returns the
-// resulting genai Parts in the stable merge order:
+// resulting content parts in the stable merge order:
 //
 //	[commits] → [diff] → [PR bundle]
 //

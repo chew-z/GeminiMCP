@@ -24,7 +24,7 @@ Hard constraint: **Go SDK only** — no bypassing `google.golang.org/genai` with
 - Context pipeline: `parseAskRequest` → `gatherAllContext` (`:58`) → `applyContextInventory` (`:72`) → `processWithFiles` / `processWithoutFiles`
 - **Fully stateless.** No session/thread field in the tool schema. No persistence layer. No in-memory cache keyed by repo.
 - Implicit prefix caching by Gemini is noted at `gemini_ask_handler.go:473`, but not managed by the server.
-- Adjacent tools: `gemini_search` (`tools.go:47-64`) — also stateless.
+- Adjacent tools: `gemini_ask` (`tools.go:47-64`) — also stateless.
 - `go.mod:11`: `google.golang.org/genai v1.53.0`
 
 ### Interactions API (from https://ai.google.dev/gemini-api/docs/interactions.md.txt)

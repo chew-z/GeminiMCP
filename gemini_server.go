@@ -12,7 +12,7 @@ func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error)
 		return nil, errors.New("config cannot be nil")
 	}
 
-	provider, err := NewProvider(ctx, config, getLoggerFromContext(ctx))
+	provider, err := NewProvider(config, getLoggerFromContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}

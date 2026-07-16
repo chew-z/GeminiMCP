@@ -14,7 +14,7 @@ func TestPromptHandlers(t *testing.T) {
 	// We don't need a full NewGeminiServer() initialization for this unit test.
 	geminiSvc := &GeminiServer{
 		config: &Config{
-			GeminiModel: "test-model",
+			Provider: ProviderConfig{Model: "test-model"},
 		},
 	}
 	ctx := context.Background()

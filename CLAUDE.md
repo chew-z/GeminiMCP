@@ -2,11 +2,11 @@
 
 ## First principles
 
-1. MCP clients provide task intent and context; the server decides model tier, thinking, token limits, retries, and caching.
+1. MCP clients provide task intent and context; the server decides thinking, token limits, retries, and caching.
 
 2. Repository context is the only input surface: use `github_repo` + `github_files` / `github_pr` / `github_commits` / `github_diff_*`.
 
-3. The model contract is three logical tiers (pro, flash, flash-lite). The server maps tiers to latest models.
+3. The model is pure configuration: `PROVIDER` (`deepseek` or `qwen`) plus `PROVIDER_MODEL` validated against a static allowlist; the server owns thinking, token limits, retries.
 
 4. Preferred mode is HTTP with JWT auth. stdio is a compatibility fallback for local MCP workflows.
 
@@ -21,7 +21,7 @@
 ## Environment
 
 Required:
-- `GEMINI_API_KEY` — Google AI Studio or Vertex AI key
+- `PROVIDER`, `PROVIDER_API_KEY`, `PROVIDER_MODEL` — model provider selection and credentials
 - `GEMINI_GITHUB_TOKEN` — needed for all `github_*` parameters; optional for public repos
 
 Copy `.env.example` to `.env` and fill in required values.
@@ -35,7 +35,7 @@ Copy `.env.example` to `.env` and fill in required values.
 
 ## Known architectural constraints
 
-- `WriteTimeout` in `http_server.go` is `GEMINI_TIMEOUT + 60s` (overridable via `GEMINI_HTTP_WRITE_TIMEOUT`). Long thinking-mode pro calls can exceed the outbound budget and produce `context.Canceled` — check this coupling first when diagnosing cancellations.
+- `WriteTimeout` in `http_server.go` is `GEMINI_TIMEOUT + 60s` (overridable via `GEMINI_HTTP_WRITE_TIMEOUT`). Long thinking-mode calls can exceed the outbound budget and produce `context.Canceled` — check this coupling first when diagnosing cancellations.
 - `http.TimeoutHandler` is contraindicated: it buffers writes and breaks MCP streaming heartbeats. Do not propose it for timeout handling.
 - `GEMINI_HTTP_CORS_ENABLED` stays `false` in production — the server has no browser clients.
 

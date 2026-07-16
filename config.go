@@ -14,7 +14,6 @@ import (
 
 // Default configuration values
 const (
-	defaultGeminiModel       = "gemini-3.1-pro-preview"
 	defaultDeepSeekBaseURL   = "https://api.deepseek.com"
 	defaultGeminiTemperature = 1.0 // Gemini 3 default temperature
 	// Pre-qualification defaults
@@ -348,12 +347,6 @@ func NewConfig(logger Logger) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
-	geminiModel := os.Getenv("GEMINI_MODEL")
-	if geminiModel == "" {
-		geminiModel = defaultGeminiModel
-	}
-
 	geminiTemperature := parseEnvVarFloat("GEMINI_TEMPERATURE", defaultGeminiTemperature, logger)
 	if geminiTemperature < 0.0 || geminiTemperature > 1.0 {
 		return nil, fmt.Errorf("GEMINI_TEMPERATURE must be between 0.0 and 1.0, got %v", geminiTemperature)
@@ -378,41 +371,26 @@ func NewConfig(logger Logger) (*Config, error) {
 	if err := validateAuthInterop(auth, httpCfg); err != nil {
 		return nil, err
 	}
-	return assembleConfig(provider, geminiAPIKey, geminiModel, geminiTemperature, int32(providerMaxTokens), tr, github, task, httpCfg, auth), nil
+	return assembleConfig(provider, geminiTemperature, int32(providerMaxTokens), tr, github, task, httpCfg, auth), nil
 }
 
 // loadProviderConfig parses and validates the provider-specific environment.
-func loadProviderConfig(logger Logger) (ProviderConfig, error) {
+func loadProviderConfig(_ Logger) (ProviderConfig, error) {
 	vendor := strings.ToLower(strings.TrimSpace(os.Getenv("PROVIDER")))
 	if vendor == "" {
-		vendor = "gemini"
+		return ProviderConfig{}, errors.New("PROVIDER environment variable is required (deepseek or qwen)")
 	}
-	provider := ProviderConfig{Vendor: vendor}
 	providerAPIKey := os.Getenv("PROVIDER_API_KEY")
 	providerBaseURL := os.Getenv("PROVIDER_BASE_URL")
 	providerModel := os.Getenv("PROVIDER_MODEL")
 
 	switch vendor {
-	case "gemini":
-		if os.Getenv("GEMINI_API_KEY") == "" {
-			return ProviderConfig{}, errors.New("GEMINI_API_KEY environment variable is required")
-		}
-		warnIgnoredProviderVars(logger, providerAPIKey, providerBaseURL, providerModel)
-		return provider, nil
 	case "deepseek":
 		return loadDeepSeekProviderConfig(providerAPIKey, providerBaseURL, providerModel)
 	case "qwen":
 		return loadQwenProviderConfig(providerAPIKey, providerBaseURL, providerModel)
 	default:
-		return ProviderConfig{}, fmt.Errorf("unsupported PROVIDER value %q; valid values: gemini, deepseek, qwen", vendor)
-	}
-}
-
-// warnIgnoredProviderVars reports provider-specific settings that do not apply
-// while Gemini remains the selected backend.
-func warnIgnoredProviderVars(logger Logger, apiKey, baseURL, model string) {
-	if apiKey != "" || baseURL != "" || model != "" {
-		logger.Warnf("PROVIDER_API_KEY, PROVIDER_BASE_URL, and PROVIDER_MODEL are ignored when PROVIDER=gemini")
+		return ProviderConfig{}, fmt.Errorf("unsupported PROVIDER value %q; valid values: deepseek, qwen", vendor)
 	}
 }
 
@@ -449,7 +427,10 @@ func loadQwenProviderConfig(apiKey, baseURL, model string) (ProviderConfig, erro
 			strings.Join(qwenModels, ", "))
 	}
 	if baseURL == "" {
-		return ProviderConfig{}, errors.New("PROVIDER_BASE_URL is required when PROVIDER=qwen; set PROVIDER_BASE_URL to your DashScope-compatible endpoint")
+		return ProviderConfig{}, errors.New(
+			"PROVIDER_BASE_URL is required when PROVIDER=qwen; set it to your DashScope-compatible endpoint " +
+				"(e.g. https://dashscope-intl.aliyuncs.com/compatible-mode/v1)",
+		)
 	}
 	return ProviderConfig{Vendor: "qwen", APIKey: apiKey, BaseURL: baseURL, Model: model}, nil
 }
@@ -459,7 +440,6 @@ func loadQwenProviderConfig(apiKey, baseURL, model string) (ProviderConfig, erro
 // and cross-section validation.
 func assembleConfig(
 	provider ProviderConfig,
-	geminiAPIKey, geminiModel string,
 	geminiTemperature float64,
 	providerMaxTokens int32,
 	tr timeoutAndRetryConfig,
@@ -470,8 +450,6 @@ func assembleConfig(
 ) *Config {
 	return &Config{
 		Provider:                       provider,
-		GeminiAPIKey:                   geminiAPIKey,
-		GeminiModel:                    geminiModel,
 		GeminiTemperature:              geminiTemperature,
 		ProviderMaxTokens:              providerMaxTokens,
 		HTTPTimeout:                    tr.timeout,

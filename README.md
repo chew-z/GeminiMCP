@@ -1,15 +1,14 @@
 # GeminiMCP
 
-An MCP server that exposes Google Gemini models to MCP clients (Claude Code, IDE extensions, custom tooling).
+An MCP server that exposes configured DeepSeek or Qwen models to MCP clients (Claude Code, IDE extensions, custom tooling).
 
 ## What it does
 
 - **`gemini_ask`** — multimodal question answering with composable GitHub context (PRs, commits, diffs, files)
-- **`gemini_search`** — Google Search-grounded queries returning structured JSON
 - **3 workflow prompts** — `review_pr`, `explain_commit`, `compare_refs`
 - **8 coding prompts** — code review, explain, debug, refactor, architecture, tests, security, research
 - **Gemini 3-style XML envelope** — every user turn is rendered as `<context>` / `<task>` / `<final_instruction>` with attacker-controllable bodies emitted as raw text
-- **Server-side system-prompt selection** — a Flash classifier picks a category-specific `SystemInstruction` and matching `<final_instruction>` body
+- **Server-side system-prompt selection** — a classifier picks a category-specific instruction and matching `<final_instruction>` body
 - Two transports: **HTTP** (JWT-secured, preferred) and **stdio** (local fallback)
 
 ## Quick start
@@ -20,7 +19,7 @@ go build -o bin/mcp-gemini .
 
 # Configure
 cp .env.example .env
-# Edit .env — set GEMINI_API_KEY at minimum
+# Edit .env — set PROVIDER, PROVIDER_API_KEY, and PROVIDER_MODEL
 
 # Run (stdio, for Claude Code)
 ./bin/mcp-gemini
@@ -35,7 +34,7 @@ Claude Code `mcpServers` entry (stdio):
 {
   "gemini": {
     "command": "/path/to/bin/mcp-gemini",
-    "env": { "GEMINI_API_KEY": "your-key" }
+    "env": { "PROVIDER": "deepseek", "PROVIDER_API_KEY": "your-key", "PROVIDER_MODEL": "deepseek-v4-pro" }
   }
 }
 ```
@@ -62,5 +61,5 @@ Claude Code `mcpServers` entry (stdio):
 ## Requirements
 
 - Go 1.25+
-- `GEMINI_API_KEY` (Google AI Studio)
+- `PROVIDER`, `PROVIDER_API_KEY`, and `PROVIDER_MODEL` (DeepSeek or Qwen)
 - `GEMINI_GITHUB_TOKEN` (GitHub PAT — only for `github_*` parameters)

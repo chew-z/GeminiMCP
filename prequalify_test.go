@@ -14,7 +14,7 @@ func TestPrequalifyQuery(t *testing.T) {
 	provider := &mockProvider{generateFn: func(_ context.Context, req GenerationRequest) (*GenerationResponse, error) {
 		return &GenerationResponse{Text: `"analyze"`, FinishReason: "STOP"}, nil
 	}}
-	s := &GeminiServer{config: &Config{GeminiModel: "test"}, provider: provider}
+	s := &GeminiServer{config: &Config{Provider: ProviderConfig{Model: "test"}}, provider: provider}
 	category, err := s.prequalifyQuery(context.Background(), "explain this", "")
 	require.NoError(t, err)
 	assert.Equal(t, categoryAnalyze, category)

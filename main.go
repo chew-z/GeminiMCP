@@ -42,7 +42,7 @@ func buildMCPServerOptions(config *Config, logger Logger) []server.ServerOption 
 		server.WithTitle("Gemini MCP"),
 		server.WithDescription("Gemini LLM for analysis, reasoning and research"),
 		server.WithWebsiteURL(serverWebsiteURL),
-		server.WithInstructions(`gemini_ask: send a prompt to Gemini, optionally with GitHub repository context.
+		server.WithInstructions(`gemini_ask: send a prompt to the configured provider, optionally with GitHub repository context.
 github_repo is required when using any github_* parameter. github_files requires github_ref.`),
 		server.WithCompletions(),
 		server.WithToolCapabilities(true),
@@ -86,7 +86,7 @@ type cliFlags struct {
 	tokenExpiration int
 }
 
-// applyCLIOverrides applies temperature, service-tier, and auth overrides from
+// applyCLIOverrides applies temperature and auth overrides from
 // the command line to the loaded config. The returned error signals a
 // recoverable startup failure (the caller should enter degraded mode).
 func applyCLIOverrides(flags *cliFlags, config *Config, logger Logger) error {

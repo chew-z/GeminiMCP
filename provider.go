@@ -4,13 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"google.golang.org/api/googleapi"
-	"google.golang.org/genai"
 )
 
 // ProviderConfig contains credentials and endpoint settings for a selected
-// model provider. Gemini continues to use its dedicated configuration fields.
+// model provider.
 type ProviderConfig struct {
 	Vendor  string
 	APIKey  string
@@ -25,7 +22,7 @@ var deepseekModels = []string{"deepseek-v4-pro"}
 var qwenModels = []string{"qwen3.7-max", "qwen3.7-plus"}
 
 // NewProvider creates the configured model provider.
-func NewProvider(ctx context.Context, cfg *Config, logger Logger) (Provider, error) {
+func NewProvider(cfg *Config, logger Logger) (Provider, error) {
 	if cfg == nil {
 		return nil, errors.New("config cannot be nil")
 	}
@@ -35,14 +32,8 @@ func NewProvider(ctx context.Context, cfg *Config, logger Logger) (Provider, err
 		return newOpenAIProvider(cfg.Provider, deepseekDialect{}, logger), nil
 	case "qwen":
 		return newOpenAIProvider(cfg.Provider, qwenDialect{}, logger), nil
-	case "", "gemini":
-		client, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: cfg.GeminiAPIKey})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create Gemini client: %w", err)
-		}
-		return NewGeminiProvider(client, cfg.GeminiModel), nil
 	default:
-		return nil, fmt.Errorf("unsupported provider vendor %q", cfg.Provider.Vendor)
+		return nil, fmt.Errorf("unsupported provider vendor %q; valid values: deepseek, qwen", cfg.Provider.Vendor)
 	}
 }
 
@@ -112,104 +103,4 @@ func finishReasonNormal(reason string) bool {
 		return true
 	}
 	return false
-}
-
-// GeminiProvider adapts the google genai client to the Provider interface.
-// TEMPORARY: it exists only as the rollback path during the provider
-// migration (Phases 1–3) and is deleted in Phase 4.
-type GeminiProvider struct {
-	client *genai.Client
-	model  string
-}
-
-// NewGeminiProvider wraps an initialized genai client.
-func NewGeminiProvider(client *genai.Client, model string) *GeminiProvider {
-	return &GeminiProvider{client: client, model: model}
-}
-
-// Generate maps a GenerationRequest onto genai.GenerateContent.
-func (p *GeminiProvider) Generate(ctx context.Context, req GenerationRequest) (*GenerationResponse, error) {
-	if p == nil || p.client == nil || p.client.Models == nil {
-		return nil, errors.New("gemini provider not initialized")
-	}
-
-	config := buildGeminiConfig(req)
-	parts := makeGeminiParts(req.Parts)
-	contents := []*genai.Content{genai.NewContentFromParts(parts, genai.RoleUser)}
-
-	resp, err := p.client.Models.GenerateContent(ctx, p.model, contents, config)
-	if err != nil {
-		return nil, err
-	}
-	return convertGeminiResponse(resp)
-}
-
-// buildGeminiConfig maps provider-agnostic generation options to Gemini options.
-func buildGeminiConfig(req GenerationRequest) *genai.GenerateContentConfig {
-	config := &genai.GenerateContentConfig{Temperature: new(float32(req.Temperature))}
-	if req.SystemPrompt != "" {
-		config.SystemInstruction = genai.NewContentFromText(req.SystemPrompt, "")
-	}
-	if req.Thinking.Enabled {
-		config.ThinkingConfig = &genai.ThinkingConfig{
-			IncludeThoughts: true,
-			ThinkingLevel:   genai.ThinkingLevelHigh,
-		}
-	}
-	if req.ResponseFormat == "json_object" {
-		config.ResponseMIMEType = "application/json"
-	}
-	if req.MaxOutputTokens > 0 {
-		config.MaxOutputTokens = req.MaxOutputTokens
-	}
-
-	return config
-}
-
-// makeGeminiParts maps provider content parts to Gemini content parts.
-func makeGeminiParts(contentParts []ContentPart) []*genai.Part {
-	parts := make([]*genai.Part, 0, len(contentParts))
-	for _, cp := range contentParts {
-		switch {
-		case cp.File != nil:
-			parts = append(parts, genai.NewPartFromBytes(cp.File.Data, cp.File.MIME))
-		case cp.Text != "":
-			parts = append(parts, genai.NewPartFromText(cp.Text))
-		}
-	}
-	return parts
-}
-
-// convertGeminiResponse maps a Gemini response to the provider response type.
-func convertGeminiResponse(resp *genai.GenerateContentResponse) (*GenerationResponse, error) {
-	if resp == nil || len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
-		return nil, fmt.Errorf("gemini returned an empty response")
-	}
-
-	cand := resp.Candidates[0]
-	out := &GenerationResponse{
-		Text:         resp.Text(),
-		FinishReason: string(cand.FinishReason),
-		Model:        resp.ModelVersion,
-	}
-	if u := resp.UsageMetadata; u != nil {
-		out.Usage = UsageInfo{
-			PromptTokens:    u.PromptTokenCount,
-			OutputTokens:    u.CandidatesTokenCount,
-			ReasoningTokens: u.ThoughtsTokenCount,
-			CachedTokens:    u.CachedContentTokenCount,
-			TotalTokens:     u.TotalTokenCount,
-		}
-	}
-	return out, nil
-}
-
-// IsRetryable classifies Gemini API errors: googleapi 429/5xx are retryable,
-// other googleapi codes are terminal, and everything else falls back to the
-// string heuristics shared with the GitHub path.
-func (p *GeminiProvider) IsRetryable(err error) bool {
-	if gerr, ok := errors.AsType[*googleapi.Error](err); ok {
-		return gerr.Code == 429 || (gerr.Code >= 500 && gerr.Code <= 599)
-	}
-	return isRetryableByMessage(err)
 }

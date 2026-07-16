@@ -27,5 +27,8 @@ var GeminiAskTool = mcp.NewTool(
 	mcp.WithArray("github_commits", mcp.Description("Optional: array of commit SHAs (short or full)."), mcp.WithStringItems()),
 	mcp.WithString("github_diff_base", mcp.Description("Optional: base ref for a GitHub compare diff; must be paired with github_diff_head.")),
 	mcp.WithString("github_diff_head", mcp.Description("Optional: head ref for a GitHub compare diff; must be paired with github_diff_base.")),
+	// Keep removed model controls backwards-compatible: the handler logs and
+	// ignores unknown legacy arguments while all other tools remain strict.
+	mcp.WithSchemaAdditionalProperties(true),
 	mcp.WithTaskSupport(mcp.TaskSupportOptional),
 )
