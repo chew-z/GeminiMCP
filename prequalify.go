@@ -23,7 +23,7 @@ Categories:
 Respond with a JSON string containing exactly one category name, e.g. "analyze".`
 
 // prequalifyQuery classifies a user query into one of the five categories
-// using a lightweight Flash model call with structured enum output.
+// using the configured provider model with thinking disabled and JSON mode.
 // On any failure it returns an error; the caller decides the fallback.
 func (s *GeminiServer) prequalifyQuery(ctx context.Context, query, contextSummary string) (queryCategory, error) {
 	if s == nil || s.provider == nil {

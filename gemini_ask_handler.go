@@ -431,11 +431,10 @@ func (s *GeminiServer) gatherGitHubFiles(
 	return fetchedUploads, warnings, nil
 }
 
-// processWithFiles handles a Gemini API request with any combination of
+// processWithFiles handles a provider request with any combination of
 // pre-built github-context XML parts (commits / diff / PR bundle) and file
 // attachments. Everything is placed BEFORE the query to maximise implicit
-// caching — Gemini caches the shared prefix of repeated requests, so stable
-// content at the front gets cached automatically across calls.
+// caching — stable content at the front can be cached across calls.
 //
 // The stable merge order is:
 //
@@ -475,7 +474,7 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolReq
 		MaxOutputTokens: s.config.ProviderMaxTokens,
 	}
 
-	// Bound the outbound Gemini call with an explicit per-call deadline. This
+	// Bound the outbound provider call with an explicit per-call deadline. This
 	// makes server-induced timeouts surface as ctx.Err() == DeadlineExceeded
 	// (which logAPIError classifies as "deadline exceeded") rather than
 	// relying on the inbound HTTPWriteTimeout to kill the connection — that
@@ -500,7 +499,7 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolReq
 	)
 	if err != nil {
 		logAPIError(callCtx, logger, "Provider API error", err)
-		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
+		return createErrorResult(fmt.Sprintf("Error from provider API: %v", err)), nil
 	}
 
 	return convertResponseToMCPResult(response, logger), nil
@@ -544,7 +543,7 @@ func renderTextFilePart(upload *FileUploadRequest, githubRef string) ContentPart
 	)}
 }
 
-// processWithoutFiles handles a Gemini API request without file attachments
+// processWithoutFiles handles a provider request without file attachments.
 func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallToolRequest, query string,
 	category queryCategory,
 	systemPrompt string) (*mcp.CallToolResult, error) {
@@ -568,7 +567,7 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallTool
 		MaxOutputTokens: s.config.ProviderMaxTokens,
 	}
 
-	// Bound the outbound Gemini call with an explicit per-call deadline so
+	// Bound the outbound provider call with an explicit per-call deadline so
 	// server-induced timeouts manifest as ctx.Err() == DeadlineExceeded for
 	// the classifier (see processWithFiles for the full rationale).
 	callCtx, cancelCall := context.WithTimeout(ctx, s.config.HTTPTimeout)
@@ -589,7 +588,6 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallTool
 	)
 	if err != nil {
 		logAPIError(callCtx, logger, "Provider API error", err)
-		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 
 	return convertResponseToMCPResult(response, logger), nil

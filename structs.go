@@ -44,7 +44,7 @@ func NewPromptDefinition(name, description string) *PromptDefinition {
 	}
 }
 
-// GeminiServer implements the ToolHandler interface for Gemini API interactions
+// GeminiServer implements the ToolHandler interface for provider API interactions.
 type GeminiServer struct {
 	config   *Config
 	provider Provider
@@ -176,12 +176,8 @@ func (ci *contextInventory) HasAny() bool {
 	return ci.Files.Count > 0 || ci.PR != nil || len(ci.Commits) > 0 || ci.Diff != nil
 }
 
-// GeminiServer implements the ToolHandler interface to provide research capabilities
-// through Google's Gemini API.
-// Defined in gemini.go
-
 // ErrorGeminiServer implements the ToolHandler interface but returns error responses
-// for all calls. Used when the Gemini server is in degraded mode due to initialization errors.
+// for all calls. Used when provider initialization enters degraded mode.
 type ErrorGeminiServer struct {
 	errorMessage string
 }

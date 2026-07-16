@@ -74,8 +74,9 @@ func (p *openaiProvider) buildChatParams(req GenerationRequest) (openai.ChatComp
 	messages = append(messages, openai.UserMessage(user.String()))
 
 	params := openai.ChatCompletionNewParams{
-		Model:       shared.ChatModel(p.model),
-		Messages:    messages,
+		Model:    shared.ChatModel(p.model),
+		Messages: messages,
+		// Always send temperature explicitly; prequalification relies on zero.
 		Temperature: openai.Float(req.Temperature),
 	}
 	if req.MaxOutputTokens > 0 {

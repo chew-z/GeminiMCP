@@ -130,7 +130,7 @@ func convertResponseToMCPResult(resp *GenerationResponse, logger Logger) *mcp.Ca
 	}
 	text := resp.Text
 	if text == "" {
-		text = "The Gemini model returned an empty response. This might indicate that the model " +
+		text = "The model returned an empty response. This might indicate that the model " +
 			"couldn't generate an appropriate response for your query. Please try rephrasing your question or providing more context."
 	}
 	if !finishReasonNormal(resp.FinishReason) {

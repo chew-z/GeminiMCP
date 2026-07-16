@@ -19,7 +19,8 @@ func withRetry[T any](ctx context.Context, cfg *Config, logger Logger, opName st
 
 // withRetryClassified is withRetry with a pluggable retryability classifier.
 // Universal rules always apply first: context.Canceled/DeadlineExceeded are
-// terminal, transport (net) errors are retryable. For everything else the
+// terminal. Timed-out or temporary transport (net) errors are retryable; other
+// transport errors fall through to the classifier. For everything else the
 // classifier decides when non-nil (Provider.IsRetryable); a nil classifier
 // falls back to the default message heuristics.
 func withRetryClassified[T any](ctx context.Context, cfg *Config, logger Logger, opName string,
@@ -108,7 +109,8 @@ func isRetryableByMessage(err error) bool {
 }
 
 // classifyRetryable applies the universal rules (context errors terminal,
-// transport errors retryable), then defers to the optional classifier. A nil
+// timed-out or temporary transport errors are retryable), then defers to the
+// optional classifier. Other transport errors reach that classifier. A nil
 // classifier keeps today's default: string-heuristic message matching.
 func classifyRetryable(err error, isRetryable func(error) bool) bool {
 	if err == nil {

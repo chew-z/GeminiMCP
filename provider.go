@@ -15,7 +15,7 @@ type ProviderConfig struct {
 	Model   string
 }
 
-// deepseekModels is the temporary DeepSeek model allowlist for Phase 2.
+// deepseekModels is the static allowlist of supported DeepSeek models.
 var deepseekModels = []string{"deepseek-v4-pro"}
 
 // qwenModels is the Qwen model allowlist for Phase 3.
