@@ -17,6 +17,7 @@
 - Format: `./run_format.sh`
 - Lint: `./run_lint.sh`
 - Release: `./run_release.sh` (requires `RELEASE_NOTES.md` in project root)
+- Or via go-task: `task check` (fmt+vet+lint+test), `task build`, `task --list` for all
 
 ## Environment
 
