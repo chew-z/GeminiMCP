@@ -13,6 +13,7 @@ AGENTS.md
 GOLANG.md
 GODOC.md
 CODANNA.md
+LSP.md
 
 reports/**
 .repomix/
