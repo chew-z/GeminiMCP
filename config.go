@@ -57,7 +57,7 @@ func parseEnvVarInt(key string, defaultValue int, logger Logger) int {
 		if val, err := strconv.Atoi(str); err == nil {
 			return val
 		}
-		logger.Warnf("Invalid integer value for %s: %q. Using default: %d", key, str, defaultValue)
+		logger.Warn("Invalid integer value for %s: %q. Using default: %d", key, str, defaultValue)
 	}
 	return defaultValue
 }
@@ -68,7 +68,7 @@ func parseEnvVarFloat(key string, defaultValue float64, logger Logger) float64 {
 		if val, err := strconv.ParseFloat(str, 64); err == nil {
 			return val
 		}
-		logger.Warnf("Invalid float value for %s: %q. Using default: %f", key, str, defaultValue)
+		logger.Warn("Invalid float value for %s: %q. Using default: %f", key, str, defaultValue)
 	}
 	return defaultValue
 }
@@ -79,7 +79,7 @@ func parseEnvVarDuration(key string, defaultValue time.Duration, logger Logger) 
 		if val, err := time.ParseDuration(str); err == nil {
 			return val
 		}
-		logger.Warnf("Invalid duration value for %s: %q. Using default: %s", key, str, defaultValue.String())
+		logger.Warn("Invalid duration value for %s: %q. Using default: %s", key, str, defaultValue.String())
 	}
 	return defaultValue
 }
@@ -90,7 +90,7 @@ func parseEnvVarBool(key string, defaultValue bool, logger Logger) bool {
 		if val, err := strconv.ParseBool(str); err == nil {
 			return val
 		}
-		logger.Warnf("Invalid boolean value for %s: %q. Using default: %t", key, str, defaultValue)
+		logger.Warn("Invalid boolean value for %s: %q. Using default: %t", key, str, defaultValue)
 	}
 	return defaultValue
 }
@@ -177,7 +177,7 @@ func loadHTTPConfig(logger Logger) (httpTransportConfig, error) {
 	stateless := parseEnvVarBool("GEMINI_HTTP_STATELESS", defaultHTTPStateless, logger)
 	heartbeat := parseEnvVarDuration("GEMINI_HTTP_HEARTBEAT", defaultHTTPHeartbeat, logger)
 	if heartbeat < 0 {
-		logger.Warnf("GEMINI_HTTP_HEARTBEAT must be non-negative. Using default: %s", defaultHTTPHeartbeat.String())
+		logger.Warn("GEMINI_HTTP_HEARTBEAT must be non-negative. Using default: %s", defaultHTTPHeartbeat.String())
 		heartbeat = defaultHTTPHeartbeat
 	}
 	corsEnabled := parseEnvVarBool("GEMINI_HTTP_CORS_ENABLED", defaultHTTPCORSEnabled, logger)
@@ -270,27 +270,27 @@ func loadGitHubConfig(logger Logger) githubSettings {
 
 	maxFiles := parseEnvVarInt("GEMINI_MAX_GITHUB_FILES", defaultMaxGitHubFiles, logger)
 	if maxFiles <= 0 {
-		logger.Warnf("GEMINI_MAX_GITHUB_FILES must be positive. Using default: %d", defaultMaxGitHubFiles)
+		logger.Warn("GEMINI_MAX_GITHUB_FILES must be positive. Using default: %d", defaultMaxGitHubFiles)
 		maxFiles = defaultMaxGitHubFiles
 	}
 	maxFileSize := int64(parseEnvVarInt("GEMINI_MAX_GITHUB_FILE_SIZE", int(defaultMaxGitHubFileSize), logger))
 	if maxFileSize <= 0 {
-		logger.Warnf("GEMINI_MAX_GITHUB_FILE_SIZE must be positive. Using default: %d", defaultMaxGitHubFileSize)
+		logger.Warn("GEMINI_MAX_GITHUB_FILE_SIZE must be positive. Using default: %d", defaultMaxGitHubFileSize)
 		maxFileSize = defaultMaxGitHubFileSize
 	}
 	maxDiffBytes := int64(parseEnvVarInt("GEMINI_MAX_GITHUB_DIFF_BYTES", int(defaultMaxGitHubDiffBytes), logger))
 	if maxDiffBytes <= 0 {
-		logger.Warnf("GEMINI_MAX_GITHUB_DIFF_BYTES must be positive. Using default: %d", defaultMaxGitHubDiffBytes)
+		logger.Warn("GEMINI_MAX_GITHUB_DIFF_BYTES must be positive. Using default: %d", defaultMaxGitHubDiffBytes)
 		maxDiffBytes = defaultMaxGitHubDiffBytes
 	}
 	maxCommits := parseEnvVarInt("GEMINI_MAX_GITHUB_COMMITS", defaultMaxGitHubCommits, logger)
 	if maxCommits <= 0 {
-		logger.Warnf("GEMINI_MAX_GITHUB_COMMITS must be positive. Using default: %d", defaultMaxGitHubCommits)
+		logger.Warn("GEMINI_MAX_GITHUB_COMMITS must be positive. Using default: %d", defaultMaxGitHubCommits)
 		maxCommits = defaultMaxGitHubCommits
 	}
 	maxPRReviewComments := parseEnvVarInt("GEMINI_MAX_GITHUB_PR_REVIEW_COMMENTS", defaultMaxGitHubPRReviewComments, logger)
 	if maxPRReviewComments < 0 {
-		logger.Warnf("GEMINI_MAX_GITHUB_PR_REVIEW_COMMENTS must be non-negative. Using default: %d", defaultMaxGitHubPRReviewComments)
+		logger.Warn("GEMINI_MAX_GITHUB_PR_REVIEW_COMMENTS must be non-negative. Using default: %d", defaultMaxGitHubPRReviewComments)
 		maxPRReviewComments = defaultMaxGitHubPRReviewComments
 	}
 
@@ -357,7 +357,7 @@ func NewConfig(logger Logger) (*Config, error) {
 	task := loadTaskConfig(logger)
 	providerMaxTokens := parseEnvVarInt("PROVIDER_MAX_TOKENS", 0, logger)
 	if providerMaxTokens < 0 {
-		logger.Warnf("PROVIDER_MAX_TOKENS must be non-negative. Using default: 0")
+		logger.Warn("PROVIDER_MAX_TOKENS must be non-negative. Using default: 0")
 		providerMaxTokens = 0
 	}
 	httpCfg, err := loadHTTPConfig(logger)

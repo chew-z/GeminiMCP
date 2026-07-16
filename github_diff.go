@@ -124,10 +124,8 @@ func splitHunks(rest string) []string {
 // length-limited to maxBytes+1 so callers can detect overflow.
 func githubAPIGet(ctx context.Context, s *GeminiServer, url, accept string, maxBytes int64) ([]byte, error) {
 	logger := getLoggerFromContext(ctx)
-	client := &http.Client{Timeout: s.config.HTTPTimeout}
-
 	return withRetry(ctx, s.config, logger, "github.api.get", func(ctx context.Context) ([]byte, error) {
-		return githubAPIGetOnce(ctx, client, s, url, accept, maxBytes, logger)
+		return githubAPIGetOnce(ctx, s.httpClient, s, url, accept, maxBytes, logger)
 	})
 }
 

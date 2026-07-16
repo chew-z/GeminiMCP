@@ -34,7 +34,6 @@ func (l *recordingLogger) record(level, format string, args ...any) {
 func (l *recordingLogger) Debug(format string, args ...any) { l.record("DEBUG", format, args...) }
 func (l *recordingLogger) Info(format string, args ...any)  { l.record("INFO", format, args...) }
 func (l *recordingLogger) Warn(format string, args ...any)  { l.record("WARN", format, args...) }
-func (l *recordingLogger) Warnf(format string, args ...any) { l.record("WARN", format, args...) }
 func (l *recordingLogger) Error(format string, args ...any) { l.record("ERROR", format, args...) }
 
 func (l *recordingLogger) snapshot() []logEntry {

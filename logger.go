@@ -31,7 +31,6 @@ type Logger interface {
 	Info(format string, args ...any)
 	Warn(format string, args ...any)
 	Error(format string, args ...any)
-	Warnf(template string, args ...any)
 }
 
 // StandardLogger implements the Logger interface
@@ -87,13 +86,6 @@ func (l *StandardLogger) Warn(format string, args ...any) {
 	}
 }
 
-// Warnf logs a warning message with a format string
-func (l *StandardLogger) Warnf(format string, args ...any) {
-	if l.level <= LevelWarning {
-		l.log("WARN", format, args...)
-	}
-}
-
 // Error logs an error message
 func (l *StandardLogger) Error(format string, args ...any) {
 	if l.level <= LevelError {
@@ -124,9 +116,6 @@ func (s *scopedLogger) Info(format string, args ...any) {
 }
 func (s *scopedLogger) Warn(format string, args ...any) {
 	s.inner.Warn(s.prefix+format, args...)
-}
-func (s *scopedLogger) Warnf(format string, args ...any) {
-	s.inner.Warnf(s.prefix+format, args...)
 }
 func (s *scopedLogger) Error(format string, args ...any) {
 	s.inner.Error(s.prefix+format, args...)

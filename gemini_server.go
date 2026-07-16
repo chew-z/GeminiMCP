@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 )
 
 // NewGeminiServer creates a new GeminiServer with the provided configuration
@@ -20,5 +21,6 @@ func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error)
 	return &GeminiServer{
 		config:   config,
 		provider: provider,
+		httpClient: &http.Client{Timeout: config.HTTPTimeout},
 	}, nil
 }

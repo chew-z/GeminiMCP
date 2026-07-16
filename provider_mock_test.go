@@ -33,7 +33,6 @@ func (c *captureLogger) record(level, format string, args ...any) {
 func (c *captureLogger) Debug(format string, args ...any) { c.record("DEBUG", format, args...) }
 func (c *captureLogger) Info(format string, args ...any)  { c.record("INFO", format, args...) }
 func (c *captureLogger) Warn(format string, args ...any)  { c.record("WARN", format, args...) }
-func (c *captureLogger) Warnf(format string, args ...any) { c.record("WARN", format, args...) }
 func (c *captureLogger) Error(format string, args ...any) { c.record("ERROR", format, args...) }
 func (c *captureLogger) snapshot() []capturedLogEntry {
 	c.mu.Lock()

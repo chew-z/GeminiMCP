@@ -335,7 +335,6 @@ func (d *dedupCaptureLogger) Warn(format string, args ...any) {
 	defer d.mu.Unlock()
 	d.warnings = append(d.warnings, fmt.Sprintf(format, args...))
 }
-func (d *dedupCaptureLogger) Warnf(format string, args ...any) { d.Warn(format, args...) }
 func (d *dedupCaptureLogger) Error(format string, args ...any) {}
 
 func (d *dedupCaptureLogger) snapshot() []string {

@@ -74,7 +74,7 @@ func (s *GeminiServer) gatherAllContext(
 
 	spec := parseGitHubContextSpec(req)
 
-	ghContextParts, inventory, ghWarnings, errResult := s.gatherGitHubContext(ctx, req)
+	ghContextParts, inventory, ghWarnings, errResult := s.gatherGitHubContext(ctx, req, spec)
 	if errResult != nil {
 		return nil, nil, inventory, nil, errResult
 	}
@@ -149,11 +149,10 @@ func consolidatedContextError(
 // Files are intentionally NOT handled here — they're fetched by
 // gatherFileUploads.
 func (s *GeminiServer) gatherGitHubContext(
-	ctx context.Context, req mcp.CallToolRequest,
+	ctx context.Context, req mcp.CallToolRequest, spec githubContextSpec,
 ) ([]ContentPart, contextInventory, []string, *mcp.CallToolResult) {
 	var inv contextInventory
 
-	spec := parseGitHubContextSpec(req)
 	if !spec.any() {
 		return nil, inv, nil, nil
 	}

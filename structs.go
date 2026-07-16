@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -48,6 +49,7 @@ func NewPromptDefinition(name, description string) *PromptDefinition {
 type GeminiServer struct {
 	config   *Config
 	provider Provider
+	httpClient *http.Client
 }
 
 // Config holds all configuration parameters for the application

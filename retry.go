@@ -10,6 +10,14 @@ import (
 	"time"
 )
 
+// RetryAfterError is implemented by errors that carry a server-provided
+// backoff hint (e.g. from Retry-After or X-RateLimit-Reset headers).
+// withRetryClassified honours the hint instead of its own jitter backoff.
+type RetryAfterError interface {
+	error
+	RetryAfter() time.Duration
+}
+
 // withRetry executes fn with configurable retries and exponential backoff with
 // jitter, using the default transient-error classification.
 // It returns the value from fn on success, or the last error if all retries fail.
@@ -54,8 +62,13 @@ func withRetryClassified[T any](ctx context.Context, cfg *Config, logger Logger,
 			return zero, err
 		}
 
-		// Backoff with jitter
-		delay := computeBackoff(cfg, attempt)
+		// Backoff: honour server-provided hints when available
+		var delay time.Duration
+		if rae, ok := errors.AsType[RetryAfterError](err); ok {
+			delay = rae.RetryAfter()
+		} else {
+			delay = computeBackoff(cfg, attempt)
+		}
 		logger.Warn("%s failed (attempt %d/%d): %v; retrying in %s", opName, attempt+1, maxAttempts, err, delay)
 
 		select {

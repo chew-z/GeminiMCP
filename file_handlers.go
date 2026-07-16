@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"sort"
@@ -58,11 +58,6 @@ func parseOwnerRepoFallback(repoStr string) (string, string, error) {
 		return parts[0], parts[1], nil
 	}
 	return "", "", fmt.Errorf("invalid github_repo format: %s", repoStr)
-}
-
-// buildHTTPClient creates a reusable HTTP client with the configured timeout.
-func buildHTTPClient(cfg *Config) *http.Client {
-	return &http.Client{Timeout: cfg.HTTPTimeout}
 }
 
 // drainResults collects values from the fan-out channels into ordered slices.
@@ -129,7 +124,6 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 
 	concurrencyLimit := 4
 	semaphore := make(chan struct{}, concurrencyLimit)
-	httpClient := buildHTTPClient(s.config)
 
 	logger.Info("Starting concurrent file fetch for %d files with a limit of %d", len(files), concurrencyLimit)
 
@@ -140,7 +134,7 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			upload, err := fetchSingleFile(ctx, s, httpClient, owner, repo, filePath, ref)
+			upload, err := fetchSingleFile(ctx, s, s.httpClient, owner, repo, filePath, ref)
 			if err != nil {
 				errChannel <- err
 				return
@@ -167,9 +161,32 @@ func fetchFromGitHub(ctx context.Context, s *GeminiServer, repoURL, ref string, 
 	return uploads, combinedErrs
 }
 
+// rateLimitError carries a server-provided reset wait duration.
+// It implements RetryAfterError so withRetryClassified uses the hint.
+type rateLimitError struct {
+	wait time.Duration
+}
+
+func (e *rateLimitError) Error() string {
+	return "rate limit exceeded"
+}
+
+func (e *rateLimitError) RetryAfter() time.Duration {
+	return e.wait
+}
+
+// nonRetryableError wraps an error to signal withRetryClassified that it
+// must not be retried. Unwrap preserves errors.Is/As chains.
+type nonRetryableError struct {
+	err error
+}
+
+func (e *nonRetryableError) Error() string { return e.err.Error() }
+func (e *nonRetryableError) Unwrap() error { return e.err }
+
 // handleRateLimitResponse inspects a 403/429 response. Returns:
-//   - ctxErr != nil when the context was cancelled while waiting; body has been closed.
-//   - retryErr != nil when the caller should set lastErr=retryErr and continue the retry loop; body has been closed.
+//   - ctxErr is reserved for compatibility and is always nil; body has been closed on retryErr.
+//   - retryErr != nil when the caller should retry; body has been closed.
 //   - both nil when the response was not actually rate-limited or the reset window has elapsed;
 //     body is left OPEN so the caller's status-code handler can read the genuine GitHub error payload.
 func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Logger, filePath string) (ctxErr, retryErr error) {
@@ -193,25 +210,18 @@ func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Lo
 		return nil, nil
 	}
 
-	// We're about to wait/retry — discard the response body now.
+	// We're about to signal retry — discard the response body now.
 	if closeErr := resp.Body.Close(); closeErr != nil {
 		logger.Debug("[%s] Error closing response body during rate limit handling: %v", filePath, closeErr)
 	}
 
 	logger.Warn("[%s] Rate limit exceeded (via %s). Reset in %v", filePath, source, waitTime)
-	if waitTime <= 2*time.Minute {
-		logger.Debug("[%s] ratelimit: waiting %v in-process before signalling retry (%s)", filePath, waitTime, source)
-		timer := time.NewTimer(waitTime)
-		defer timer.Stop()
-		select {
-		case <-ctx.Done():
-			return ctx.Err(), nil
-		case <-timer.C:
-			return nil, fmt.Errorf("rate limit exceeded")
-		}
+	if waitTime > 2*time.Minute {
+		logger.Debug("[%s] ratelimit: wait %v exceeds 2m cap via %s, returning retryable error without hint", filePath, waitTime, source)
+		return nil, fmt.Errorf("rate limit exceeded")
 	}
-	logger.Debug("[%s] ratelimit: wait %v exceeds 2m cap via %s, returning retryable error", filePath, waitTime, source)
-	return nil, fmt.Errorf("rate limit exceeded")
+	logger.Debug("[%s] ratelimit: returning rateLimitError with wait %v (%s)", filePath, waitTime, source)
+	return nil, &rateLimitError{wait: waitTime}
 }
 
 // readErrorBody reads and closes resp.Body, returning its contents as a string
@@ -371,23 +381,6 @@ func fetchAttempt(ctx context.Context, p fetchAttemptParams) fetchAttemptOutcome
 	return consumeFetchBody(ctx, resp, p)
 }
 
-// waitBeforeRetry sleeps for the exponential-backoff-plus-jitter interval for
-// the given attempt. Returns ctx.Err() if the context is cancelled.
-func waitBeforeRetry(ctx context.Context, logger Logger, filePath string, attempt, maxRetries int) error {
-	backoff := time.Duration(1<<uint(attempt)) * time.Second
-	jitter := time.Duration(rand.Int64N(int64(500 * time.Millisecond)))
-	sleepTime := backoff + jitter
-	logger.Info("[%s] Retry attempt %d/%d. Sleeping for %v", filePath, attempt, maxRetries, sleepTime)
-	timer := time.NewTimer(sleepTime)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
-}
-
 // buildContentsAPIURL builds the raw-content endpoint URL for a file path.
 func buildContentsAPIURL(baseURL, owner, repo, filePath, ref string) string {
 	// URL-escape individual path segments to handle filenames with spaces or
@@ -423,25 +416,29 @@ func fetchSingleFile(ctx context.Context, s *GeminiServer, client *http.Client, 
 		startTime: startTime,
 	}
 
-	var lastErr error
-	maxRetries := 3
+	// Classifier: retry unless explicitly marked non-retryable.
+	isRetryable := func(err error) bool {
+		var nre *nonRetryableError
+		return !errors.As(err, &nre)
+	}
 
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		if attempt > 0 {
-			if err := waitBeforeRetry(ctx, logger, filePath, attempt, maxRetries); err != nil {
-				return nil, err
-			}
-		}
-
+	upload, err := withRetryClassified(ctx, s.config, logger, filePath, isRetryable, func(ctx context.Context) (*FileUploadRequest, error) {
 		outcome := fetchAttempt(ctx, params)
-		if outcome.fatalErr != nil {
-			return nil, outcome.fatalErr
-		}
 		if outcome.upload != nil {
 			return outcome.upload, nil
 		}
-		lastErr = outcome.retryErr
+		if outcome.fatalErr != nil {
+			return nil, &nonRetryableError{err: outcome.fatalErr}
+		}
+		return nil, outcome.retryErr
+	})
+	if err != nil {
+		// Unwrap nonRetryableError so callers see the original error.
+		var nre *nonRetryableError
+		if errors.As(err, &nre) {
+			return nil, nre.Unwrap()
+		}
+		return nil, fmt.Errorf("failed to fetch %s: %v", filePath, err)
 	}
-
-	return nil, fmt.Errorf("failed to fetch %s after %d retries: %v", filePath, maxRetries, lastErr)
+	return upload, nil
 }

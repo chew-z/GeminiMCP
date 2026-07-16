@@ -19,10 +19,6 @@ func getLoggerFromContext(ctx context.Context) Logger {
 	return NewLogger(parseLogLevel(os.Getenv("GEMINI_LOG_LEVEL"), LevelInfo))
 }
 
-// This function has been removed after refactoring to use direct MCP types
-
-// This function has been removed after refactoring to use formatMCPResponse and direct MCP types
-
 var mimeTypes = map[string]string{
 	// Text / markup
 	".txt":   "text/plain",
