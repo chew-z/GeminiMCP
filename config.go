@@ -13,13 +13,10 @@ import (
 
 // Default configuration values
 const (
-	defaultGeminiModel       = "gemini-pro"        // Tier-level name; triggers bestModelForTier() at runtime
-	defaultGeminiSearchModel = "gemini-flash-lite" // Tier-level name; triggers bestModelForTier() at runtime
-	defaultGeminiTemperature = 1.0                 // Gemini 3 default temperature
+	defaultGeminiModel       = "gemini-3.1-pro-preview"
+	defaultGeminiTemperature = 1.0 // Gemini 3 default temperature
 	// Pre-qualification defaults
-	defaultPrequalify              = true
-	defaultPrequalifyModel         = "gemini-flash"
-	defaultPrequalifyThinkingLevel = "medium"
+	defaultPrequalify = true
 	// GitHub settings defaults
 	defaultGitHubAPIBaseURL          = "https://api.github.com"
 	defaultMaxGitHubFiles            = 20
@@ -49,48 +46,9 @@ const (
 	// Authentication defaults
 	defaultAuthEnabled = false // Authentication disabled by default
 
-	// Thinking settings
-	defaultThinkingLevel       = "high" // Default thinking level for gemini_ask
-	defaultSearchThinkingLevel = "low"  // Default thinking level for gemini_search
-
-	// Service tier settings
-	defaultServiceTier = "standard" // Default service tier (flex, standard, priority)
 )
 
 // Config struct definition moved to structs.go
-
-// validateServiceTier validates the service tier string
-func validateServiceTier(tier string) bool {
-	switch tier {
-	case "flex", "standard", "priority":
-		return true
-	}
-	return false
-}
-
-// validateThinkingLevel validates the thinking level string
-func validateThinkingLevel(level string) bool {
-	switch strings.ToLower(level) {
-	case "minimal", "low", "medium", "high":
-		return true
-	default:
-		return false
-	}
-}
-
-// parseThinkingLevelEnv reads a thinking level from an environment variable,
-// validates it, and returns the default if missing or invalid.
-func parseThinkingLevelEnv(envKey, defaultValue string, logger Logger) string {
-	if levelStr := os.Getenv(envKey); levelStr != "" {
-		level := strings.ToLower(levelStr)
-		if validateThinkingLevel(level) {
-			return level
-		}
-		logger.Warnf("Invalid %s value: %q (valid: minimal, low, medium, high). Using default: %q",
-			envKey, levelStr, defaultValue)
-	}
-	return defaultValue
-}
 
 // Helper function to parse an integer environment variable with a default
 func parseEnvVarInt(key string, defaultValue int, logger Logger) int {
@@ -278,48 +236,17 @@ func loadAuthConfig(logger Logger) (authConfig, error) {
 	return authConfig{enabled: enabled, secretKey: secretKey}, nil
 }
 
-// thinkingAndTierConfig captures thinking levels and service tier.
-type thinkingAndTierConfig struct {
-	thinkingLevel       string
-	searchThinkingLevel string
-	serviceTier         string
-}
-
-func loadThinkingConfig(logger Logger) thinkingAndTierConfig {
-	serviceTier := defaultServiceTier
-	if tierStr := os.Getenv("GEMINI_SERVICE_TIER"); tierStr != "" {
-		if validateServiceTier(strings.ToLower(tierStr)) {
-			serviceTier = strings.ToLower(tierStr)
-		} else {
-			logger.Warnf("Invalid GEMINI_SERVICE_TIER '%s' (valid: flex, standard, priority). Using default: %s", tierStr, defaultServiceTier)
-		}
-	}
-	return thinkingAndTierConfig{
-		thinkingLevel:       parseThinkingLevelEnv("GEMINI_THINKING_LEVEL", defaultThinkingLevel, logger),
-		searchThinkingLevel: parseThinkingLevelEnv("GEMINI_SEARCH_THINKING_LEVEL", defaultSearchThinkingLevel, logger),
-		serviceTier:         serviceTier,
-	}
-}
-
 // taskExecConfig captures task-augmented execution env values (concurrency +
 // pre-qualification classifier).
 type taskExecConfig struct {
-	maxConcurrentTasks      int
-	prequalify              bool
-	prequalifyModel         string
-	prequalifyThinkingLevel string
+	maxConcurrentTasks int
+	prequalify         bool
 }
 
 func loadTaskConfig(logger Logger) taskExecConfig {
-	prequalifyModel := os.Getenv("GEMINI_PREQUALIFY_MODEL")
-	if prequalifyModel == "" {
-		prequalifyModel = defaultPrequalifyModel
-	}
 	return taskExecConfig{
-		maxConcurrentTasks:      parseEnvVarInt("GEMINI_MAX_CONCURRENT_TASKS", defaultMaxConcurrentTasks, logger),
-		prequalify:              parseEnvVarBool("GEMINI_PREQUALIFY", defaultPrequalify, logger),
-		prequalifyModel:         prequalifyModel,
-		prequalifyThinkingLevel: parseThinkingLevelEnv("GEMINI_PREQUALIFY_THINKING", defaultPrequalifyThinkingLevel, logger),
+		maxConcurrentTasks: parseEnvVarInt("GEMINI_MAX_CONCURRENT_TASKS", defaultMaxConcurrentTasks, logger),
+		prequalify:         parseEnvVarBool("GEMINI_PREQUALIFY", defaultPrequalify, logger),
 	}
 }
 
@@ -425,11 +352,6 @@ func NewConfig(logger Logger) (*Config, error) {
 		geminiModel = defaultGeminiModel
 	}
 
-	geminiSearchModel := os.Getenv("GEMINI_SEARCH_MODEL")
-	if geminiSearchModel == "" {
-		geminiSearchModel = defaultGeminiSearchModel
-	}
-
 	geminiTemperature := parseEnvVarFloat("GEMINI_TEMPERATURE", defaultGeminiTemperature, logger)
 	if geminiTemperature < 0.0 || geminiTemperature > 1.0 {
 		return nil, fmt.Errorf("GEMINI_TEMPERATURE must be between 0.0 and 1.0, got %v", geminiTemperature)
@@ -437,8 +359,12 @@ func NewConfig(logger Logger) (*Config, error) {
 
 	tr := loadTimeoutAndRetryConfig(logger)
 	github := loadGitHubConfig(logger)
-	thinking := loadThinkingConfig(logger)
 	task := loadTaskConfig(logger)
+	providerMaxTokens := parseEnvVarInt("PROVIDER_MAX_TOKENS", 0, logger)
+	if providerMaxTokens < 0 {
+		logger.Warnf("PROVIDER_MAX_TOKENS must be non-negative. Using default: 0")
+		providerMaxTokens = 0
+	}
 	httpCfg, err := loadHTTPConfig(logger)
 	if err != nil {
 		return nil, err
@@ -450,18 +376,18 @@ func NewConfig(logger Logger) (*Config, error) {
 	if err := validateAuthInterop(auth, httpCfg); err != nil {
 		return nil, err
 	}
-	return assembleConfig(geminiAPIKey, geminiModel, geminiSearchModel, geminiTemperature, tr, github, thinking, task, httpCfg, auth), nil
+	return assembleConfig(geminiAPIKey, geminiModel, geminiTemperature, int32(providerMaxTokens), tr, github, task, httpCfg, auth), nil
 }
 
 // assembleConfig builds the public Config struct from the sub-section values
 // loaded by NewConfig. Factored out so NewConfig stays focused on env parsing
 // and cross-section validation.
 func assembleConfig(
-	geminiAPIKey, geminiModel, geminiSearchModel string,
+	geminiAPIKey, geminiModel string,
 	geminiTemperature float64,
+	providerMaxTokens int32,
 	tr timeoutAndRetryConfig,
 	github githubSettings,
-	thinking thinkingAndTierConfig,
 	task taskExecConfig,
 	httpCfg httpTransportConfig,
 	auth authConfig,
@@ -469,8 +395,8 @@ func assembleConfig(
 	return &Config{
 		GeminiAPIKey:                   geminiAPIKey,
 		GeminiModel:                    geminiModel,
-		GeminiSearchModel:              geminiSearchModel,
 		GeminiTemperature:              geminiTemperature,
+		ProviderMaxTokens:              providerMaxTokens,
 		HTTPTimeout:                    tr.timeout,
 		HTTPWriteTimeout:               tr.httpWriteTimeout,
 		EnableHTTP:                     httpCfg.enableHTTP,
@@ -499,12 +425,6 @@ func assembleConfig(
 		MaxGitHubCommits:          github.maxGitHubCommits,
 		MaxGitHubPRReviewComments: github.maxGitHubPRReviewComments,
 
-		ThinkingLevel:       thinking.thinkingLevel,
-		SearchThinkingLevel: thinking.searchThinkingLevel,
-		ServiceTier:         thinking.serviceTier,
-
-		Prequalify:              task.prequalify,
-		PrequalifyModel:         task.prequalifyModel,
-		PrequalifyThinkingLevel: task.prequalifyThinkingLevel,
+		Prequalify: task.prequalify,
 	}
 }

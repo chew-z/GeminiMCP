@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"google.golang.org/genai"
 )
 
 // gatherCompareDiff fetches a GitHub compare-refs diff for the base..head
@@ -16,7 +14,7 @@ import (
 // the client is directed towards `github_commits` as a chunked alternative.
 func (s *GeminiServer) gatherCompareDiff(
 	ctx context.Context, owner, repo, base, head string,
-) ([]*genai.Part, *diffInventory, error) {
+) ([]ContentPart, *diffInventory, error) {
 
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Fetching GitHub diff %s/%s %s..%s", owner, repo, base, head)
@@ -42,11 +40,11 @@ func (s *GeminiServer) gatherCompareDiff(
 
 	diff, truncated := truncateDiff(string(patchBytes), s.config.MaxGitHubDiffBytes)
 
-	part := genai.NewPartFromText(fmt.Sprintf(
+	part := ContentPart{Text: fmt.Sprintf(
 		"  <diff base=\"%s\" head=\"%s\" truncated=\"%s\">%s</diff>\n",
 		xmlAttr(base), xmlAttr(head), boolStr(truncated), diff,
-	))
+	)}
 
 	inv := &diffInventory{Base: base, Head: head, Truncated: truncated}
-	return []*genai.Part{part}, inv, nil
+	return []ContentPart{part}, inv, nil
 }

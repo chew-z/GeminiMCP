@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"google.golang.org/genai"
 )
 
 // githubCommitMeta is the slice of /repos/.../commits/{sha} we care about.
@@ -29,7 +27,7 @@ type githubCommitMeta struct {
 // so a single bad SHA does not poison the whole batch.
 func (s *GeminiServer) gatherCommits(
 	ctx context.Context, owner, repo string, shas []string,
-) ([]*genai.Part, []commitInventory, []string, error) {
+) ([]ContentPart, []commitInventory, []string, error) {
 
 	logger := getLoggerFromContext(ctx)
 	if len(shas) == 0 {
@@ -41,7 +39,7 @@ func (s *GeminiServer) gatherCommits(
 
 	base := strings.TrimRight(s.config.GitHubAPIBaseURL, "/")
 
-	var parts []*genai.Part
+	var parts []ContentPart
 	var inv []commitInventory
 	var warnings []string
 
@@ -55,7 +53,7 @@ func (s *GeminiServer) gatherCommits(
 		if part == nil {
 			continue
 		}
-		parts = append(parts, part)
+		parts = append(parts, *part)
 		inv = append(inv, cinv)
 	}
 
@@ -66,7 +64,7 @@ func (s *GeminiServer) gatherCommits(
 // fragment. Returns a nil part plus warnings when any step fails.
 func (s *GeminiServer) fetchCommit(
 	ctx context.Context, base, owner, repo, sha string, logger Logger,
-) (*genai.Part, commitInventory, []string) {
+) (*ContentPart, commitInventory, []string) {
 	commitURL := fmt.Sprintf("%s/repos/%s/%s/commits/%s", base, owner, repo, encodeRefForURL(sha))
 
 	metaBytes, err := githubAPIGet(ctx, s, commitURL, "application/vnd.github+json", 1<<20)
@@ -93,7 +91,7 @@ func (s *GeminiServer) fetchCommit(
 		authorAttr = "@" + meta.Author.Login
 	}
 
-	part := genai.NewPartFromText(fmt.Sprintf(
+	part := ContentPart{Text: fmt.Sprintf(
 		"  <commit sha=\"%s\" author=\"%s\" date=\"%s\" subject=\"%s\" truncated=\"%s\">\n"+
 			"    <message>%s</message>\n"+
 			"    <patch>%s</patch>\n"+
@@ -105,8 +103,8 @@ func (s *GeminiServer) fetchCommit(
 		boolStr(truncated),
 		messageBody,
 		patch,
-	))
-	return part, commitInventory{
+	)}
+	return &part, commitInventory{
 		SHA:       shortSHA(meta.SHA),
 		Subject:   subject,
 		Truncated: truncated,

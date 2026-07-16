@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"google.golang.org/genai"
 )
 
 const prequalifySystemPrompt = `Classify this request into exactly one category.
@@ -19,33 +18,35 @@ Categories:
 - review: Code quality review, best practices, refactoring, performance
 - security: Security vulnerabilities, authentication, authorization, OWASP
 - debug: Bug fixing, error analysis, troubleshooting, test failures
-- tests: Generating new unit/integration tests or test cases for existing code`
+- tests: Generating new unit/integration tests or test cases for existing code
+
+Respond with a JSON string containing exactly one category name, e.g. "analyze".`
 
 // prequalifyQuery classifies a user query into one of the five categories
 // using a lightweight Flash model call with structured enum output.
 // On any failure it returns an error; the caller decides the fallback.
 func (s *GeminiServer) prequalifyQuery(ctx context.Context, query, contextSummary string) (queryCategory, error) {
-	if s == nil || s.client == nil {
-		return "", fmt.Errorf("prequalify: gemini client not initialized")
+	if s == nil || s.provider == nil {
+		return "", fmt.Errorf("prequalify: provider not initialized")
 	}
 	if strings.TrimSpace(query) == "" && strings.TrimSpace(contextSummary) == "" {
 		return "", fmt.Errorf("prequalify: empty query and context")
 	}
 
 	logger := getLoggerFromContext(ctx)
-	modelName := resolvePrequalifyModel(s.config.PrequalifyModel)
 
 	userMessage := query
 	if contextSummary != "" {
 		userMessage = query + "\n\n" + contextSummary
 	}
 
-	config := buildPrequalifyConfig(modelName, s.config.PrequalifyThinkingLevel)
-	contents := []*genai.Content{
-		genai.NewContentFromText(userMessage, genai.RoleUser),
-	}
-
-	resp, err := s.client.Models.GenerateContent(ctx, modelName, contents, config)
+	resp, err := s.provider.Generate(ctx, GenerationRequest{
+		SystemPrompt:   prequalifySystemPrompt,
+		Parts:          []ContentPart{{Text: userMessage}},
+		ResponseFormat: "json_object",
+		Thinking:       ThinkingSpec{Enabled: false},
+		Temperature:    0,
+	})
 	if err != nil {
 		return "", fmt.Errorf("prequalify API call failed: %w", err)
 	}
@@ -55,50 +56,20 @@ func (s *GeminiServer) prequalifyQuery(ctx context.Context, query, contextSummar
 		logger.Debug("prequalify: raw=%q parse error: %v", raw, err)
 		return "", err
 	}
-	logger.Debug("prequalify: raw=%q parsed=%s model=%s", raw, cat, modelName)
+	logger.Debug("prequalify: raw=%q parsed=%s model=%s", raw, cat, s.config.GeminiModel)
 	logger.Info("Pre-qualified query as '%s'", cat)
 	return cat, nil
-}
-
-// resolvePrequalifyModel converts a tier name to a concrete model ID.
-func resolvePrequalifyModel(tierName string) string {
-	modelName := bestModelForTier(tierName)
-	if modelName == "" {
-		modelName = tierName
-	}
-	return ResolveModelID(modelName)
-}
-
-// buildPrequalifyConfig creates the GenerateContentConfig for pre-qualification.
-func buildPrequalifyConfig(modelName, thinkingLevel string) *genai.GenerateContentConfig {
-	config := &genai.GenerateContentConfig{
-		SystemInstruction: genai.NewContentFromText(prequalifySystemPrompt, ""),
-		ResponseMIMEType:  "application/json",
-		ResponseJsonSchema: map[string]any{
-			"type": "string",
-			"enum": []string{"general", "analyze", "review", "security", "debug", "tests"},
-		},
-		ServiceTier: genai.ServiceTierPriority,
-	}
-
-	modelInfo := GetModelByID(modelName)
-	if modelInfo != nil && modelInfo.SupportsThinking {
-		config.ThinkingConfig = &genai.ThinkingConfig{
-			ThinkingLevel: genai.ThinkingLevel(thinkingLevel),
-		}
-	}
-	return config
 }
 
 // parsePrequalifyResponse extracts and validates the category from an API
 // response. The second return is the raw classifier text (post-JSON-unquote)
 // so callers can surface it in DEBUG logs when the parse fails.
-func parsePrequalifyResponse(resp *genai.GenerateContentResponse) (queryCategory, string, error) {
-	if resp == nil || len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
+func parsePrequalifyResponse(resp *GenerationResponse) (queryCategory, string, error) {
+	if resp == nil {
 		return "", "", fmt.Errorf("prequalify returned empty response")
 	}
 
-	raw := strings.TrimSpace(resp.Text())
+	raw := strings.TrimSpace(resp.Text)
 
 	// Try JSON-unquoting (structured output wraps the value in quotes)
 	var parsed string
@@ -134,7 +105,7 @@ type resolvedPrompt struct {
 //  3. Pre-qualification fails    → analyze if any github_* present, else general
 func (s *GeminiServer) resolveSystemPromptAsync(ctx context.Context, req mcp.CallToolRequest, query string, logger Logger) <-chan resolvedPrompt {
 	ch := make(chan resolvedPrompt, 1)
-	if !s.config.Prequalify || s.client == nil || s.client.Models == nil {
+	if !s.config.Prequalify || s.provider == nil {
 		ch <- resolvedPrompt{SystemPrompt: systemPromptGeneral, Category: categoryGeneral}
 		return ch
 	}
@@ -165,7 +136,7 @@ func (s *GeminiServer) resolveSystemPromptAsync(ctx context.Context, req mcp.Cal
 func buildContextSummary(req mcp.CallToolRequest) string {
 	var parts []string
 
-	repo := extractArgumentString(req, "github_repo", "")
+	repo := extractArgumentString(req, "github_repo")
 
 	if prNum, hasPR := extractGitHubPRNumber(req); hasPR {
 		parts = append(parts, fmt.Sprintf("PR #%d", prNum))
@@ -176,8 +147,8 @@ func buildContextSummary(req mcp.CallToolRequest) string {
 		parts = append(parts, fmt.Sprintf("%d commit(s)", len(commits)))
 	}
 
-	diffBase := extractArgumentString(req, "github_diff_base", "")
-	diffHead := extractArgumentString(req, "github_diff_head", "")
+	diffBase := extractArgumentString(req, "github_diff_base")
+	diffHead := extractArgumentString(req, "github_diff_head")
 	if diffBase != "" && diffHead != "" {
 		parts = append(parts, fmt.Sprintf("diff %s..%s", diffBase, diffHead))
 	}
@@ -200,7 +171,7 @@ func buildContextSummary(req mcp.CallToolRequest) string {
 
 // hasGitHubContext returns true if the request includes any github_* parameters.
 func hasGitHubContext(req mcp.CallToolRequest) bool {
-	if extractArgumentString(req, "github_repo", "") != "" {
+	if extractArgumentString(req, "github_repo") != "" {
 		return true
 	}
 	if _, hasPR := extractGitHubPRNumber(req); hasPR {
@@ -212,7 +183,7 @@ func hasGitHubContext(req mcp.CallToolRequest) bool {
 	if len(extractArgumentStringArray(req, "github_files")) > 0 {
 		return true
 	}
-	if extractArgumentString(req, "github_diff_base", "") != "" {
+	if extractArgumentString(req, "github_diff_base") != "" {
 		return true
 	}
 	return false

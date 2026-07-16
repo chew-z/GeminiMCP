@@ -37,10 +37,6 @@ var Prompts = []*PromptDefinition{
 		"security_analysis",
 		"Analyze code for security vulnerabilities and best practices",
 	),
-	NewPromptDefinition(
-		"research_question",
-		"Research current information and trends using web search",
-	),
 	// --- GitHub-workflow shortcut prompts ---
 	//
 	// These are discoverable entry points that emit a pre-filled `gemini_ask`

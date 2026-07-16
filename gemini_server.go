@@ -4,14 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"google.golang.org/genai"
 )
-
-// modelFetchTimeout bounds startup model discovery, preventing indefinite hangs
-// when the Gemini API cannot be reached.
-const modelFetchTimeout = 30 * time.Second
 
 // NewGeminiServer creates a new GeminiServer with the provided configuration
 func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error) {
@@ -32,16 +27,8 @@ func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error)
 		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 	}
 
-	fetchCtx, cancel := context.WithTimeout(ctx, modelFetchTimeout)
-	defer cancel()
-
-	// Fetch available models from the API and populate the model store.
-	if err := FetchGeminiModels(fetchCtx, client); err != nil {
-		return nil, fmt.Errorf("failed to fetch models from API: %w", err)
-	}
-
 	return &GeminiServer{
-		config: config,
-		client: client,
+		config:   config,
+		provider: NewGeminiProvider(client, config.GeminiModel),
 	}, nil
 }

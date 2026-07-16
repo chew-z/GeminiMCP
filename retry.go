@@ -8,13 +8,22 @@ import (
 	"net"
 	"strings"
 	"time"
-
-	"google.golang.org/api/googleapi"
 )
 
-// withRetry executes fn with configurable retries and exponential backoff with jitter.
+// withRetry executes fn with configurable retries and exponential backoff with
+// jitter, using the default transient-error classification.
 // It returns the value from fn on success, or the last error if all retries fail.
 func withRetry[T any](ctx context.Context, cfg *Config, logger Logger, opName string, fn func(context.Context) (T, error)) (T, error) {
+	return withRetryClassified(ctx, cfg, logger, opName, nil, fn)
+}
+
+// withRetryClassified is withRetry with a pluggable retryability classifier.
+// Universal rules always apply first: context.Canceled/DeadlineExceeded are
+// terminal, transport (net) errors are retryable. For everything else the
+// classifier decides when non-nil (Provider.IsRetryable); a nil classifier
+// falls back to the default message heuristics.
+func withRetryClassified[T any](ctx context.Context, cfg *Config, logger Logger, opName string,
+	isRetryable func(error) bool, fn func(context.Context) (T, error)) (T, error) {
 	var zero T
 	maxAttempts := cfg.MaxRetries + 1
 	if maxAttempts <= 0 {
@@ -37,7 +46,7 @@ func withRetry[T any](ctx context.Context, cfg *Config, logger Logger, opName st
 		}
 
 		// Do not retry non-retryable errors or on last attempt
-		retryable := isRetryableError(err)
+		retryable := classifyRetryable(err, isRetryable)
 		if !retryable || attempt == maxAttempts-1 {
 			logger.Debug("%s: attempt %d/%d failed terminally (retryable=%v): %v",
 				opName, attempt+1, maxAttempts, retryable, err)
@@ -72,28 +81,10 @@ func computeBackoff(cfg *Config, attempt int) time.Duration {
 	}
 	// Growth
 	mult := math.Pow(2, float64(attempt))
-	d := time.Duration(float64(base) * mult)
-	if d > maxBackoff {
-		d = maxBackoff
-	}
+	d := min(time.Duration(float64(base)*mult), maxBackoff)
 	// Full jitter in [0.5, 1.5)x
 	jitter := 0.5 + rand.Float64()
 	return time.Duration(float64(d) * jitter)
-}
-
-// isRetryableGoogleAPIError reports whether err is a *googleapi.Error with a
-// retryable status code. The second return value (ok) is true when the error
-// was a Google API error, signalling the caller to stop checking other
-// heuristics.
-func isRetryableGoogleAPIError(err error) (retryable, ok bool) {
-	var gerr *googleapi.Error
-	if !errors.As(err, &gerr) {
-		return false, false
-	}
-	if gerr.Code == 429 || (gerr.Code >= 500 && gerr.Code <= 599) {
-		return true, true
-	}
-	return false, true
 }
 
 // isRetryableByMessage applies best-effort string heuristics to detect
@@ -116,8 +107,10 @@ func isRetryableByMessage(err error) bool {
 	}
 }
 
-// isRetryableError determines whether an error is transient.
-func isRetryableError(err error) bool {
+// classifyRetryable applies the universal rules (context errors terminal,
+// transport errors retryable), then defers to the optional classifier. A nil
+// classifier keeps today's default: string-heuristic message matching.
+func classifyRetryable(err error, isRetryable func(error) bool) bool {
 	if err == nil {
 		return false
 	}
@@ -125,8 +118,7 @@ func isRetryableError(err error) bool {
 		return false
 	}
 
-	var nerr net.Error
-	if errors.As(err, &nerr) {
+	if nerr, ok := errors.AsType[net.Error](err); ok {
 		if nerr.Timeout() {
 			return true
 		}
@@ -136,9 +128,8 @@ func isRetryableError(err error) bool {
 		}
 	}
 
-	if retryable, ok := isRetryableGoogleAPIError(err); ok {
-		return retryable
+	if isRetryable != nil {
+		return isRetryable(err)
 	}
-
 	return isRetryableByMessage(err)
 }

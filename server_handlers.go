@@ -28,25 +28,10 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(geminiSvc.GeminiAskHandler, "gemini_ask", logger))
 	logger.Info("Registered tool: gemini_ask")
 
-	// Use shared tool definition for gemini_search
-
-	// Create handler for gemini_search using direct handler
-	// Register gemini_search with logger wrapper using shared tool definition
-	mcpServer.AddTool(GeminiSearchTool, wrapHandlerWithLogger(geminiSvc.GeminiSearchHandler, "gemini_search", logger))
-	logger.Info("Registered tool: gemini_search")
-
 	registerPrompts(mcpServer, geminiSvc, logger)
 
-	// Log thinking configuration if enabled
-	model := GetModelByID(config.GeminiModel)
-	if model != nil && model.SupportsThinking {
-		logger.Info("Thinking enabled for model %s (context window: %d tokens)",
-			config.GeminiModel, model.ContextWindowSize)
-	}
-
 	if config.Prequalify {
-		logger.Info("System prompt selection: pre-qualification enabled (model %s)",
-			config.PrequalifyModel)
+		logger.Info("System prompt selection: pre-qualification enabled")
 	} else {
 		logger.Info("System prompt selection: pre-qualification disabled — using systemPromptGeneral")
 	}
@@ -229,7 +214,6 @@ func registerErrorTools(mcpServer *server.MCPServer, errorServer *ErrorGeminiSer
 	// Register error handlers for all tools using shared tool definitions,
 	// stripped of TaskSupport so the degraded server stays self-consistent.
 	mcpServer.AddTool(degradedTool(GeminiAskTool), wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_ask", logger))
-	mcpServer.AddTool(degradedTool(GeminiSearchTool), wrapHandlerWithLogger(errorServer.handleErrorResponse, "gemini_search", logger))
 
 	logger.Info("Registered error handlers for all tools")
 }

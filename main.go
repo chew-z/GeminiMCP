@@ -21,8 +21,6 @@ var (
 	newConfigFn          = NewConfig
 	handleStartupErrorFn = handleStartupError
 	setupGeminiServerFn  = setupGeminiServer
-	resolveModelFn       = resolveAndValidateModel
-	validateModelIDFn    = ValidateModelID
 	startHTTPServerFn    = startHTTPServer
 	serveStdioFn         = server.ServeStdio
 	getEnvFn             = os.Getenv
@@ -45,12 +43,8 @@ func buildMCPServerOptions(config *Config, logger Logger) []server.ServerOption 
 		server.WithDescription("Gemini LLM for analysis, reasoning and research"),
 		server.WithWebsiteURL(serverWebsiteURL),
 		server.WithInstructions(`gemini_ask: send a prompt to Gemini, optionally with GitHub repository context.
-gemini_search: answer questions using web search with source citations.
-
-Defaults are optimized per model tier. Override parameters exist but are rarely needed.
 github_repo is required when using any github_* parameter. github_files requires github_ref.`),
 		server.WithCompletions(),
-		server.WithPromptCompletionProvider(&GeminiCompletionProvider{}),
 		server.WithToolCapabilities(true),
 		server.WithRecovery(),
 		server.WithInputSchemaValidation(),
@@ -81,9 +75,7 @@ func main() {
 
 // cliFlags captures the parsed command-line flags for runMain.
 type cliFlags struct {
-	geminiModel       string
 	geminiTemperature float64
-	serviceTier       string
 	transport         string
 
 	authEnabled     bool
@@ -107,48 +99,9 @@ func applyCLIOverrides(flags *cliFlags, config *Config, logger Logger) error {
 		config.GeminiTemperature = flags.geminiTemperature
 	}
 
-	if flags.serviceTier != "" {
-		config.ServiceTier = flags.serviceTier
-		logger.Info("Service tier overridden to: %s", config.ServiceTier)
-	}
-	logger.Info("Service tier: %s", config.ServiceTier)
-
 	if flags.authEnabled {
 		config.AuthEnabled = true
 		logger.Info("Authentication feature enabled via command line flag")
-	}
-	return nil
-}
-
-// applyModelFlag validates and applies the --gemini-model flag. It must run
-// after the model catalog is populated.
-func applyModelFlag(modelFlag string, config *Config, logger Logger) error {
-	if modelFlag == "" {
-		return nil
-	}
-	validatedID, redirected, err := validateModelIDFn(modelFlag)
-	if err != nil {
-		logger.Error("Invalid --gemini-model: %v", err)
-		return err
-	}
-	if redirected {
-		logger.Warn("Custom model '%s' redirected to '%s'", modelFlag, validatedID)
-	} else {
-		logger.Info("Using known model: %s", validatedID)
-	}
-	config.GeminiModel = validatedID
-	return nil
-}
-
-// resolveDefaultModels maps tier-level model aliases (gemini-pro, gemini-flash,
-// …) to concrete IDs against the populated catalog.
-func resolveDefaultModels(ctx context.Context, config *Config) error {
-	var err error
-	if config.GeminiModel, err = resolveModelFn(ctx, config.GeminiModel); err != nil {
-		return err
-	}
-	if config.GeminiSearchModel, err = resolveModelFn(ctx, config.GeminiSearchModel); err != nil {
-		return err
 	}
 	return nil
 }
@@ -203,9 +156,7 @@ func runMain(args []string) int {
 	flagSet.SetOutput(io.Discard)
 
 	flags := &cliFlags{}
-	flagSet.StringVar(&flags.geminiModel, "gemini-model", "", "Gemini model name (overrides env var)")
 	flagSet.Float64Var(&flags.geminiTemperature, "gemini-temperature", -1, "Temperature setting (0.0-1.0, overrides env var)")
-	flagSet.StringVar(&flags.serviceTier, "service-tier", "", "Service tier: flex, standard, priority (overrides env var)")
 	flagSet.StringVar(&flags.transport, "transport", "stdio", "Transport mode: 'stdio' (default) or 'http'")
 	flagSet.BoolVar(&flags.authEnabled, "auth-enabled", false, "Enable JWT authentication for HTTP transport (overrides env var)")
 	flagSet.BoolVar(&flags.generateToken, "generate-token", false, "Generate a JWT token and exit")
@@ -255,25 +206,7 @@ func runMain(args []string) int {
 		return 0
 	}
 
-	if err := resolveDefaultModels(ctx, config); err != nil {
-		handleStartupErrorFn(ctx, err)
-		return 0
-	}
-
-	if err := applyModelFlag(flags.geminiModel, config, logger); err != nil {
-		handleStartupErrorFn(ctx, err)
-		return 0
-	}
-
 	return runTransport(ctx, mcpServer, config, logger, flags.transport)
-}
-
-// Helper function to get feature status as a string
-func getFeatureStatusStr(enabled bool) string {
-	if enabled {
-		return "enabled"
-	}
-	return "disabled"
 }
 
 // logServerCapabilities summarises advertised MCP capabilities at startup so

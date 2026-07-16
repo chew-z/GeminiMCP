@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
 	"time"
 )
@@ -89,4 +90,50 @@ func TestWithRetry(t *testing.T) {
 			}
 		})
 	}
+}
+
+type timeoutNetError struct{}
+
+func (timeoutNetError) Error() string   { return "timeout" }
+func (timeoutNetError) Timeout() bool   { return true }
+func (timeoutNetError) Temporary() bool { return true }
+
+var _ net.Error = timeoutNetError{}
+
+func TestWithRetryClassified(t *testing.T) {
+	cfg := &Config{MaxRetries: 1, InitialBackoff: time.Millisecond, MaxBackoff: time.Millisecond}
+	logger := NewLogger(LevelError)
+	tests := []struct {
+		name         string
+		err          error
+		classifier   func(error) bool
+		wantAttempts int
+	}{
+		{"custom 429 retries", errors.New("429"), func(error) bool { return true }, 2},
+		{"custom 400 terminal", errors.New("400"), func(error) bool { return false }, 1},
+		{"transport retries nil classifier", timeoutNetError{}, nil, 2},
+		{"transport retries classifier", timeoutNetError{}, func(error) bool { return false }, 2},
+		{"message fallback retries", errors.New("rate limit"), nil, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attempts := 0
+			_, err := withRetryClassified(context.Background(), cfg, logger, "test", tt.classifier, func(context.Context) (int, error) { attempts++; return 0, tt.err })
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if attempts != tt.wantAttempts {
+				t.Fatalf("attempts=%d want=%d", attempts, tt.wantAttempts)
+			}
+		})
+	}
+	t.Run("context cancellation is terminal", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		attempts := 0
+		_, err := withRetryClassified(ctx, cfg, logger, "test", func(error) bool { return true }, func(context.Context) (int, error) { attempts++; return 0, errors.New("429") })
+		if !errors.Is(err, context.Canceled) || attempts != 0 {
+			t.Fatalf("err=%v attempts=%d", err, attempts)
+		}
+	})
 }

@@ -1,32 +1,24 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"google.golang.org/genai"
 )
 
 // maxReportedWarnings is the cap for file failure warnings surfaced to the model.
 const maxReportedWarnings = 10
 
-func (s *GeminiServer) parseAskRequest(ctx context.Context, req mcp.CallToolRequest) (string, *genai.GenerateContentConfig, string, error) {
+func (s *GeminiServer) parseAskRequest(req mcp.CallToolRequest) (string, error) {
 	// Extract and validate query parameter (required)
 	query, err := validateRequiredString(req, "query")
 	if err != nil {
-		return "", nil, "", err
+		return "", err
 	}
 
-	// Create Gemini model configuration
-	config, modelName, err := createModelConfig(ctx, req, s.config, s.config.GeminiModel)
-	if err != nil {
-		return "", nil, "", fmt.Errorf("error creating model configuration: %v", err)
-	}
-
-	return query, config, modelName, nil
+	return query, nil
 }
 
 // GeminiAskHandler is a handler for the gemini_ask tool that uses mcp-go types directly
@@ -34,14 +26,16 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 	logger := getLoggerFromContext(ctx)
 	logger.Debug("handling gemini_ask request with direct handler")
 
-	query, config, modelName, err := s.parseAskRequest(ctx, req)
+	query, err := s.parseAskRequest(req)
 	if err != nil {
 		return createErrorResult(err.Error()), nil
 	}
 
-	// Resolve the system prompt server-side, in parallel with context gathering.
-	// This is the sole assigner of SystemInstruction — createModelConfig does
-	// not touch it.
+	for _, name := range []string{"model", "thinking_level"} {
+		if _, ok := req.GetArguments()[name]; ok {
+			logger.Debug("ignoring legacy parameter %s", name)
+		}
+	}
 	promptCtx, cancelPrompt := context.WithCancel(ctx)
 	defer cancelPrompt()
 	promptCh := s.resolveSystemPromptAsync(promptCtx, req, query, logger)
@@ -53,23 +47,19 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 	}
 
 	prompt := <-promptCh
-	config.SystemInstruction = genai.NewContentFromText(prompt.SystemPrompt, "")
-
-	// Validate client and models before proceeding
-	if s.client == nil || s.client.Models == nil {
-		logger.Error("Gemini client or Models service not properly initialized")
-		return createErrorResult("Internal error: Gemini client not properly initialized"), nil
+	if s.provider == nil {
+		return createErrorResult("Internal error: provider not properly initialized"), nil
 	}
 
 	// If any GitHub context is attached, append a descriptive addendum to the
 	// system instruction so Gemini can cite the correct <context> elements.
-	applyContextInventory(config, &inventory)
+	systemPrompt := prompt.SystemPrompt + buildContextInventoryAddendum(&inventory)
 
 	// Process with context if anything was attached
 	if len(ghContextParts) > 0 || len(uploads) > 0 {
-		return s.processWithFiles(ctx, req, query, ghContextParts, uploads, allWarnings, inventory.Repo, prompt.Category, modelName, config)
+		return s.processWithFiles(ctx, req, query, ghContextParts, uploads, allWarnings, inventory.Repo, prompt.Category, systemPrompt)
 	}
-	return s.processWithoutFiles(ctx, req, query, prompt.Category, modelName, config)
+	return s.processWithoutFiles(ctx, req, query, prompt.Category, systemPrompt)
 }
 
 // gatherAllContext runs the two independent context-gathering paths (GitHub
@@ -79,7 +69,7 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 // github_files fetch (and vice versa).
 func (s *GeminiServer) gatherAllContext(
 	ctx context.Context, req mcp.CallToolRequest,
-) ([]*genai.Part, []*FileUploadRequest, contextInventory, []string, *mcp.CallToolResult) {
+) ([]ContentPart, []*FileUploadRequest, contextInventory, []string, *mcp.CallToolResult) {
 	logger := getLoggerFromContext(ctx)
 
 	spec := parseGitHubContextSpec(req)
@@ -122,9 +112,9 @@ func finalizeFilesInventory(req mcp.CallToolRequest, inv *contextInventory, uplo
 		return
 	}
 	inv.Files.Count = uploadCount
-	inv.Files.Ref = extractArgumentString(req, "github_ref", "")
+	inv.Files.Ref = extractArgumentString(req, "github_ref")
 	if inv.Repo == "" {
-		inv.Repo = extractArgumentString(req, "github_repo", "")
+		inv.Repo = extractArgumentString(req, "github_repo")
 	}
 }
 
@@ -160,7 +150,7 @@ func consolidatedContextError(
 // gatherFileUploads.
 func (s *GeminiServer) gatherGitHubContext(
 	ctx context.Context, req mcp.CallToolRequest,
-) ([]*genai.Part, contextInventory, []string, *mcp.CallToolResult) {
+) ([]ContentPart, contextInventory, []string, *mcp.CallToolResult) {
 	var inv contextInventory
 
 	spec := parseGitHubContextSpec(req)
@@ -168,7 +158,7 @@ func (s *GeminiServer) gatherGitHubContext(
 		return nil, inv, nil, nil
 	}
 
-	githubRepo := extractArgumentString(req, "github_repo", "")
+	githubRepo := extractArgumentString(req, "github_repo")
 	if githubRepo == "" {
 		return nil, inv, nil, createErrorResult(
 			"'github_repo' is required when using 'github_pr', 'github_commits', or 'github_diff_base'/'github_diff_head'.")
@@ -210,8 +200,8 @@ func (g githubContextSpec) any() bool {
 
 func parseGitHubContextSpec(req mcp.CallToolRequest) githubContextSpec {
 	prNumber, hasPR := extractGitHubPRNumber(req)
-	diffBase := extractArgumentString(req, "github_diff_base", "")
-	diffHead := extractArgumentString(req, "github_diff_head", "")
+	diffBase := extractArgumentString(req, "github_diff_base")
+	diffHead := extractArgumentString(req, "github_diff_head")
 	return githubContextSpec{
 		hasPR:     hasPR,
 		prNumber:  prNumber,
@@ -226,9 +216,9 @@ func parseGitHubContextSpec(req mcp.CallToolRequest) githubContextSpec {
 // (commits → diff → PR) and accumulates parts, warnings, and inventory state.
 func (s *GeminiServer) fetchGitHubContextSources(
 	ctx context.Context, owner, repo string, spec githubContextSpec, inv *contextInventory,
-) ([]*genai.Part, []string, *mcp.CallToolResult) {
+) ([]ContentPart, []string, *mcp.CallToolResult) {
 	logger := getLoggerFromContext(ctx)
-	var parts []*genai.Part
+	var parts []ContentPart
 	var warnings []string
 
 	if len(spec.commits) > 0 {
@@ -336,26 +326,6 @@ func writePRInventory(b *strings.Builder, pr *prInventory) {
 // applyContextInventory appends the inventory addendum to the existing system
 // instruction on the config. It never rewrites the client-supplied system
 // prompt — it only adds descriptive trailing text.
-func applyContextInventory(config *genai.GenerateContentConfig, inv *contextInventory) {
-	if config == nil || !inv.HasAny() {
-		return
-	}
-	addendum := buildContextInventoryAddendum(inv)
-	if addendum == "" {
-		return
-	}
-	var existing strings.Builder
-	if config.SystemInstruction != nil {
-		for _, part := range config.SystemInstruction.Parts {
-			if part != nil && part.Text != "" {
-				existing.WriteString(part.Text)
-			}
-		}
-	}
-	existing.WriteString(addendum)
-	config.SystemInstruction = genai.NewContentFromText(existing.String(), "")
-}
-
 // gatherFileUploads fetches any github_files attached to the request. The
 // github-family parameters (github_pr / github_commits / github_diff_*) are
 // orthogonal peers handled separately by gatherGitHubContext; this function
@@ -421,13 +391,13 @@ func (s *GeminiServer) gatherGitHubFiles(
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Processing GitHub files request")
 
-	githubRepo := extractArgumentString(req, "github_repo", "")
+	githubRepo := extractArgumentString(req, "github_repo")
 	if githubRepo == "" {
 		logger.Error("GitHub repository parameter missing")
 		return nil, nil, createErrorResult("'github_repo' is required when using 'github_files'.")
 	}
 
-	githubRef := extractArgumentString(req, "github_ref", "")
+	githubRef := extractArgumentString(req, "github_ref")
 
 	// Validate and fetch
 	if err := validateFilePathArray(githubFiles); err != nil {
@@ -473,9 +443,9 @@ func (s *GeminiServer) gatherGitHubFiles(
 //
 // contextParts MUST already be in the above order when passed in.
 func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolRequest, query string,
-	contextParts []*genai.Part, uploads []*FileUploadRequest,
+	contextParts []ContentPart, uploads []*FileUploadRequest,
 	warnings []string, repo string, category queryCategory,
-	modelName string, config *genai.GenerateContentConfig) (*mcp.CallToolResult, error) {
+	systemPrompt string) (*mcp.CallToolResult, error) {
 
 	logger := getLoggerFromContext(ctx)
 
@@ -484,26 +454,30 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolReq
 	}
 
 	logger.Info("Processing %d file(s) for inline injection", len(uploads))
-	githubRef := extractArgumentString(req, "github_ref", "")
+	githubRef := extractArgumentString(req, "github_ref")
 	fileParts := s.buildFileParts(ctx, uploads, githubRef, logger)
 
 	parts := wrapUserTurnWithContext(repo, contextParts, fileParts, query, warnings, finalInstructionFor(category))
 
 	logger.Debug("request shape: model=%s category=%s thinking=%v max_tokens=%d context_parts=%d file_parts=%d warnings=%d",
-		modelName, category, config.ThinkingConfig != nil, config.MaxOutputTokens,
+		s.config.GeminiModel, category, true, s.config.ProviderMaxTokens,
 		len(contextParts), len(fileParts), len(warnings))
 	if loggerDebugEnabled(logger) {
 		logger.Debug("envelope (with context): repo=%q parts=%d bytes=%d\n%s",
 			repo, len(parts), totalPartBytes(parts), renderPartsForDebug(parts))
 	}
 
-	contents := []*genai.Content{
-		genai.NewContentFromParts(parts, genai.RoleUser),
+	genReq := GenerationRequest{
+		SystemPrompt:    systemPrompt,
+		Parts:           parts,
+		Thinking:        ThinkingSpec{Enabled: true},
+		Temperature:     s.config.GeminiTemperature,
+		MaxOutputTokens: s.config.ProviderMaxTokens,
 	}
 
 	// Bound the outbound Gemini call with an explicit per-call deadline. This
 	// makes server-induced timeouts surface as ctx.Err() == DeadlineExceeded
-	// (which logGeminiAPIError classifies as "deadline exceeded") rather than
+	// (which logAPIError classifies as "deadline exceeded") rather than
 	// relying on the inbound HTTPWriteTimeout to kill the connection — that
 	// path manifests as context.Canceled and is indistinguishable from a
 	// client disconnect. HTTPWriteTimeout (= HTTPTimeout + 60s) remains as a
@@ -515,19 +489,21 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolReq
 	stop := startProgressReporter(callCtx, req,
 		s.config.ProgressInterval,
 		s.config.HTTPTimeout.Seconds(),
-		progressLabel(modelName, config),
+		progressLabel(s.config.GeminiModel),
 		logger)
 	defer stop()
-	response, err := withRetry(callCtx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
-		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
-	})
+	response, err := withRetryClassified(
+		callCtx, s.config, logger, "provider.generate", s.provider.IsRetryable,
+		func(ctx context.Context) (*GenerationResponse, error) {
+			return s.provider.Generate(ctx, genReq)
+		},
+	)
 	if err != nil {
-		logGeminiAPIError(callCtx, logger, "Gemini API error", err)
+		logAPIError(callCtx, logger, "Provider API error", err)
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 
-	checkModelStatus(callCtx, response, modelName)
-	return convertGenaiResponseToMCPResult(response, logger), nil
+	return convertResponseToMCPResult(response, logger), nil
 }
 
 // buildFileParts converts file uploads to the XML <file> fragments emitted
@@ -537,84 +513,59 @@ func (s *GeminiServer) processWithFiles(ctx context.Context, req mcp.CallToolReq
 // Part sits inside its own <file> element.
 func (s *GeminiServer) buildFileParts(
 	ctx context.Context, uploads []*FileUploadRequest, githubRef string, logger Logger,
-) []*genai.Part {
-	fileParts := make([]*genai.Part, 0, len(uploads))
+) []ContentPart {
+	_ = ctx
+	fileParts := make([]ContentPart, 0, len(uploads))
 	for _, upload := range uploads {
 		if isTextMimeType(upload.MimeType) {
 			logger.Info("Injecting %s (%d bytes) as inline text", upload.FileName, len(upload.Content))
 			fileParts = append(fileParts, renderTextFilePart(upload, githubRef))
 			continue
 		}
-		fileParts = append(fileParts, s.renderBinaryFileParts(ctx, upload, githubRef, logger)...)
+		logger.Warn("Binary file %s cannot be displayed inline", upload.FileName)
+		fileParts = append(fileParts, ContentPart{Text: fmt.Sprintf(
+			"  <file path=\"%s\" ref=\"%s\" kind=\"binary\" mime=\"%s\">%s</file>\n",
+			xmlAttr(upload.FileName),
+			xmlAttr(githubRef),
+			xmlAttr(upload.MimeType),
+			"[Error: This binary file cannot be displayed inline.]",
+		)})
 	}
 	return fileParts
 }
 
-func renderTextFilePart(upload *FileUploadRequest, githubRef string) *genai.Part {
-	return genai.NewPartFromText(fmt.Sprintf(
+func renderTextFilePart(upload *FileUploadRequest, githubRef string) ContentPart {
+	return ContentPart{Text: fmt.Sprintf(
 		"  <file path=\"%s\" ref=\"%s\" kind=\"text\" mime=\"%s\">%s</file>\n",
 		xmlAttr(upload.FileName),
 		xmlAttr(githubRef),
 		xmlAttr(upload.MimeType),
 		string(upload.Content),
-	))
-}
-
-func (s *GeminiServer) renderBinaryFileParts(
-	ctx context.Context, upload *FileUploadRequest, githubRef string, logger Logger,
-) []*genai.Part {
-	logger.Info("Uploading binary file %s (%s) via Files API", upload.FileName, upload.MimeType)
-	uploadConfig := &genai.UploadFileConfig{
-		MIMEType:    upload.MimeType,
-		DisplayName: upload.FileName,
-	}
-	file, err := withRetry(ctx, s.config, logger, "gemini.files.upload", func(ctx context.Context) (*genai.File, error) {
-		return s.client.Files.Upload(ctx, bytes.NewReader(upload.Content), uploadConfig)
-	})
-	if err != nil || file.URI == "" {
-		if err != nil {
-			logger.Error("Failed to upload file %s: %v - skipping binary file", upload.FileName, err)
-		} else {
-			logger.Error("File %s uploaded but URI is empty - skipping binary file", upload.FileName)
-		}
-		return []*genai.Part{genai.NewPartFromText(fmt.Sprintf(
-			"  <file path=\"%s\" ref=\"%s\" kind=\"binary\" mime=\"%s\">%s</file>\n",
-			xmlAttr(upload.FileName),
-			xmlAttr(githubRef),
-			xmlAttr(upload.MimeType),
-			"[Error: This binary file could not be uploaded and cannot be displayed inline.]",
-		))}
-	}
-	return []*genai.Part{
-		genai.NewPartFromText(fmt.Sprintf(
-			"  <file path=\"%s\" ref=\"%s\" kind=\"binary\" mime=\"%s\">",
-			xmlAttr(upload.FileName),
-			xmlAttr(githubRef),
-			xmlAttr(upload.MimeType),
-		)),
-		genai.NewPartFromURI(file.URI, upload.MimeType),
-		genai.NewPartFromText("</file>\n"),
-	}
+	)}
 }
 
 // processWithoutFiles handles a Gemini API request without file attachments
 func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallToolRequest, query string,
 	category queryCategory,
-	modelName string, config *genai.GenerateContentConfig) (*mcp.CallToolResult, error) {
+	systemPrompt string) (*mcp.CallToolResult, error) {
 
 	logger := getLoggerFromContext(ctx)
 
 	parts := wrapUserTurnQueryOnly(query, finalInstructionFor(category))
 
 	logger.Debug("request shape: model=%s category=%s thinking=%v max_tokens=%d context_parts=0 file_parts=0 warnings=0",
-		modelName, category, config.ThinkingConfig != nil, config.MaxOutputTokens)
+		s.config.GeminiModel, category, true, s.config.ProviderMaxTokens)
 	if loggerDebugEnabled(logger) {
 		logger.Debug("envelope (query-only): parts=%d bytes=%d\n%s",
 			len(parts), totalPartBytes(parts), renderPartsForDebug(parts))
 	}
 
-	contents := []*genai.Content{
-		genai.NewContentFromParts(parts, genai.RoleUser),
+	genReq := GenerationRequest{
+		SystemPrompt:    systemPrompt,
+		Parts:           parts,
+		Thinking:        ThinkingSpec{Enabled: true},
+		Temperature:     s.config.GeminiTemperature,
+		MaxOutputTokens: s.config.ProviderMaxTokens,
 	}
 
 	// Bound the outbound Gemini call with an explicit per-call deadline so
@@ -627,19 +578,21 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallTool
 	stop := startProgressReporter(callCtx, req,
 		s.config.ProgressInterval,
 		s.config.HTTPTimeout.Seconds(),
-		progressLabel(modelName, config),
+		progressLabel(s.config.GeminiModel),
 		logger)
 	defer stop()
-	response, err := withRetry(callCtx, s.config, logger, "gemini.models.generate_content", func(ctx context.Context) (*genai.GenerateContentResponse, error) {
-		return s.client.Models.GenerateContent(ctx, modelName, contents, config)
-	})
+	response, err := withRetryClassified(
+		callCtx, s.config, logger, "provider.generate", s.provider.IsRetryable,
+		func(ctx context.Context) (*GenerationResponse, error) {
+			return s.provider.Generate(ctx, genReq)
+		},
+	)
 	if err != nil {
-		logGeminiAPIError(callCtx, logger, "Gemini API error", err)
+		logAPIError(callCtx, logger, "Provider API error", err)
 		return createErrorResult(fmt.Sprintf("Error from Gemini API: %v", err)), nil
 	}
 
-	checkModelStatus(callCtx, response, modelName)
-	return convertGenaiResponseToMCPResult(response, logger), nil
+	return convertResponseToMCPResult(response, logger), nil
 }
 
 func loggerDebugEnabled(logger Logger) bool {

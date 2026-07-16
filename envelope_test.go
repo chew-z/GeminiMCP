@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/genai"
 )
 
 func TestXMLAttrEscape(t *testing.T) {
@@ -30,11 +29,11 @@ func TestXMLAttrEscape(t *testing.T) {
 }
 
 func TestWrapUserTurnWithContextShape(t *testing.T) {
-	ctxParts := []*genai.Part{
-		genai.NewPartFromText("  <commit sha=\"abc\" />\n"),
+	ctxParts := []ContentPart{
+		{Text: "  <commit sha=\"abc\" />\n"},
 	}
-	fileParts := []*genai.Part{
-		genai.NewPartFromText("  <file path=\"README.md\" ref=\"main\" kind=\"text\" mime=\"text/plain\">readme</file>\n"),
+	fileParts := []ContentPart{
+		{Text: "  <file path=\"README.md\" ref=\"main\" kind=\"text\" mime=\"text/plain\">readme</file>\n"},
 	}
 	parts := wrapUserTurnWithContext(
 		"owner/repo",
@@ -139,11 +138,10 @@ func TestBoolStr(t *testing.T) {
 func TestRenderPartsForDebug_TruncatesLargeBodies(t *testing.T) {
 	huge := strings.Repeat("A", debugPartMaxBytes*5)
 	small := "short"
-	parts := []*genai.Part{
-		genai.NewPartFromText(small),
-		genai.NewPartFromText(huge),
-		nil,
-		genai.NewPartFromText(""),
+	parts := []ContentPart{
+		{Text: small},
+		{Text: huge},
+		{},
 	}
 
 	got := renderPartsForDebug(parts)

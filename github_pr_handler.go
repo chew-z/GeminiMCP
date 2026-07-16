@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-
-	"google.golang.org/genai"
 )
 
 // githubPRMeta is the slice of /repos/.../pulls/{n} we care about.
@@ -45,7 +43,7 @@ type githubPRReviewComment struct {
 // surfaced as warnings while preserving whatever content did succeed.
 func (s *GeminiServer) gatherPullRequest(
 	ctx context.Context, owner, repo string, prNumber int,
-) ([]*genai.Part, *prInventory, []string, error) {
+) ([]ContentPart, *prInventory, []string, error) {
 
 	logger := getLoggerFromContext(ctx)
 	logger.Info("Fetching GitHub PR %s/%s#%d", owner, repo, prNumber)
@@ -134,7 +132,7 @@ func (s *GeminiServer) fetchPRComments(
 // the repo is already recorded on the <context repo="..."> wrapper.
 func assemblePRParts(
 	_, _ string, meta githubPRMeta, diff string, diffTruncatedFlag bool, comments []githubPRReviewComment,
-) []*genai.Part {
+) []ContentPart {
 	var b strings.Builder
 	fmt.Fprintf(&b,
 		"  <pull_request number=\"%d\" author=\"%s\" state=\"%s\""+
@@ -163,7 +161,7 @@ func assemblePRParts(
 		)
 	}
 	b.WriteString("  </pull_request>\n")
-	return []*genai.Part{genai.NewPartFromText(b.String())}
+	return []ContentPart{{Text: b.String()}}
 }
 
 // shortSHA returns the leading 7 characters of a commit sha, or the whole

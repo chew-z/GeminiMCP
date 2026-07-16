@@ -21,9 +21,6 @@ const (
 	finalInstructionTests = "Generate runnable tests covering happy path, edges, and error conditions. " +
 		"Use the language's idiomatic patterns (table-driven in Go, parametrize in pytest, describe/it in JS). " +
 		"Reference the function under test by `file:symbol`."
-
-	finalInstructionSearch = "Synthesize across sources, cite inline, and distinguish established facts " +
-		"from recent developments. If results are insufficient, say so."
 )
 
 // finalInstructionByCategory maps each query category produced by the

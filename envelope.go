@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
-
-	"google.golang.org/genai"
 )
 
 // xmlAttr returns an XML-attribute-safe rendering of v. It escapes the five
@@ -37,10 +35,10 @@ const debugPartMaxBytes = 2048
 // renderPartsForDebug concatenates parts into a single string suitable for
 // DEBUG logging. Each part is truncated independently to debugPartMaxBytes so
 // the envelope shape stays visible even when individual bodies are large.
-func renderPartsForDebug(parts []*genai.Part) string {
+func renderPartsForDebug(parts []ContentPart) string {
 	var b strings.Builder
 	for i, p := range parts {
-		if p == nil || p.Text == "" {
+		if p.Text == "" {
 			continue
 		}
 		t := p.Text
@@ -61,12 +59,10 @@ func renderPartsForDebug(parts []*genai.Part) string {
 
 // totalPartBytes returns the sum of Text lengths across parts, for a cheap
 // "envelope size" number in DEBUG logs.
-func totalPartBytes(parts []*genai.Part) int {
+func totalPartBytes(parts []ContentPart) int {
 	n := 0
 	for _, p := range parts {
-		if p != nil {
-			n += len(p.Text)
-		}
+		n += len(p.Text)
 	}
 	return n
 }
@@ -80,20 +76,20 @@ func boolStr(b bool) string {
 	return "false"
 }
 
-func partText(s string) *genai.Part { return genai.NewPartFromText(s) }
+func partText(s string) ContentPart { return ContentPart{Text: s} }
 
 // wrapUserTurnWithContext builds the Parts for a request that has at least one
 // context block. contextParts and fileParts are ALREADY rendered in XML form by
 // the gatherers / file-handling code.
 func wrapUserTurnWithContext(
 	repo string,
-	contextParts []*genai.Part,
-	fileParts []*genai.Part,
+	contextParts []ContentPart,
+	fileParts []ContentPart,
 	query string,
 	warnings []string,
 	finalInstruction string,
-) []*genai.Part {
-	parts := make([]*genai.Part, 0, len(contextParts)+len(fileParts)+7)
+) []ContentPart {
+	parts := make([]ContentPart, 0, len(contextParts)+len(fileParts)+7)
 	parts = append(parts, partText(fmt.Sprintf("<context repo=\"%s\">\n", xmlAttr(repo))))
 	parts = append(parts, contextParts...)
 	parts = append(parts, fileParts...)
@@ -109,8 +105,8 @@ func wrapUserTurnWithContext(
 }
 
 // wrapUserTurnQueryOnly builds the Parts for a request with no context.
-func wrapUserTurnQueryOnly(query string, finalInstruction string) []*genai.Part {
-	return []*genai.Part{
+func wrapUserTurnQueryOnly(query string, finalInstruction string) []ContentPart {
+	return []ContentPart{
 		partText("<task>\n  <query>" + xmlText(query) + "</query>\n</task>\n\n"),
 		partText("<final_instruction>\n" + finalInstruction + "\n</final_instruction>\n"),
 	}

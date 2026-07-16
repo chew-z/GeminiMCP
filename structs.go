@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"google.golang.org/genai"
 )
 
 // PromptDefinition defines the structure for a prompt.
@@ -40,14 +39,6 @@ func NewPromptDefinition(name, description string) *PromptDefinition {
 					Description: "A clear and concise description of the programming problem or task.",
 					Required:    true,
 				},
-				{
-					Name:        "model",
-					Description: "Optional: Specific Gemini model to use (supports auto-completion).",
-				},
-				{
-					Name:        "thinking_level",
-					Description: "Optional: Thinking level — minimal, low, medium, or high (supports auto-completion).",
-				},
 			},
 		},
 	}
@@ -55,21 +46,8 @@ func NewPromptDefinition(name, description string) *PromptDefinition {
 
 // GeminiServer implements the ToolHandler interface for Gemini API interactions
 type GeminiServer struct {
-	config *Config
-	client *genai.Client
-}
-
-// SearchResponse is the JSON response format for the gemini_search tool
-type SearchResponse struct {
-	Answer        string       `json:"answer"`
-	Sources       []SourceInfo `json:"sources,omitempty"`
-	SearchQueries []string     `json:"search_queries,omitempty"`
-}
-
-// SourceInfo represents a source from search results
-type SourceInfo struct {
-	Title string `json:"title"`
-	Type  string `json:"type"`
+	config   *Config
+	provider Provider
 }
 
 // Config holds all configuration parameters for the application
@@ -77,8 +55,8 @@ type Config struct {
 	// Gemini API settings
 	GeminiAPIKey      string
 	GeminiModel       string // Default model for 'gemini_ask'
-	GeminiSearchModel string // Default model for 'gemini_search'
 	GeminiTemperature float64
+	ProviderMaxTokens int32 // Max provider output tokens; 0 uses API default.
 
 	// HTTP client settings
 	HTTPTimeout time.Duration
@@ -128,34 +106,8 @@ type Config struct {
 	MaxGitHubCommits          int    // Max number of commits accepted via github_commits
 	MaxGitHubPRReviewComments int    // Max number of PR review comments fetched
 
-	// Thinking settings
-	ThinkingLevel       string // Thinking level for gemini_ask: minimal, low, medium, high
-	SearchThinkingLevel string // Thinking level for gemini_search: minimal, low, medium, high
-
-	// Service tier settings
-	ServiceTier string // Service tier: flex, standard, priority (default: standard)
-
 	// Pre-qualification settings
-	Prequalify              bool   // Enable query pre-qualification for automatic system prompt selection
-	PrequalifyModel         string // Model tier for pre-qualification (e.g. "gemini-flash")
-	PrequalifyThinkingLevel string // Thinking level for pre-qualification call
-}
-
-// ModelVersion represents an actual API-addressable Gemini model
-type ModelVersion struct {
-	ID          string `json:"id"`           // The version ID used by the API (e.g., "gemini-2.5-pro-exp-03-25")
-	IsPreferred bool   `json:"is_preferred"` // Whether this is the preferred version of the model family
-}
-
-// GeminiModelInfo represents a family of related models
-type GeminiModelInfo struct {
-	FamilyID          string         `json:"family_id"`           // Model family identifier (e.g., "gemini-2.5-pro")
-	Name              string         `json:"name"`                // Human-readable family name
-	Description       string         `json:"description"`         // Description of the model family
-	SupportsThinking  bool           `json:"supports_thinking"`   // Whether this model family supports thinking mode
-	ContextWindowSize int            `json:"context_window_size"` // Maximum context window size in tokens (input)
-	MaxOutputTokens   int            `json:"max_output_tokens"`   // Maximum output tokens the model can generate
-	Versions          []ModelVersion `json:"versions"`            // Available versions of this model family
+	Prequalify bool // Enable query pre-qualification for automatic system prompt selection
 }
 
 // FileUploadRequest represents a request to upload a file

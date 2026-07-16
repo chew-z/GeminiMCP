@@ -1,93 +1,48 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"testing"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/genai"
 )
 
-// TestBuildPrequalifyConfigUsesResponseJsonSchema locks in Step 4: the
-// classifier config must populate ResponseJsonSchema (the modern declarative
-// JSON-Schema map) and leave the legacy ResponseSchema field nil. The schema
-// shape — top-level "type":"string" plus the six-category enum — is the
-// public contract this server depends on, so the test pins it explicitly.
-func TestBuildPrequalifyConfigUsesResponseJsonSchema(t *testing.T) {
-	cfg := buildPrequalifyConfig("gemini-3-flash-preview", "low")
-	require.NotNil(t, cfg)
-	assert.Nil(t, cfg.ResponseSchema, "ResponseSchema must be unset; ResponseJsonSchema replaces it")
-	assert.Equal(t, "application/json", cfg.ResponseMIMEType)
-
-	schema, ok := cfg.ResponseJsonSchema.(map[string]any)
-	require.True(t, ok, "ResponseJsonSchema must be a map[string]any literal")
-	assert.Equal(t, "string", schema["type"])
-
-	enum, ok := schema["enum"].([]string)
-	require.True(t, ok, "enum must be []string")
-	assert.ElementsMatch(t,
-		[]string{"general", "analyze", "review", "security", "debug", "tests"},
-		enum,
-	)
+func TestPrequalifyQuery(t *testing.T) {
+	provider := &mockProvider{generateFn: func(_ context.Context, req GenerationRequest) (*GenerationResponse, error) {
+		return &GenerationResponse{Text: `"analyze"`, FinishReason: "STOP"}, nil
+	}}
+	s := &GeminiServer{config: &Config{GeminiModel: "test"}, provider: provider}
+	category, err := s.prequalifyQuery(context.Background(), "explain this", "")
+	require.NoError(t, err)
+	assert.Equal(t, categoryAnalyze, category)
+	requests := provider.requests()
+	require.Len(t, requests, 1)
+	assert.Equal(t, "json_object", requests[0].ResponseFormat)
+	assert.False(t, requests[0].Thinking.Enabled)
 }
 
-// TestParsePrequalifyResponseAcceptsAllCategories asserts that every category
-// emitted under the new ResponseJsonSchema contract round-trips through
-// parsePrequalifyResponse to the matching queryCategory. Mocking happens at
-// the response-shape level — no live API call — so this test is independent
-// of the Gemini client wiring.
-func TestParsePrequalifyResponseAcceptsAllCategories(t *testing.T) {
-	cases := []struct {
-		// rawText is what the model returns; structured-output wraps the
-		// enum value in JSON quotes.
-		rawText string
-		want    queryCategory
-	}{
-		{`"general"`, categoryGeneral},
-		{`"analyze"`, categoryAnalyze},
-		{`"review"`, categoryReview},
-		{`"security"`, categorySecurity},
-		{`"debug"`, categoryDebug},
-		{`"tests"`, categoryTests},
-	}
-
-	for _, tc := range cases {
-		t.Run(string(tc.want), func(t *testing.T) {
-			resp := &genai.GenerateContentResponse{
-				Candidates: []*genai.Candidate{
-					{
-						Content: &genai.Content{
-							Parts: []*genai.Part{
-								{Text: tc.rawText},
-							},
-						},
-					},
-				},
-			}
-			cat, raw, err := parsePrequalifyResponse(resp)
-			require.NoError(t, err, "raw=%q", raw)
-			assert.Equal(t, tc.want, cat)
-		})
-	}
-}
-
-// TestParsePrequalifyResponseRejectsUnknown guards the rejection branch so
-// fallback selection in resolveSystemPromptAsync continues to fire on
-// off-contract classifier output.
-func TestParsePrequalifyResponseRejectsUnknown(t *testing.T) {
-	resp := &genai.GenerateContentResponse{
-		Candidates: []*genai.Candidate{
-			{
-				Content: &genai.Content{
-					Parts: []*genai.Part{
-						{Text: `"not-a-category"`},
-					},
-				},
-			},
-		},
-	}
-	_, raw, err := parsePrequalifyResponse(resp)
+func TestPrequalifyQueryUnknownCategory(t *testing.T) {
+	s := &GeminiServer{config: &Config{}, provider: &mockProvider{generateFn: func(context.Context, GenerationRequest) (*GenerationResponse, error) {
+		return &GenerationResponse{Text: `"unknown"`}, nil
+	}}}
+	_, err := s.prequalifyQuery(context.Background(), "question", "")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown category")
-	assert.Equal(t, "not-a-category", raw)
+}
+
+func TestResolveSystemPromptAsyncFallback(t *testing.T) {
+	t.Run("disabled uses general", func(t *testing.T) {
+		s := &GeminiServer{config: &Config{Prequalify: false}, provider: &mockProvider{}}
+		got := <-s.resolveSystemPromptAsync(context.Background(), mcp.CallToolRequest{}, "q", NewLogger(LevelError))
+		assert.Equal(t, categoryGeneral, got.Category)
+		assert.Equal(t, systemPromptGeneral, got.SystemPrompt)
+	})
+	t.Run("error with github context uses analyze", func(t *testing.T) {
+		s := &GeminiServer{config: &Config{Prequalify: true}, provider: &mockProvider{generateFn: func(context.Context, GenerationRequest) (*GenerationResponse, error) { return nil, errors.New("down") }}}
+		req := mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"github_repo": "o/r", "github_files": []any{"a.go"}}}}
+		got := <-s.resolveSystemPromptAsync(context.Background(), req, "q", NewLogger(LevelError))
+		assert.Equal(t, categoryAnalyze, got.Category)
+	})
 }
