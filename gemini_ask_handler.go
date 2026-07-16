@@ -42,10 +42,13 @@ func (s *GeminiServer) GeminiAskHandler(ctx context.Context, req mcp.CallToolReq
 	// Resolve the system prompt server-side, in parallel with context gathering.
 	// This is the sole assigner of SystemInstruction — createModelConfig does
 	// not touch it.
-	promptCh := s.resolveSystemPromptAsync(ctx, req, query, logger)
+	promptCtx, cancelPrompt := context.WithCancel(ctx)
+	defer cancelPrompt()
+	promptCh := s.resolveSystemPromptAsync(promptCtx, req, query, logger)
 
 	ghContextParts, uploads, inventory, allWarnings, errResult := s.gatherAllContext(ctx, req)
 	if errResult != nil {
+		cancelPrompt()
 		return errResult, nil
 	}
 

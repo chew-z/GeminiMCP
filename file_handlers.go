@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"sort"
@@ -375,7 +375,7 @@ func fetchAttempt(ctx context.Context, p fetchAttemptParams) fetchAttemptOutcome
 // the given attempt. Returns ctx.Err() if the context is cancelled.
 func waitBeforeRetry(ctx context.Context, logger Logger, filePath string, attempt, maxRetries int) error {
 	backoff := time.Duration(1<<uint(attempt)) * time.Second
-	jitter := time.Duration(rand.Int63n(int64(500 * time.Millisecond)))
+	jitter := time.Duration(rand.Int64N(int64(500 * time.Millisecond)))
 	sleepTime := backoff + jitter
 	logger.Info("[%s] Retry attempt %d/%d. Sleeping for %v", filePath, attempt, maxRetries, sleepTime)
 	timer := time.NewTimer(sleepTime)

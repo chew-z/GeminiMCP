@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -89,7 +88,7 @@ func handleStartupError(ctx context.Context, err error) {
 	logger.Info("Starting Gemini MCP server in degraded mode")
 	if err := server.ServeStdio(mcpServer); err != nil {
 		logger.Error("Server error in degraded mode: %v", err)
-		os.Exit(1)
+		osExitFn(1)
 	}
 }
 

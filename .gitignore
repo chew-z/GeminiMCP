@@ -19,13 +19,9 @@ reports/**
 repomix.config.json
 repomix-output.xml
 
-.aider*
 .claude/**
 .codex/**
-.gemini/**
-.github/**
-.vscode/**
-
+.qoder/**
 .mcp.json
 
 .codanna/**

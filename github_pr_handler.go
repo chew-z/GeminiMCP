@@ -125,9 +125,6 @@ func (s *GeminiServer) fetchPRComments(
 		logger.Warn("Failed to parse PR #%d review comments: %v", prNumber, uerr)
 		return nil, []string{fmt.Sprintf("PR #%d review comments: parse error", prNumber)}
 	}
-	if len(comments) > s.config.MaxGitHubPRReviewComments {
-		comments = comments[:s.config.MaxGitHubPRReviewComments]
-	}
 	return comments, nil
 }
 

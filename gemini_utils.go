@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -15,7 +16,7 @@ func getLoggerFromContext(ctx context.Context) Logger {
 		}
 	}
 	// Create a new logger if one isn't in the context or type assertion fails
-	return NewLogger(LevelDebug)
+	return NewLogger(parseLogLevel(os.Getenv("GEMINI_LOG_LEVEL"), LevelInfo))
 }
 
 // This function has been removed after refactoring to use direct MCP types
