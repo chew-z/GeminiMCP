@@ -47,6 +47,7 @@ func (p *responsesProvider) Generate(ctx context.Context, req GenerationRequest)
 	if err != nil {
 		return nil, err
 	}
+	p.logReasoningItems(resp)
 	return convertResponse(resp)
 }
 
@@ -120,4 +121,26 @@ func (p *responsesProvider) IsRetryable(err error) bool {
 		return apiErr.StatusCode == 429 || apiErr.StatusCode >= 500
 	}
 	return isRetryableByMessage(err)
+}
+
+// logReasoningItems records the count and summary lengths of reasoning output
+// items, matching the debug-level observability of openaiProvider.logReasoningContent.
+func (p *responsesProvider) logReasoningItems(resp *responses.Response) {
+	if resp == nil || p.logger == nil {
+		return
+	}
+	var totalSummaryLen int
+	reasoningCount := 0
+	for _, item := range resp.Output {
+		if item.Type != "reasoning" {
+			continue
+		}
+		reasoningCount++
+		for _, s := range item.Summary {
+			totalSummaryLen += len(s.Text)
+		}
+	}
+	if reasoningCount > 0 {
+		p.logger.Debug("%s reasoning items=%d summary_length=%d", p.dialect.name(), reasoningCount, totalSummaryLen)
+	}
 }
