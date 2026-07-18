@@ -10,7 +10,7 @@ fi
 echo "Checks passed."
 
 # Versioning
-new_tag="v1.0.0"
+new_tag="v1.1.0"
 echo "New version: ${new_tag}"
 
 # Build
