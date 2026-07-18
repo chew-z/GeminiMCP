@@ -9,14 +9,15 @@ import (
 
 func TestNewProvider(t *testing.T) {
 	tests := []struct {
-		name    string
-		vendor  string
-		wantErr bool
+		name     string
+		vendor   string
+		wantType any
+		wantErr  bool
 	}{
-		{"deepseek", "deepseek", false},
-		{"qwen", "qwen", false},
-		{"empty vendor", "", true},
-		{"gemini removed", "gemini", true},
+		{"deepseek", "deepseek", &openaiProvider{}, false},
+		{"qwen", "qwen", &responsesProvider{}, false},
+		{"empty vendor", "", nil, true},
+		{"gemini removed", "gemini", nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -26,7 +27,7 @@ func TestNewProvider(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.IsType(t, &openaiProvider{}, provider)
+			assert.IsType(t, tt.wantType, provider)
 		})
 	}
 }

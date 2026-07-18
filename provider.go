@@ -31,7 +31,7 @@ func NewProvider(cfg *Config, logger Logger) (Provider, error) {
 	case "deepseek":
 		return newOpenAIProvider(cfg.Provider, deepseekDialect{}, logger), nil
 	case "qwen":
-		return newOpenAIProvider(cfg.Provider, qwenDialect{}, logger), nil
+		return newResponsesProvider(cfg.Provider, qwenResponsesDialect{}, logger), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider vendor %q; valid values: deepseek, qwen", cfg.Provider.Vendor)
 	}

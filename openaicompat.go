@@ -151,26 +151,3 @@ func (deepseekDialect) buildRequest(params *openai.ChatCompletionNewParams, req 
 	}
 	return []option.RequestOption{option.WithJSONSet("thinking", map[string]any{"type": "disabled"})}
 }
-
-// qwenDialect maps provider-neutral thinking to Qwen's compatible API fields.
-// Qwen3.7 defaults thinking on, so enable_thinking is always sent explicitly.
-type qwenDialect struct{}
-
-func (qwenDialect) name() string { return "qwen" }
-
-func (qwenDialect) buildRequest(_ *openai.ChatCompletionNewParams, req GenerationRequest) []option.RequestOption {
-	if !qwenThinkingEnabled(req) {
-		return []option.RequestOption{option.WithJSONSet("enable_thinking", false)}
-	}
-	options := []option.RequestOption{option.WithJSONSet("enable_thinking", true)}
-	if req.Thinking.Budget > 0 {
-		options = append(options, option.WithJSONSet("thinking_budget", req.Thinking.Budget))
-	}
-	return options
-}
-
-// qwenThinkingEnabled reports whether Qwen thinking may be enabled. Per Qwen
-// docs, structured output is not supported in thinking mode, so JSON mode wins.
-func qwenThinkingEnabled(req GenerationRequest) bool {
-	return req.Thinking.Enabled && req.ResponseFormat != "json_object"
-}

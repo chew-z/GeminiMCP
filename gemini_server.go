@@ -19,8 +19,8 @@ func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error)
 	}
 
 	return &GeminiServer{
-		config:   config,
-		provider: provider,
+		config:     config,
+		provider:   provider,
 		httpClient: &http.Client{Timeout: config.HTTPTimeout},
 	}, nil
 }

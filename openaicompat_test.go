@@ -36,77 +36,6 @@ func newTestOpenAIProviderWithDialect(
 	return p, server
 }
 
-func TestQwenDialectRequestShape(t *testing.T) {
-	tests := []struct {
-		name  string
-		req   GenerationRequest
-		check func(t *testing.T, body map[string]any)
-	}{
-		{
-			"thinking on with budget",
-			GenerationRequest{Parts: []ContentPart{{Text: "user"}}, Thinking: ThinkingSpec{Enabled: true, Budget: 4096}},
-			func(t *testing.T, body map[string]any) {
-				assert.Equal(t, true, body["enable_thinking"])
-				assert.Equal(t, float64(4096), body["thinking_budget"])
-				_, exists := body["reasoning_effort"]
-				assert.False(t, exists)
-				_, exists = body["thinking"]
-				assert.False(t, exists)
-			},
-		},
-		{
-			"thinking on without budget",
-			GenerationRequest{Parts: []ContentPart{{Text: "user"}}, Thinking: ThinkingSpec{Enabled: true}},
-			func(t *testing.T, body map[string]any) {
-				assert.Equal(t, true, body["enable_thinking"])
-				_, exists := body["thinking_budget"]
-				assert.False(t, exists)
-			},
-		},
-		{
-			"thinking off",
-			GenerationRequest{Parts: []ContentPart{{Text: "user"}}},
-			func(t *testing.T, body map[string]any) { assert.Equal(t, false, body["enable_thinking"]) },
-		},
-		{
-			"json mode disables thinking",
-			GenerationRequest{Parts: []ContentPart{{Text: "user"}}, Thinking: ThinkingSpec{Enabled: true}, ResponseFormat: "json_object"},
-			func(t *testing.T, body map[string]any) {
-				assert.Equal(t, false, body["enable_thinking"])
-				assert.Equal(t, "json_object", body["response_format"].(map[string]any)["type"])
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p, server := newTestOpenAIProviderWithDialect(t, qwenDialect{}, "qwen3.7-max", func(w http.ResponseWriter, r *http.Request) {
-				defer r.Body.Close()
-				var body map[string]any
-				require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-				tt.check(t, body)
-				writeCompletion(t, w, `{"model":"served","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"OK"}}]}`)
-			})
-			defer server.Close()
-			_, err := p.Generate(context.Background(), tt.req)
-			require.NoError(t, err)
-		})
-	}
-}
-
-func TestQwenThinkingEnabled(t *testing.T) {
-	for _, tt := range []struct {
-		name string
-		req  GenerationRequest
-		want bool
-	}{
-		{"disabled", GenerationRequest{}, false},
-		{"enabled", GenerationRequest{Thinking: ThinkingSpec{Enabled: true}}, true},
-		{"json mode guard", GenerationRequest{Thinking: ThinkingSpec{Enabled: true}, ResponseFormat: "json_object"}, false},
-	} {
-		t.Run(tt.name, func(t *testing.T) { assert.Equal(t, tt.want, qwenThinkingEnabled(tt.req)) })
-	}
-}
-
 func writeCompletion(t *testing.T, w http.ResponseWriter, body string) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")
@@ -247,7 +176,7 @@ func TestQwenLive(t *testing.T) {
 	}
 	cfg, err := NewConfig(NewLogger(LevelError))
 	require.NoError(t, err)
-	p := newOpenAIProvider(cfg.Provider, qwenDialect{}, NewLogger(LevelError))
+	p := newResponsesProvider(cfg.Provider, qwenResponsesDialect{}, NewLogger(LevelError))
 	resp, err := p.Generate(context.Background(), GenerationRequest{Parts: []ContentPart{{Text: "Say OK"}}})
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.Text)

@@ -47,8 +47,8 @@ func NewPromptDefinition(name, description string) *PromptDefinition {
 
 // GeminiServer implements the ToolHandler interface for provider API interactions.
 type GeminiServer struct {
-	config   *Config
-	provider Provider
+	config     *Config
+	provider   Provider
 	httpClient *http.Client
 }
 
