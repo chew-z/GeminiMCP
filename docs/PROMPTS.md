@@ -20,7 +20,7 @@ The startup allowlist is:
 | Provider | Models |
 |---|---|
 | DeepSeek | `deepseek-v4-pro` |
-| Qwen | `qwen3.7-max`, `qwen3.7-plus` |
+| Qwen | `qwen3.7-max`, `qwen3.7-plus`, `qwen3.8-max-preview` (preview) |
 
 Configure `PROVIDER`, `PROVIDER_API_KEY`, and `PROVIDER_MODEL`. Qwen also
 requires `PROVIDER_BASE_URL`; a compatible international endpoint is

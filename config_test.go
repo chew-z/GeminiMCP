@@ -64,6 +64,11 @@ func TestNewConfigProviderSelection(t *testing.T) {
 			map[string]string{"PROVIDER": "qwen", "PROVIDER_API_KEY": "key", "PROVIDER_MODEL": "qwen3.7-max", "PROVIDER_BASE_URL": "https://qwen.example"},
 			"", "qwen",
 		},
+		{
+			"qwen preview model accepted",
+			map[string]string{"PROVIDER": "qwen", "PROVIDER_API_KEY": "key", "PROVIDER_MODEL": "qwen3.8-max-preview", "PROVIDER_BASE_URL": "https://qwen.example"},
+			"", "qwen",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

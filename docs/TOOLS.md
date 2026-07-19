@@ -26,5 +26,6 @@ Example:
 ## Provider setup
 
 Use `PROVIDER=deepseek` with `PROVIDER_MODEL=deepseek-v4-pro`, or
-`PROVIDER=qwen` with `PROVIDER_MODEL=qwen3.7-max` or `qwen3.7-plus`. Qwen
+`PROVIDER=qwen` with `PROVIDER_MODEL=qwen3.7-max`, `qwen3.7-plus`, or
+`qwen3.8-max-preview` (preview). Qwen
 requires `PROVIDER_BASE_URL`; DeepSeek defaults to `https://api.deepseek.com`.

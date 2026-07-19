@@ -18,8 +18,8 @@ type ProviderConfig struct {
 // deepseekModels is the static allowlist of supported DeepSeek models.
 var deepseekModels = []string{"deepseek-v4-pro"}
 
-// qwenModels is the Qwen model allowlist for Phase 3.
-var qwenModels = []string{"qwen3.7-max", "qwen3.7-plus"}
+// qwenModels is the Qwen model allowlist.
+var qwenModels = []string{"qwen3.7-max", "qwen3.7-plus", "qwen3.8-max-preview"}
 
 // NewProvider creates the configured model provider.
 func NewProvider(cfg *Config, logger Logger) (Provider, error) {
