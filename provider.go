@@ -17,7 +17,8 @@ type ProviderConfig struct {
 }
 
 // deepseekModels is the static allowlist of supported DeepSeek models.
-var deepseekModels = []string{"deepseek-v4-pro"}
+// deepseek-v4-flash is also the prequalify model (prequalifyModelForVendor).
+var deepseekModels = []string{"deepseek-v4-pro", "deepseek-v4-flash"}
 
 // qwenModels is the Qwen model allowlist.
 var qwenModels = []string{"qwen3.7-max", "qwen3.7-plus", "qwen3.8-max-preview"}
@@ -63,7 +64,11 @@ func NewPrequalifyProvider(cfg *Config, logger Logger) (Provider, error) {
 	case "deepseek":
 		return newOpenAIProvider(pcfg, deepseekDialect{}, logger), nil
 	case "qwen":
-		return newResponsesProvider(pcfg, qwenResponsesDialect{}, logger), nil
+		// Derive thinkingForced from the same source of truth as NewProvider:
+		// if a future prequalify model is thinking-forced, the dialect must
+		// honor it instead of silently allowing effort=none.
+		dialect := qwenResponsesDialect{thinkingForced: slices.Contains(thinkingForcedQwenModels, pcfg.Model)}
+		return newResponsesProvider(pcfg, dialect, logger), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider vendor %q; valid values: deepseek, qwen", pcfg.Vendor)
 	}

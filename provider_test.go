@@ -32,6 +32,24 @@ func TestNewProvider(t *testing.T) {
 	}
 }
 
+// TestPrequalifyModelsAreKnown guards prequalifyModelForVendor against
+// referencing a model no allowlist knows about — a silent typo there would
+// only surface as a provider error at startup.
+func TestPrequalifyModelsAreKnown(t *testing.T) {
+	for vendor, model := range prequalifyModelForVendor {
+		var allowlist []string
+		switch vendor {
+		case "deepseek":
+			allowlist = deepseekModels
+		case "qwen":
+			allowlist = qwenModels
+		default:
+			t.Fatalf("prequalifyModelForVendor has unknown vendor %q", vendor)
+		}
+		assert.Contains(t, allowlist, model, "prequalify model %q for vendor %q must be in the allowlist", model, vendor)
+	}
+}
+
 // TestNewPrequalifyProvider verifies the prequalify provider pins the
 // vendor's cheap model and never inherits the main model (running
 // prequalification on a thinking-forced preview model wedges the follow-up
