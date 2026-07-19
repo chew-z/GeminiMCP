@@ -27,8 +27,9 @@ var qwenModels = []string{"qwen3.7-max", "qwen3.7-plus", "qwen3.8-max-preview"}
 // empirically in production 2026-07-19. Per Alibaba's deep-thinking guide,
 // qwen3.8-max-preview accepts only low/high/xhigh (aliases minimal/medium/max),
 // defaults to xhigh with a 131072-token thinking budget, and long generations
-// at top effort are expected behavior. The dialect serves these models at
-// high/low effort — see qwen_responses_dialect.go.
+// at top effort are expected behavior. The dialect serves these models at low
+// effort (measured: review-class work in ~45s; high overruns multi-minute
+// budgets on the same task) — see qwen_responses_dialect.go.
 var thinkingForcedQwenModels = []string{"qwen3.8-max-preview"}
 
 // NewProvider creates the configured model provider.

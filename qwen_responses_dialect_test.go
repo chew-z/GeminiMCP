@@ -11,18 +11,19 @@ import (
 )
 
 // TestQwenResponsesDialectThinkingForced verifies that thinking-forced models
-// (e.g. qwen3.8-max-preview) never emit effort=none — DashScope rejects
-// enable_thinking=false for them — and get tiered effort: high for real
-// generations, low for utility calls like prequalification.
+// (e.g. qwen3.8-max-preview) always get low effort — never none (DashScope
+// rejects enable_thinking=false) and not high/xhigh either (measured to
+// overrun timeout budgets by unbounded thinking on the same tasks low serves
+// in under a minute).
 func TestQwenResponsesDialectThinkingForced(t *testing.T) {
 	for _, tt := range []struct {
 		name   string
 		req    GenerationRequest
 		effort string
 	}{
-		{"thinking enabled", GenerationRequest{Thinking: ThinkingSpec{Enabled: true}}, "high"},
+		{"thinking enabled", GenerationRequest{Thinking: ThinkingSpec{Enabled: true}}, "low"},
 		{"thinking disabled", GenerationRequest{}, "low"},
-		{"json object with thinking", GenerationRequest{Thinking: ThinkingSpec{Enabled: true}, ResponseFormat: "json_object"}, "high"},
+		{"json object with thinking", GenerationRequest{Thinking: ThinkingSpec{Enabled: true}, ResponseFormat: "json_object"}, "low"},
 		{"json object without thinking", GenerationRequest{ResponseFormat: "json_object"}, "low"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

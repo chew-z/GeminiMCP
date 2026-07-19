@@ -31,3 +31,28 @@ func TestNewProvider(t *testing.T) {
 		})
 	}
 }
+
+// TestNewProviderThinkingForcedWiring guards the slices.Contains wiring that
+// sets the dialect's thinkingForced flag: thinking-only models must get it,
+// and stable models must not (a silent miss means effort=none and a 400).
+func TestNewProviderThinkingForcedWiring(t *testing.T) {
+	for _, tt := range []struct {
+		model  string
+		forced bool
+	}{
+		{"qwen3.8-max-preview", true},
+		{"qwen3.7-max", false},
+		{"qwen3.7-plus", false},
+	} {
+		t.Run(tt.model, func(t *testing.T) {
+			cfg := &Config{Provider: ProviderConfig{Vendor: "qwen", APIKey: "key", BaseURL: "https://qwen.example", Model: tt.model}}
+			p, err := NewProvider(cfg, NewLogger(LevelError))
+			require.NoError(t, err)
+			rp, ok := p.(*responsesProvider)
+			require.True(t, ok, "qwen vendor must produce a responsesProvider")
+			dialect, ok := rp.dialect.(qwenResponsesDialect)
+			require.True(t, ok, "qwen vendor must use qwenResponsesDialect")
+			assert.Equal(t, tt.forced, dialect.thinkingForced)
+		})
+	}
+}

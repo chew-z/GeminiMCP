@@ -30,10 +30,11 @@ Qwen accepts a DashScope-compatible endpoint such as
 (reasoning effort `none`) with a 400. Per Alibaba's deep-thinking guide it
 accepts only `low`, `high`, and `xhigh` (aliases `minimal`/`medium`/`max`),
 defaults to `xhigh` with a 131072-token thinking budget, and long generations
-at top effort are expected behavior. The dialect therefore serves it at `high`
-effort for generations and `low` for utility calls such as prequalification;
-add future thinking-forced models to `thinkingForcedQwenModels` in
-`provider.go`.
+at top effort are expected behavior. The Responses API exposes no
+thinking-budget cap — effort is the only lever — so the dialect serves this
+model at `low` effort on every request (measured: review-class work in ~45s
+vs `high` overrunning multi-minute budgets on the same task); add future
+thinking-forced models to `thinkingForcedQwenModels` in `provider.go`.
 
 ## Request lifecycle
 
