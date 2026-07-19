@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // ProviderConfig contains credentials and endpoint settings for a selected
@@ -21,6 +22,11 @@ var deepseekModels = []string{"deepseek-v4-pro"}
 // qwenModels is the Qwen model allowlist.
 var qwenModels = []string{"qwen3.7-max", "qwen3.7-plus", "qwen3.8-max-preview"}
 
+// thinkingForcedQwenModels never accept enable_thinking=false: DashScope
+// rejects effort=none for them with a 400, so the dialect keeps reasoning at
+// max effort on every request, including prequalification.
+var thinkingForcedQwenModels = []string{"qwen3.8-max-preview"}
+
 // NewProvider creates the configured model provider.
 func NewProvider(cfg *Config, logger Logger) (Provider, error) {
 	if cfg == nil {
@@ -31,7 +37,8 @@ func NewProvider(cfg *Config, logger Logger) (Provider, error) {
 	case "deepseek":
 		return newOpenAIProvider(cfg.Provider, deepseekDialect{}, logger), nil
 	case "qwen":
-		return newResponsesProvider(cfg.Provider, qwenResponsesDialect{}, logger), nil
+		dialect := qwenResponsesDialect{thinkingForced: slices.Contains(thinkingForcedQwenModels, cfg.Provider.Model)}
+		return newResponsesProvider(cfg.Provider, dialect, logger), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider vendor %q; valid values: deepseek, qwen", cfg.Provider.Vendor)
 	}
