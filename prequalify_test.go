@@ -11,21 +11,26 @@ import (
 )
 
 func TestPrequalifyQuery(t *testing.T) {
-	provider := &mockProvider{generateFn: func(_ context.Context, req GenerationRequest) (*GenerationResponse, error) {
+	prequalifier := &mockProvider{generateFn: func(_ context.Context, req GenerationRequest) (*GenerationResponse, error) {
 		return &GenerationResponse{Text: `{"category":"analyze"}`, FinishReason: "STOP"}, nil
 	}}
-	s := &GeminiServer{config: &Config{Provider: ProviderConfig{Model: "test"}}, provider: provider}
+	// The main provider must stay untouched by prequalification — a wedged
+	// production incident (2026-07-19) traced to prequalify running on the
+	// main model.
+	main := &mockProvider{}
+	s := &GeminiServer{config: &Config{Provider: ProviderConfig{Vendor: "qwen", Model: "test"}}, provider: main, prequalifier: prequalifier}
 	category, err := s.prequalifyQuery(context.Background(), "explain this", "")
 	require.NoError(t, err)
 	assert.Equal(t, categoryAnalyze, category)
-	requests := provider.requests()
+	requests := prequalifier.requests()
 	require.Len(t, requests, 1)
 	assert.Equal(t, "json_object", requests[0].ResponseFormat)
 	assert.False(t, requests[0].Thinking.Enabled)
+	assert.Empty(t, main.requests(), "prequalification must not touch the main provider")
 }
 
 func TestPrequalifyQueryUnknownCategory(t *testing.T) {
-	s := &GeminiServer{config: &Config{}, provider: &mockProvider{generateFn: func(context.Context, GenerationRequest) (*GenerationResponse, error) {
+	s := &GeminiServer{config: &Config{}, prequalifier: &mockProvider{generateFn: func(context.Context, GenerationRequest) (*GenerationResponse, error) {
 		return &GenerationResponse{Text: `"unknown"`}, nil
 	}}}
 	_, err := s.prequalifyQuery(context.Background(), "question", "")
@@ -68,7 +73,7 @@ func TestResolveSystemPromptAsyncFallback(t *testing.T) {
 		assert.Equal(t, systemPromptGeneral, got.SystemPrompt)
 	})
 	t.Run("error with github context uses analyze", func(t *testing.T) {
-		s := &GeminiServer{config: &Config{Prequalify: true}, provider: &mockProvider{generateFn: func(context.Context, GenerationRequest) (*GenerationResponse, error) { return nil, errors.New("down") }}}
+		s := &GeminiServer{config: &Config{Prequalify: true}, provider: &mockProvider{}, prequalifier: &mockProvider{generateFn: func(context.Context, GenerationRequest) (*GenerationResponse, error) { return nil, errors.New("down") }}}
 		req := mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"github_repo": "o/r", "github_files": []any{"a.go"}}}}
 		got := <-s.resolveSystemPromptAsync(context.Background(), req, "q", NewLogger(LevelError))
 		assert.Equal(t, categoryAnalyze, got.Category)

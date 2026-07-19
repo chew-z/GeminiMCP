@@ -32,6 +32,37 @@ func TestNewProvider(t *testing.T) {
 	}
 }
 
+// TestNewPrequalifyProvider verifies the prequalify provider pins the
+// vendor's cheap model and never inherits the main model (running
+// prequalification on a thinking-forced preview model wedges the follow-up
+// generation in production).
+func TestNewPrequalifyProvider(t *testing.T) {
+	t.Run("qwen pins qwen3.7-plus", func(t *testing.T) {
+		cfg := &Config{Provider: ProviderConfig{Vendor: "qwen", APIKey: "key", BaseURL: "https://qwen.example", Model: "qwen3.8-max-preview"}}
+		p, err := NewPrequalifyProvider(cfg, NewLogger(LevelError))
+		require.NoError(t, err)
+		rp, ok := p.(*responsesProvider)
+		require.True(t, ok)
+		assert.Equal(t, "qwen3.7-plus", rp.model)
+		dialect, ok := rp.dialect.(qwenResponsesDialect)
+		require.True(t, ok)
+		assert.False(t, dialect.thinkingForced, "prequalify dialect must not be thinking-forced")
+	})
+	t.Run("deepseek pins deepseek-v4-flash", func(t *testing.T) {
+		cfg := &Config{Provider: ProviderConfig{Vendor: "deepseek", APIKey: "key", BaseURL: "https://ds.example", Model: "deepseek-v4-pro"}}
+		p, err := NewPrequalifyProvider(cfg, NewLogger(LevelError))
+		require.NoError(t, err)
+		op, ok := p.(*openaiProvider)
+		require.True(t, ok)
+		assert.Equal(t, "deepseek-v4-flash", op.model)
+	})
+	t.Run("unknown vendor errors", func(t *testing.T) {
+		cfg := &Config{Provider: ProviderConfig{Vendor: "nope"}}
+		_, err := NewPrequalifyProvider(cfg, NewLogger(LevelError))
+		require.Error(t, err)
+	})
+}
+
 // TestNewProviderThinkingForcedWiring guards the slices.Contains wiring that
 // sets the dialect's thinkingForced flag: thinking-only models must get it,
 // and stable models must not (a silent miss means effort=none and a 400).

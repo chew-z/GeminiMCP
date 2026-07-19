@@ -32,6 +32,43 @@ var qwenModels = []string{"qwen3.7-max", "qwen3.7-plus", "qwen3.8-max-preview"}
 // budgets on the same task) — see qwen_responses_dialect.go.
 var thinkingForcedQwenModels = []string{"qwen3.8-max-preview"}
 
+// prequalifyModelForVendor maps each vendor to the cheap, stable model used
+// for prequalification. Server-owned policy, not user configuration: the
+// classification call is a ~2s JSON single-token task that needs neither a
+// max-tier model nor thinking. Confirmed 2026-07-19: running the prequalify
+// call on the same qwen3.8-max-preview instance wedged the follow-up
+// generation in production (>300s, 8/8), while prequalifying on qwen3.7-plus
+// before a 3.8 generation works.
+var prequalifyModelForVendor = map[string]string{
+	"deepseek": "deepseek-v4-flash",
+	"qwen":     "qwen3.7-plus",
+}
+
+// NewPrequalifyProvider creates the lightweight provider used only for
+// query prequalification. It shares the vendor, credentials, and endpoint of
+// the main provider but pins the vendor's cheap model. The returned dialect
+// is never thinking-forced, so prequalify requests keep their fast
+// effort=none / non-thinking shape.
+func NewPrequalifyProvider(cfg *Config, logger Logger) (Provider, error) {
+	if cfg == nil {
+		return nil, errors.New("config cannot be nil")
+	}
+	model, ok := prequalifyModelForVendor[cfg.Provider.Vendor]
+	if !ok {
+		return nil, fmt.Errorf("no prequalify model defined for vendor %q", cfg.Provider.Vendor)
+	}
+	pcfg := cfg.Provider
+	pcfg.Model = model
+	switch pcfg.Vendor {
+	case "deepseek":
+		return newOpenAIProvider(pcfg, deepseekDialect{}, logger), nil
+	case "qwen":
+		return newResponsesProvider(pcfg, qwenResponsesDialect{}, logger), nil
+	default:
+		return nil, fmt.Errorf("unsupported provider vendor %q; valid values: deepseek, qwen", pcfg.Vendor)
+	}
+}
+
 // NewProvider creates the configured model provider.
 func NewProvider(cfg *Config, logger Logger) (Provider, error) {
 	if cfg == nil {

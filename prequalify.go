@@ -29,12 +29,13 @@ EXAMPLE JSON OUTPUT:
 {"category": "debug"}`
 
 // prequalifyQuery classifies a user query into one of the five categories
-// using the configured provider model with thinking disabled and JSON mode.
+// using the dedicated prequalify provider (the vendor's cheap model, see
+// prequalifyModelForVendor) with thinking disabled and JSON mode.
 // On any failure it returns an error; the caller decides the fallback.
 // DeepSeek JSON mode may occasionally return empty content, which becomes a
 // parse error and falls back to the default category.
 func (s *GeminiServer) prequalifyQuery(ctx context.Context, query, contextSummary string) (queryCategory, error) {
-	if s == nil || s.provider == nil {
+	if s == nil || s.prequalifier == nil {
 		return "", fmt.Errorf("prequalify: provider not initialized")
 	}
 	if strings.TrimSpace(query) == "" && strings.TrimSpace(contextSummary) == "" {
@@ -48,7 +49,7 @@ func (s *GeminiServer) prequalifyQuery(ctx context.Context, query, contextSummar
 		userMessage = query + "\n\n" + contextSummary
 	}
 
-	resp, err := s.provider.Generate(ctx, GenerationRequest{
+	resp, err := s.prequalifier.Generate(ctx, GenerationRequest{
 		SystemPrompt:   prequalifySystemPrompt,
 		Parts:          []ContentPart{{Text: userMessage}},
 		ResponseFormat: "json_object",
@@ -64,7 +65,7 @@ func (s *GeminiServer) prequalifyQuery(ctx context.Context, query, contextSummar
 		logger.Debug("prequalify: raw=%q parse error: %v", raw, err)
 		return "", err
 	}
-	logger.Debug("prequalify: raw=%q parsed=%s model=%s", raw, cat, s.config.ActiveModel())
+	logger.Debug("prequalify: raw=%q parsed=%s model=%s", raw, cat, prequalifyModelForVendor[s.config.Provider.Vendor])
 	logger.Info("Pre-qualified query as '%s'", cat)
 	return cat, nil
 }

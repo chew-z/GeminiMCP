@@ -47,9 +47,14 @@ func NewPromptDefinition(name, description string) *PromptDefinition {
 
 // GeminiServer implements the ToolHandler interface for provider API interactions.
 type GeminiServer struct {
-	config     *Config
-	provider   Provider
-	httpClient *http.Client
+	config   *Config
+	provider Provider
+	// prequalifier serves only prequalifyQuery, on the vendor's cheap model
+	// (see prequalifyModelForVendor). Running prequalification on the main
+	// provider is not an option for thinking-forced preview models: the
+	// prequalify→generation pair wedges the generation in production.
+	prequalifier Provider
+	httpClient   *http.Client
 }
 
 // Config holds all configuration parameters for the application

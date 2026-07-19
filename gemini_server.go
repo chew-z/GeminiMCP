@@ -18,9 +18,15 @@ func NewGeminiServer(ctx context.Context, config *Config) (*GeminiServer, error)
 		return nil, fmt.Errorf("failed to create provider: %w", err)
 	}
 
+	prequalifier, err := NewPrequalifyProvider(config, getLoggerFromContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create prequalify provider: %w", err)
+	}
+
 	return &GeminiServer{
-		config:     config,
-		provider:   provider,
-		httpClient: &http.Client{Timeout: config.HTTPTimeout},
+		config:       config,
+		provider:     provider,
+		prequalifier: prequalifier,
+		httpClient:   &http.Client{Timeout: config.HTTPTimeout},
 	}, nil
 }

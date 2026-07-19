@@ -36,6 +36,13 @@ model at `low` effort on every request (measured: review-class work in ~45s
 vs `high` overrunning multi-minute budgets on the same task); add future
 thinking-forced models to `thinkingForcedQwenModels` in `provider.go`.
 
+Prequalification runs on a dedicated cheap-model provider, not the main one
+(`prequalifyModelForVendor` in `provider.go`: `qwen3.7-plus` for Qwen,
+`deepseek-v4-flash` for DeepSeek — same credentials and endpoint). This is
+load-bearing, not just cost hygiene: a prequalify call immediately followed
+by a generation on `qwen3.8-max-preview` reliably wedged the generation in
+production (>300s until gateway 504) while either call alone was fine.
+
 ## Request lifecycle
 
 `gemini_ask` gathers optional GitHub files, PRs, commits, and diffs; renders the
