@@ -22,9 +22,13 @@ var deepseekModels = []string{"deepseek-v4-pro"}
 // qwenModels is the Qwen model allowlist.
 var qwenModels = []string{"qwen3.7-max", "qwen3.7-plus", "qwen3.8-max-preview"}
 
-// thinkingForcedQwenModels never accept enable_thinking=false: DashScope
-// rejects effort=none for them with a 400, so the dialect keeps reasoning at
-// max effort on every request, including prequalification.
+// thinkingForcedQwenModels are thinking-only: DashScope rejects
+// enable_thinking=false (reasoning effort none) with a 400 — confirmed
+// empirically in production 2026-07-19. Per Alibaba's deep-thinking guide,
+// qwen3.8-max-preview accepts only low/high/xhigh (aliases minimal/medium/max),
+// defaults to xhigh with a 131072-token thinking budget, and long generations
+// at top effort are expected behavior. The dialect serves these models at
+// high/low effort — see qwen_responses_dialect.go.
 var thinkingForcedQwenModels = []string{"qwen3.8-max-preview"}
 
 // NewProvider creates the configured model provider.

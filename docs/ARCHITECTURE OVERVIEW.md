@@ -26,6 +26,15 @@ Both share the same provider-neutral `Provider` interface.
 Qwen accepts a DashScope-compatible endpoint such as
 `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`.
 
+`qwen3.8-max-preview` is thinking-only: it rejects `enable_thinking=false`
+(reasoning effort `none`) with a 400. Per Alibaba's deep-thinking guide it
+accepts only `low`, `high`, and `xhigh` (aliases `minimal`/`medium`/`max`),
+defaults to `xhigh` with a 131072-token thinking budget, and long generations
+at top effort are expected behavior. The dialect therefore serves it at `high`
+effort for generations and `low` for utility calls such as prequalification;
+add future thinking-forced models to `thinkingForcedQwenModels` in
+`provider.go`.
+
 ## Request lifecycle
 
 `gemini_ask` gathers optional GitHub files, PRs, commits, and diffs; renders the
