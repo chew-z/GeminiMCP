@@ -1,14 +1,20 @@
 # GeminiMCP
 
-An MCP server that exposes configured DeepSeek or Qwen models to MCP clients (Claude Code, IDE extensions, custom tooling).
+An MCP server that exposes configured DeepSeek or Qwen models to MCP clients
+(Claude Code, IDE extensions, custom tooling).
 
 ## What it does
 
-- **`gemini_ask`** — coding/analysis question answering with composable GitHub context (PRs, commits, diffs, files)
+- **`gemini_ask`** — coding/analysis question answering with composable GitHub
+  context (PRs, commits, diffs, files)
 - **3 workflow prompts** — `review_pr`, `explain_commit`, `compare_refs`
-- **7 coding prompts** — code review, explain, debug, refactor, architecture, tests, security
-- **Structured XML envelope** — every user turn is rendered as `<context>` / `<task>` / `<final_instruction>` with attacker-controllable bodies emitted as raw text
-- **Server-side system-prompt selection** — a classifier picks a category-specific instruction and matching `<final_instruction>` body
+- **7 coding prompts** — code review, explain, debug, refactor, architecture,
+  tests, security
+- **Structured XML envelope** — every user turn is rendered as
+  `<context>` / `<task>` / `<final_instruction>` with attacker-controllable
+  bodies emitted as raw text
+- **Server-side system-prompt selection** — a classifier picks a
+  category-specific instruction and matching `<final_instruction>` body
 - Two transports: **HTTP** (JWT-secured, preferred) and **stdio** (local fallback)
 
 ## Quick start
@@ -42,7 +48,7 @@ Claude Code `mcpServers` entry (stdio):
 ## Documentation
 
 | Doc | Contents |
-|-----|---------|
+| ----- | --------- |
 | [docs/QUICKREF.md](docs/QUICKREF.md) | One-page cheat sheet — parameters, env vars, CLI flags, examples |
 | [docs/TOOLS.md](docs/TOOLS.md) | Full tool and prompt reference with all parameters and examples |
 | [docs/PROMPTS.md](docs/PROMPTS.md) | MCP-prompt registry and server-side system-prompt selection |

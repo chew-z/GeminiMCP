@@ -20,7 +20,7 @@ policy are server configuration, not tool parameters.
 ## Provider configuration
 
 | Variable | Description |
-|---|---|
+| --- | --- |
 | `PROVIDER` | Required: `deepseek` or `qwen` |
 | `PROVIDER_API_KEY` | Required provider credential |
 | `PROVIDER_MODEL` | `deepseek-v4-pro`, `qwen3.7-max`, `qwen3.7-plus`, or `qwen3.8-max-preview` (preview) |

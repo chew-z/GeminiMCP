@@ -7,7 +7,7 @@ Qwen provider. Provider choice, model, token limit, and reasoning policy are
 configured at server startup and cannot be overridden per call.
 
 | Parameter | Type | Required | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `query` | string | Yes | The coding question or task |
 | `github_repo` | string | No* | `owner/repo`; required when any GitHub context is used |
 | `github_ref` | string | No | Ref for `github_files` |

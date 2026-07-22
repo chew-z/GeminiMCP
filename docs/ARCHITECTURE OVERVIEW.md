@@ -19,7 +19,7 @@ Both share the same provider-neutral `Provider` interface.
 ## Provider model allowlist
 
 | Provider | API | Model | Endpoint |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | DeepSeek | Chat Completions | `deepseek-v4-pro` | Defaults to `https://api.deepseek.com` |
 | Qwen | Responses | `qwen3.7-max`, `qwen3.7-plus`, `qwen3.8-max-preview` (preview) | `PROVIDER_BASE_URL` required |
 
@@ -69,7 +69,7 @@ differences are isolated in a `responsesDialect` interface.
 ## Components
 
 | Component | Responsibility |
-|---|---|
+| --- | --- |
 | `config.go` | Provider and server configuration |
 | `provider.go` | Provider-neutral types and provider selection |
 | `openaicompat.go` | Chat Completions provider and DeepSeek dialect |

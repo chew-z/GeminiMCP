@@ -23,7 +23,7 @@ PROVIDER=qwen PROVIDER_API_KEY=... PROVIDER_MODEL=qwen3.7-max \
 ## Provider environment
 
 | Variable | Requirement | Description |
-|---|---|---|
+| --- | --- | --- |
 | `PROVIDER` | Required | `deepseek` or `qwen` |
 | `PROVIDER_API_KEY` | Required | Provider credential |
 | `PROVIDER_MODEL` | Required | `deepseek-v4-pro`, `qwen3.7-max`, `qwen3.7-plus`, or `qwen3.8-max-preview` (preview) |
