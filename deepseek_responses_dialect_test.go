@@ -12,7 +12,7 @@ import (
 
 // TestDeepSeekResponsesDialectRequestShape verifies the reasoning-effort
 // mapping sent to DeepSeek's Responses endpoint: max for thinking-enabled
-// generations, none for the prequalify-style thinking-disabled calls.
+// generations, low for the prequalify-style thinking-disabled calls.
 func TestDeepSeekResponsesDialectRequestShape(t *testing.T) {
 	for _, tt := range []struct {
 		name   string
@@ -20,8 +20,8 @@ func TestDeepSeekResponsesDialectRequestShape(t *testing.T) {
 		effort string
 	}{
 		{"thinking enabled", GenerationRequest{Thinking: ThinkingSpec{Enabled: true}}, "max"},
-		{"thinking disabled", GenerationRequest{}, "none"},
-		{"thinking disabled with json object", GenerationRequest{ResponseFormat: "json_object"}, "none"},
+		{"thinking disabled", GenerationRequest{}, "low"},
+		{"thinking disabled with json object", GenerationRequest{ResponseFormat: "json_object"}, "low"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			p, server := newTestResponsesProviderWithDialect(t, deepseekResponsesDialect{}, "deepseek-v4-pro", func(w http.ResponseWriter, r *http.Request) {

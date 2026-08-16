@@ -21,23 +21,23 @@ type ProviderConfig struct {
 var deepseekModels = []string{"deepseek-v4-pro", "deepseek-v4-flash"}
 
 // qwenModels is the Qwen model allowlist.
-var qwenModels = []string{"qwen3.7-max", "qwen3.7-plus", "qwen3.8-max-preview"}
+var qwenModels = []string{"qwen3.7-max", "qwen3.7-plus", "qwen3.8-max"}
 
 // thinkingForcedQwenModels are thinking-only: DashScope rejects
 // enable_thinking=false (reasoning effort none) with a 400 — confirmed
 // empirically in production 2026-07-19. Per Alibaba's deep-thinking guide,
-// qwen3.8-max-preview accepts only low/high/xhigh (aliases minimal/medium/max),
+// qwen3.8-max accepts only low/high/xhigh (aliases minimal/medium/max),
 // defaults to xhigh with a 131072-token thinking budget, and long generations
 // at top effort are expected behavior. The dialect serves these models at low
 // effort (measured: review-class work in ~45s; high overruns multi-minute
 // budgets on the same task) — see qwen_responses_dialect.go.
-var thinkingForcedQwenModels = []string{"qwen3.8-max-preview"}
+var thinkingForcedQwenModels = []string{"qwen3.8-max"}
 
 // prequalifyModelForVendor maps each vendor to the cheap, stable model used
 // for prequalification. Server-owned policy, not user configuration: the
 // classification call is a ~2s JSON single-token task that needs neither a
 // max-tier model nor thinking. Confirmed 2026-07-19: running the prequalify
-// call on the same qwen3.8-max-preview instance wedged the follow-up
+// call on the same qwen3.8-max instance wedged the follow-up
 // generation in production (>300s, 8/8), while prequalifying on qwen3.7-plus
 // before a 3.8 generation works.
 var prequalifyModelForVendor = map[string]string{
@@ -48,8 +48,8 @@ var prequalifyModelForVendor = map[string]string{
 // NewPrequalifyProvider creates the lightweight provider used only for
 // query prequalification. It shares the vendor, credentials, and endpoint of
 // the main provider but pins the vendor's cheap model. The returned dialect
-// is never thinking-forced, so prequalify requests keep their fast
-// effort=none / non-thinking shape.
+// is never thinking-forced, so prequalify requests keep their minimal
+// low-effort shape (the dialect floor).
 func NewPrequalifyProvider(cfg *Config, logger Logger) (Provider, error) {
 	if cfg == nil {
 		return nil, errors.New("config cannot be nil")
@@ -66,7 +66,7 @@ func NewPrequalifyProvider(cfg *Config, logger Logger) (Provider, error) {
 	case "qwen":
 		// Derive thinkingForced from the same source of truth as NewProvider:
 		// if a future prequalify model is thinking-forced, the dialect must
-		// honor it instead of silently allowing effort=none.
+		// honor it instead of silently allowing plain low effort.
 		dialect := qwenResponsesDialect{thinkingForced: slices.Contains(thinkingForcedQwenModels, pcfg.Model)}
 		return newResponsesProvider(pcfg, dialect, logger), nil
 	default:
@@ -102,7 +102,9 @@ type Provider interface {
 	IsRetryable(err error) bool
 }
 
-// ThinkingSpec controls model reasoning for a single request.
+// ThinkingSpec controls model reasoning for a single request. Enabled maps
+// to max reasoning effort; disabled maps to the low floor — there is no
+// "off" state, both vendors floor effort at low.
 type ThinkingSpec struct {
 	Enabled bool
 }

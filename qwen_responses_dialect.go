@@ -7,7 +7,7 @@ import (
 )
 
 // qwenResponsesDialect shapes Responses-API requests for Qwen models.
-// thinkingForced marks thinking-only models (e.g. qwen3.8-max-preview) that
+// thinkingForced marks thinking-only models (e.g. qwen3.8-max) that
 // reject enable_thinking=false with a 400. Their documented effort values are
 // low/high/xhigh (default xhigh, 131072-token thinking budget), and they get
 // low effort on every request: measured 2026-07-19, low serves review-class
@@ -28,13 +28,16 @@ type qwenResponsesDialect struct {
 func (qwenResponsesDialect) name() string { return "qwen" }
 
 func (d qwenResponsesDialect) buildRequest(params *responses.ResponseNewParams, req GenerationRequest) []option.RequestOption {
+	// Effort floor is low, not none: DashScope rejects none for thinking-only
+	// models, and low+json_object is verified compatible for prequalify.
+	// JSON format suppresses max down to the floor.
 	switch {
 	case d.thinkingForced:
 		params.Reasoning.Effort = shared.ReasoningEffortLow
 	case req.Thinking.Enabled && req.ResponseFormat != "json_object":
 		params.Reasoning.Effort = shared.ReasoningEffortMax
 	default:
-		params.Reasoning.Effort = shared.ReasoningEffortNone
+		params.Reasoning.Effort = shared.ReasoningEffortLow
 	}
 	return []option.RequestOption{option.WithHeader("x-dashscope-session-cache", "enable")}
 }

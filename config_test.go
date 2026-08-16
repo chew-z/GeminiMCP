@@ -65,8 +65,8 @@ func TestNewConfigProviderSelection(t *testing.T) {
 			"", "qwen",
 		},
 		{
-			"qwen preview model accepted",
-			map[string]string{"PROVIDER": "qwen", "PROVIDER_API_KEY": "key", "PROVIDER_MODEL": "qwen3.8-max-preview", "PROVIDER_BASE_URL": "https://qwen.example"},
+			"qwen3.8-max accepted",
+			map[string]string{"PROVIDER": "qwen", "PROVIDER_API_KEY": "key", "PROVIDER_MODEL": "qwen3.8-max", "PROVIDER_BASE_URL": "https://qwen.example"},
 			"", "qwen",
 		},
 	}

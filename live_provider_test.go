@@ -11,7 +11,7 @@ import (
 )
 
 // TestDeepSeekLive exercises the configured DeepSeek backend when explicitly
-// enabled: thinking-enabled generation, thinking-disabled (effort none), and
+// enabled: thinking-enabled generation, thinking-disabled (effort low), and
 // the prequalify provider on deepseek-v4-flash with JSON mode.
 func TestDeepSeekLive(t *testing.T) {
 	if os.Getenv("PROVIDER") != "deepseek" || os.Getenv("PROVIDER_API_KEY") == "" {
@@ -59,15 +59,28 @@ func TestQwenLive(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.Text)
 
-	// Thinking-forced preview model at forced-low effort: the production
-	// shape for qwen3.8-max-preview, independent of the configured model.
+	// Thinking-forced model at forced-low effort: the production
+	// shape for qwen3.8-max, independent of the configured model.
 	t.Run("thinking forced low effort", func(t *testing.T) {
 		pcfg := cfg.Provider
-		pcfg.Model = "qwen3.8-max-preview"
+		pcfg.Model = "qwen3.8-max"
 		forced := newResponsesProvider(pcfg, qwenResponsesDialect{thinkingForced: true}, NewLogger(LevelError))
 		resp, err := forced.Generate(context.Background(), GenerationRequest{
 			Parts:    []ContentPart{{Text: "Say OK"}},
 			Thinking: ThinkingSpec{Enabled: true},
+		})
+		require.NoError(t, err)
+		assert.NotEmpty(t, resp.Text)
+	})
+
+	t.Run("prequalify provider", func(t *testing.T) {
+		pq, err := NewPrequalifyProvider(cfg, NewLogger(LevelError))
+		require.NoError(t, err)
+		resp, err := pq.Generate(context.Background(), GenerationRequest{
+			SystemPrompt:   `Respond with JSON in exactly this form: {"category": "general"}`,
+			Parts:          []ContentPart{{Text: "hello"}},
+			ResponseFormat: "json_object",
+			Temperature:    0,
 		})
 		require.NoError(t, err)
 		assert.NotEmpty(t, resp.Text)

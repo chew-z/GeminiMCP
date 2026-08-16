@@ -11,7 +11,7 @@ import (
 )
 
 // TestQwenResponsesDialectThinkingForced verifies that thinking-forced models
-// (e.g. qwen3.8-max-preview) always get low effort — never none (DashScope
+// (e.g. qwen3.8-max) always get low effort — never none (DashScope
 // rejects enable_thinking=false) and not high/xhigh either (measured to
 // overrun timeout budgets by unbounded thinking on the same tasks low serves
 // in under a minute).
@@ -27,7 +27,7 @@ func TestQwenResponsesDialectThinkingForced(t *testing.T) {
 		{"json object without thinking", GenerationRequest{ResponseFormat: "json_object"}, "low"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			p, server := newTestResponsesProviderWithDialect(t, qwenResponsesDialect{thinkingForced: true}, "qwen3.8-max-preview", func(w http.ResponseWriter, r *http.Request) {
+			p, server := newTestResponsesProviderWithDialect(t, qwenResponsesDialect{thinkingForced: true}, "qwen3.8-max", func(w http.ResponseWriter, r *http.Request) {
 				defer r.Body.Close()
 				var body map[string]any
 				require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
@@ -49,8 +49,8 @@ func TestQwenResponsesDialectRequestShape(t *testing.T) {
 		effort string
 	}{
 		{"thinking enabled", GenerationRequest{Thinking: ThinkingSpec{Enabled: true}}, "max"},
-		{"thinking disabled", GenerationRequest{}, "none"},
-		{"json wins", GenerationRequest{Thinking: ThinkingSpec{Enabled: true}, ResponseFormat: "json_object"}, "none"},
+		{"thinking disabled", GenerationRequest{}, "low"},
+		{"json suppresses max", GenerationRequest{Thinking: ThinkingSpec{Enabled: true}, ResponseFormat: "json_object"}, "low"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			p, server := newTestResponsesProvider(t, func(w http.ResponseWriter, r *http.Request) {

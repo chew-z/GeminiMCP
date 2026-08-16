@@ -52,11 +52,11 @@ func TestPrequalifyModelsAreKnown(t *testing.T) {
 
 // TestNewPrequalifyProvider verifies the prequalify provider pins the
 // vendor's cheap model and never inherits the main model (running
-// prequalification on a thinking-forced preview model wedges the follow-up
+// prequalification on the thinking-forced model wedges the follow-up
 // generation in production).
 func TestNewPrequalifyProvider(t *testing.T) {
 	t.Run("qwen pins qwen3.7-plus", func(t *testing.T) {
-		cfg := &Config{Provider: ProviderConfig{Vendor: "qwen", APIKey: "key", BaseURL: "https://qwen.example", Model: "qwen3.8-max-preview"}}
+		cfg := &Config{Provider: ProviderConfig{Vendor: "qwen", APIKey: "key", BaseURL: "https://qwen.example", Model: "qwen3.8-max"}}
 		p, err := NewPrequalifyProvider(cfg, NewLogger(LevelError))
 		require.NoError(t, err)
 		rp, ok := p.(*responsesProvider)
@@ -85,13 +85,14 @@ func TestNewPrequalifyProvider(t *testing.T) {
 
 // TestNewProviderThinkingForcedWiring guards the slices.Contains wiring that
 // sets the dialect's thinkingForced flag: thinking-only models must get it,
-// and stable models must not (a silent miss means effort=none and a 400).
+// and stable models must not (a silent miss lets main generations run at max
+// effort and overrun timeout budgets).
 func TestNewProviderThinkingForcedWiring(t *testing.T) {
 	for _, tt := range []struct {
 		model  string
 		forced bool
 	}{
-		{"qwen3.8-max-preview", true},
+		{"qwen3.8-max", true},
 		{"qwen3.7-max", false},
 		{"qwen3.7-plus", false},
 	} {

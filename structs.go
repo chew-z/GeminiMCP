@@ -51,7 +51,7 @@ type GeminiServer struct {
 	provider Provider
 	// prequalifier serves only prequalifyQuery, on the vendor's cheap model
 	// (see prequalifyModelForVendor). Running prequalification on the main
-	// provider is not an option for thinking-forced preview models: the
+	// provider is not an option for thinking-forced models: the
 	// prequalify→generation pair wedges the generation in production.
 	prequalifier Provider
 	httpClient   *http.Client
