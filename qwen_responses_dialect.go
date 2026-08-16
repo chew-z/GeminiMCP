@@ -15,6 +15,12 @@ import (
 // overruns multi-minute timeout budgets on the same task. The Responses API
 // exposes no thinking_budget cap — effort is the only lever. Raise this
 // deliberately if a future policy wants deeper reasoning for large contexts.
+//
+// The x-dashscope-session-cache header is kept for single-turn use: measured
+// 2026-08-16, a repeated request hit the cache for 5144/5153 tokens despite
+// no previous_response_id chain. The envelope places stable context before
+// the query so shared prefixes cache across calls (billed at 10% on hit vs
+// 125% on creation).
 type qwenResponsesDialect struct {
 	thinkingForced bool
 }
