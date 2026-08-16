@@ -62,7 +62,7 @@ func NewPrequalifyProvider(cfg *Config, logger Logger) (Provider, error) {
 	pcfg.Model = model
 	switch pcfg.Vendor {
 	case "deepseek":
-		return newOpenAIProvider(pcfg, deepseekDialect{}, logger), nil
+		return newResponsesProvider(pcfg, deepseekResponsesDialect{}, logger), nil
 	case "qwen":
 		// Derive thinkingForced from the same source of truth as NewProvider:
 		// if a future prequalify model is thinking-forced, the dialect must
@@ -82,7 +82,7 @@ func NewProvider(cfg *Config, logger Logger) (Provider, error) {
 
 	switch cfg.Provider.Vendor {
 	case "deepseek":
-		return newOpenAIProvider(cfg.Provider, deepseekDialect{}, logger), nil
+		return newResponsesProvider(cfg.Provider, deepseekResponsesDialect{}, logger), nil
 	case "qwen":
 		dialect := qwenResponsesDialect{thinkingForced: slices.Contains(thinkingForcedQwenModels, cfg.Provider.Model)}
 		return newResponsesProvider(cfg.Provider, dialect, logger), nil

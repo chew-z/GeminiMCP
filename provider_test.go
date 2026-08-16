@@ -14,7 +14,7 @@ func TestNewProvider(t *testing.T) {
 		wantType any
 		wantErr  bool
 	}{
-		{"deepseek", "deepseek", &openaiProvider{}, false},
+		{"deepseek", "deepseek", &responsesProvider{}, false},
 		{"qwen", "qwen", &responsesProvider{}, false},
 		{"empty vendor", "", nil, true},
 		{"gemini removed", "gemini", nil, true},
@@ -70,9 +70,11 @@ func TestNewPrequalifyProvider(t *testing.T) {
 		cfg := &Config{Provider: ProviderConfig{Vendor: "deepseek", APIKey: "key", BaseURL: "https://ds.example", Model: "deepseek-v4-pro"}}
 		p, err := NewPrequalifyProvider(cfg, NewLogger(LevelError))
 		require.NoError(t, err)
-		op, ok := p.(*openaiProvider)
+		rp, ok := p.(*responsesProvider)
 		require.True(t, ok)
-		assert.Equal(t, "deepseek-v4-flash", op.model)
+		assert.Equal(t, "deepseek-v4-flash", rp.model)
+		_, ok = rp.dialect.(deepseekResponsesDialect)
+		assert.True(t, ok, "deepseek prequalify must use deepseekResponsesDialect")
 	})
 	t.Run("unknown vendor errors", func(t *testing.T) {
 		cfg := &Config{Provider: ProviderConfig{Vendor: "nope"}}

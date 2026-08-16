@@ -124,7 +124,7 @@ func (p *responsesProvider) IsRetryable(err error) bool {
 }
 
 // logReasoningItems records the count and summary lengths of reasoning output
-// items, matching the debug-level observability of openaiProvider.logReasoningContent.
+// items at debug level, for effort-tuning observability.
 func (p *responsesProvider) logReasoningItems(resp *responses.Response) {
 	if resp == nil || p.logger == nil {
 		return

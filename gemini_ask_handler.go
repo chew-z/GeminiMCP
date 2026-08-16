@@ -587,6 +587,7 @@ func (s *GeminiServer) processWithoutFiles(ctx context.Context, req mcp.CallTool
 	)
 	if err != nil {
 		logAPIError(callCtx, logger, "Provider API error", err)
+		return createErrorResult(fmt.Sprintf("Error from provider API: %v", err)), nil
 	}
 
 	return convertResponseToMCPResult(response, logger), nil

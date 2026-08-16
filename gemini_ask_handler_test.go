@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -37,4 +38,53 @@ func TestConvertResponseToMCPResult(t *testing.T) {
 			assert.Contains(t, toolResultText(t, result), tt.want)
 		})
 	}
+}
+
+func newTestServerWithProvider(provider Provider) *GeminiServer {
+	return &GeminiServer{
+		config: &Config{
+			Provider:       ProviderConfig{Model: "test"},
+			HTTPTimeout:    time.Second,
+			MaxRetries:     1,
+			InitialBackoff: time.Millisecond,
+			MaxBackoff:     time.Millisecond,
+		},
+		provider: provider,
+	}
+}
+
+// TestProcessWithoutFilesProviderError verifies the query-only path surfaces
+// the underlying provider error instead of masking it with the generic
+// empty-response message.
+func TestProcessWithoutFilesProviderError(t *testing.T) {
+	provider := &mockProvider{
+		generateFn: func(context.Context, GenerationRequest) (*GenerationResponse, error) {
+			return nil, errors.New("boom: rate limit")
+		},
+	}
+	s := newTestServerWithProvider(provider)
+
+	result, err := s.processWithoutFiles(context.Background(), mcp.CallToolRequest{}, "hello", categoryGeneral, "system")
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+	text := toolResultText(t, result)
+	assert.Contains(t, text, "boom: rate limit")
+	assert.NotContains(t, text, "provider returned an empty response")
+	assert.Len(t, provider.requests(), 1, "non-retryable error must not be retried")
+}
+
+// TestProcessWithoutFilesEmptyResponse verifies a successful but empty
+// generation yields the friendly empty-response guidance, not an error.
+func TestProcessWithoutFilesEmptyResponse(t *testing.T) {
+	provider := &mockProvider{
+		generateFn: func(context.Context, GenerationRequest) (*GenerationResponse, error) {
+			return &GenerationResponse{Text: "", FinishReason: "stop"}, nil
+		},
+	}
+	s := newTestServerWithProvider(provider)
+
+	result, err := s.processWithoutFiles(context.Background(), mcp.CallToolRequest{}, "hello", categoryGeneral, "system")
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+	assert.Contains(t, toolResultText(t, result), "The model returned an empty response")
 }
