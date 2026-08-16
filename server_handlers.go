@@ -23,6 +23,10 @@ func setupGeminiServer(ctx context.Context, mcpServer *server.MCPServer, config 
 		return fmt.Errorf("failed to create Gemini service: %w", err)
 	}
 
+	logger.Info("Provider: %s model=%s endpoint=%s (prequalify model: %s)",
+		config.Provider.Vendor, config.Provider.Model, config.Provider.BaseURL,
+		prequalifyModelForVendor[config.Provider.Vendor])
+
 	// Create handler for gemini_ask using direct handler
 	// Register gemini_ask with logger wrapper using shared tool definition
 	mcpServer.AddTool(GeminiAskTool, wrapHandlerWithLogger(geminiSvc.GeminiAskHandler, "gemini_ask", logger))
