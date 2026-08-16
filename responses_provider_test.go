@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -95,4 +96,78 @@ func TestResponsesProviderIsRetryable(t *testing.T) {
 	}{{&openai.Error{StatusCode: 429}, true}, {&openai.Error{StatusCode: 500}, true}, {&openai.Error{StatusCode: 503}, true}, {&openai.Error{StatusCode: 400}, false}, {&openai.Error{StatusCode: 403}, false}, {errors.New("rate limit reached"), true}} {
 		assert.Equal(t, tt.want, p.IsRetryable(tt.err))
 	}
+}
+
+func TestParseProviderRetryDelay(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers map[string]string
+		want    time.Duration
+		ok      bool
+	}{
+		{"retry-after seconds", map[string]string{"Retry-After": "3"}, 3 * time.Second, true},
+		{"retry-after capped", map[string]string{"Retry-After": "900"}, maxRetryHint, true},
+		{"retry-after zero unusable", map[string]string{"Retry-After": "0"}, 0, false},
+		{"retry-after date in past", map[string]string{"Retry-After": "Sun, 06 Nov 1994 08:49:37 GMT"}, 0, false},
+		{"reset requests duration", map[string]string{"X-Ratelimit-Reset-Requests": "6m5s"}, maxRetryHint, true},
+		{"reset tokens duration", map[string]string{"X-Ratelimit-Reset-Tokens": "1s"}, time.Second, true},
+		{"max of both resets", map[string]string{"X-Ratelimit-Reset-Requests": "1s", "X-Ratelimit-Reset-Tokens": "2s"}, 2 * time.Second, true},
+		{"retry-after wins over resets", map[string]string{"Retry-After": "1", "X-Ratelimit-Reset-Tokens": "9s"}, time.Second, true},
+		{"garbage unusable", map[string]string{"Retry-After": "soon", "X-Ratelimit-Reset-Tokens": "later"}, 0, false},
+		{"no headers", map[string]string{}, 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			header := http.Header{}
+			for key, value := range tt.headers {
+				header.Set(key, value)
+			}
+			got, ok := parseProviderRetryDelay(header)
+			assert.Equal(t, tt.ok, ok)
+			if tt.ok {
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestWithRetryHint(t *testing.T) {
+	t.Run("wraps api error with hint", func(t *testing.T) {
+		apiErr := &openai.Error{StatusCode: 429, Response: &http.Response{Header: http.Header{"Retry-After": []string{"5"}}}}
+		wrapped := withRetryHint(apiErr)
+		rae, ok := errors.AsType[RetryAfterError](wrapped)
+		require.True(t, ok)
+		assert.Equal(t, 5*time.Second, rae.RetryAfter())
+		// Unwrap chain keeps the typed API error visible to IsRetryable.
+		unwrapped, ok := errors.AsType[*openai.Error](wrapped)
+		require.True(t, ok)
+		assert.Equal(t, 429, unwrapped.StatusCode)
+	})
+	t.Run("no hint leaves error unchanged", func(t *testing.T) {
+		apiErr := &openai.Error{StatusCode: 429, Response: &http.Response{Header: http.Header{}}}
+		assert.Same(t, apiErr, withRetryHint(apiErr))
+	})
+	t.Run("non-api error unchanged", func(t *testing.T) {
+		plain := errors.New("boom")
+		assert.Same(t, plain, withRetryHint(plain))
+	})
+}
+
+// TestWithRetryClassifiedHonorsHint proves a RetryAfterError hint replaces
+// the jitter backoff between attempts.
+func TestWithRetryClassifiedHonorsHint(t *testing.T) {
+	cfg := &Config{MaxRetries: 1, InitialBackoff: time.Millisecond, MaxBackoff: time.Millisecond}
+	attempts := 0
+	start := time.Now()
+	_, err := withRetryClassified(context.Background(), cfg, NewLogger(LevelError), "hint", func(error) bool { return true },
+		func(context.Context) (int, error) {
+			attempts++
+			if attempts == 1 {
+				return 0, &retryHintError{err: errors.New("429"), delay: 50 * time.Millisecond}
+			}
+			return 1, nil
+		})
+	require.NoError(t, err)
+	assert.Equal(t, 2, attempts)
+	assert.GreaterOrEqual(t, time.Since(start), 50*time.Millisecond)
 }

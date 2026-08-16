@@ -105,7 +105,6 @@ type Provider interface {
 // ThinkingSpec controls model reasoning for a single request.
 type ThinkingSpec struct {
 	Enabled bool
-	Budget  int32 // optional token budget; 0 = provider default
 }
 
 // ContentPart is one element of the user-turn envelope. Exactly one of Text

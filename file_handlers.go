@@ -185,18 +185,18 @@ func (e *nonRetryableError) Error() string { return e.err.Error() }
 func (e *nonRetryableError) Unwrap() error { return e.err }
 
 // handleRateLimitResponse inspects a 403/429 response. Returns:
-//   - ctxErr is reserved for compatibility and is always nil; body has been closed on retryErr.
 //   - retryErr != nil when the caller should retry; body has been closed.
-//   - both nil when the response was not actually rate-limited or the reset window has elapsed;
-//     body is left OPEN so the caller's status-code handler can read the genuine GitHub error payload.
-func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Logger, filePath string) (ctxErr, retryErr error) {
+//   - nil when the response was not actually rate-limited or the reset window
+//     has elapsed; body is left OPEN so the caller's status-code handler can
+//     read the genuine GitHub error payload.
+func handleRateLimitResponse(resp *http.Response, logger Logger, filePath string) (retryErr error) {
 	remaining := resp.Header.Get("X-RateLimit-Remaining")
 	retryAfter := resp.Header.Get("Retry-After")
 	logger.Debug("[%s] ratelimit headers: status=%d remaining=%q reset=%q",
 		filePath, resp.StatusCode, remaining, resp.Header.Get("X-RateLimit-Reset"))
 	if remaining != "0" && resp.StatusCode != http.StatusTooManyRequests && retryAfter == "" {
 		logger.Debug("[%s] ratelimit: not throttled, caller owns body", filePath)
-		return nil, nil
+		return nil
 	}
 
 	waitTime, source := rateLimitWaitFromHeaders(resp.Header)
@@ -207,7 +207,7 @@ func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Lo
 
 	if waitTime <= 0 {
 		logger.Debug("[%s] ratelimit: reset window already elapsed, caller owns body", filePath)
-		return nil, nil
+		return nil
 	}
 
 	// We're about to signal retry — discard the response body now.
@@ -218,10 +218,10 @@ func handleRateLimitResponse(ctx context.Context, resp *http.Response, logger Lo
 	logger.Warn("[%s] Rate limit exceeded (via %s). Reset in %v", filePath, source, waitTime)
 	if waitTime > 2*time.Minute {
 		logger.Debug("[%s] ratelimit: wait %v exceeds 2m cap via %s, returning retryable error without hint", filePath, waitTime, source)
-		return nil, fmt.Errorf("rate limit exceeded")
+		return fmt.Errorf("rate limit exceeded")
 	}
 	logger.Debug("[%s] ratelimit: returning rateLimitError with wait %v (%s)", filePath, waitTime, source)
-	return nil, &rateLimitError{wait: waitTime}
+	return &rateLimitError{wait: waitTime}
 }
 
 // readErrorBody reads and closes resp.Body, returning its contents as a string
@@ -355,11 +355,7 @@ func fetchAttempt(ctx context.Context, p fetchAttemptParams) fetchAttemptOutcome
 	}
 
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-		ctxErr, retryErr := handleRateLimitResponse(ctx, resp, logger, p.filePath)
-		if ctxErr != nil {
-			return fetchAttemptOutcome{fatalErr: ctxErr}
-		}
-		if retryErr != nil {
+		if retryErr := handleRateLimitResponse(resp, logger, p.filePath); retryErr != nil {
 			return fetchAttemptOutcome{retryErr: retryErr}
 		}
 		// Rate-limit headers said "not actually limited"; body is left OPEN so

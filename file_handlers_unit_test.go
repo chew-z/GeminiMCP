@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -96,7 +95,6 @@ func TestRateLimitResponseRetryAfterRemainingNonZeroIsRetryable(t *testing.T) {
 	resp.Header.Set("X-RateLimit-Remaining", "5")
 	resp.Header.Set("Retry-After", "1")
 
-	ctxErr, retryErr := handleRateLimitResponse(context.Background(), resp, NewLogger(LevelDebug), "file.txt")
-	assert.Nil(t, ctxErr)
+	retryErr := handleRateLimitResponse(resp, NewLogger(LevelDebug), "file.txt")
 	assert.EqualError(t, retryErr, "rate limit exceeded")
 }

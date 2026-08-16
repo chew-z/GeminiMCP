@@ -62,24 +62,35 @@ func withRetryClassified[T any](ctx context.Context, cfg *Config, logger Logger,
 			return zero, err
 		}
 
-		// Backoff: honour server-provided hints when available
-		var delay time.Duration
-		if rae, ok := errors.AsType[RetryAfterError](err); ok {
-			delay = rae.RetryAfter()
-		} else {
-			delay = computeBackoff(cfg, attempt)
-		}
+		delay := retryDelay(cfg, err, attempt)
 		logger.Warn("%s failed (attempt %d/%d): %v; retrying in %s", opName, attempt+1, maxAttempts, err, delay)
-
-		select {
-		case <-time.After(delay):
-		case <-ctx.Done():
-			return zero, ctx.Err()
+		if err := sleepWithContext(ctx, delay); err != nil {
+			return zero, err
 		}
 	}
 
 	// Unreachable
 	return zero, errors.New("withRetry: exhausted attempts")
+}
+
+// retryDelay picks the backoff before the next attempt: a server-provided
+// hint (RetryAfterError) wins over the jittered exponential schedule.
+func retryDelay(cfg *Config, err error, attempt int) time.Duration {
+	if rae, ok := errors.AsType[RetryAfterError](err); ok {
+		return rae.RetryAfter()
+	}
+	return computeBackoff(cfg, attempt)
+}
+
+// sleepWithContext waits for d, returning ctx.Err() when the context is
+// done first.
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	select {
+	case <-time.After(d):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // computeBackoff calculates exponential backoff with full jitter.

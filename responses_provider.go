@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -45,7 +47,7 @@ func (p *responsesProvider) Generate(ctx context.Context, req GenerationRequest)
 	params := p.buildResponseParams(req)
 	resp, err := p.client.Responses.New(ctx, params, p.dialect.buildRequest(&params, req)...)
 	if err != nil {
-		return nil, err
+		return nil, withRetryHint(err)
 	}
 	p.logReasoningItems(resp)
 	return convertResponse(resp)
@@ -143,4 +145,57 @@ func (p *responsesProvider) logReasoningItems(resp *responses.Response) {
 	if reasoningCount > 0 {
 		p.logger.Debug("%s reasoning items=%d summary_length=%d", p.dialect.name(), reasoningCount, totalSummaryLen)
 	}
+}
+
+// maxRetryHint caps server-provided backoff hints so a pathological header
+// cannot consume the entire per-call deadline budget.
+const maxRetryHint = 30 * time.Second
+
+// retryHintError wraps a provider API error that carries a server-provided
+// backoff hint so withRetryClassified honors it instead of jitter backoff.
+type retryHintError struct {
+	err   error
+	delay time.Duration
+}
+
+func (e *retryHintError) Error() string             { return e.err.Error() }
+func (e *retryHintError) Unwrap() error             { return e.err }
+func (e *retryHintError) RetryAfter() time.Duration { return e.delay }
+
+// withRetryHint attaches a server-provided backoff hint to API errors that
+// carry one (Retry-After or x-ratelimit-reset-* headers). Errors without a
+// usable hint are returned unchanged.
+func withRetryHint(err error) error {
+	apiErr, ok := errors.AsType[*openai.Error](err)
+	if !ok || apiErr.Response == nil {
+		return err
+	}
+	delay, found := parseProviderRetryDelay(apiErr.Response.Header)
+	if !found {
+		return err
+	}
+	return &retryHintError{err: err, delay: delay}
+}
+
+// parseProviderRetryDelay extracts a backoff hint from provider rate-limit
+// response headers: Retry-After (delta-seconds or HTTP-date) first, then the
+// x-ratelimit-reset-* duration headers sent by OpenAI-style endpoints.
+func parseProviderRetryDelay(header http.Header) (time.Duration, bool) {
+	if delay, ok := parseRetryAfter(strings.TrimSpace(header.Get("Retry-After"))); ok && delay > 0 {
+		return min(delay, maxRetryHint), true
+	}
+	var best time.Duration
+	for _, key := range []string{"X-Ratelimit-Reset-Requests", "X-Ratelimit-Reset-Tokens"} {
+		value := strings.TrimSpace(header.Get(key))
+		if value == "" {
+			continue
+		}
+		if delay, err := time.ParseDuration(value); err == nil && delay > best {
+			best = delay
+		}
+	}
+	if best > 0 {
+		return min(best, maxRetryHint), true
+	}
+	return 0, false
 }
