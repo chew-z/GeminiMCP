@@ -62,7 +62,10 @@ are isolated in a `responsesDialect` interface:
 
 - `qwenResponsesDialect` maps `ThinkingSpec` to `reasoning.effort`
   (replacing the deprecated `enable_thinking`) and enables server-side
-  session caching via the `x-dashscope-session-cache` header.
+  session caching via the `x-dashscope-session-cache` header. The cache
+  works for single-turn traffic: measured 2026-08-16, a repeated request
+  hit the cache for 5144/5153 input tokens despite no
+  `previous_response_id` chain.
 - `deepseekResponsesDialect` maps thinking-enabled requests to
   `reasoning.effort=max` and thinking-disabled (prequalify) requests to
   `none`. DeepSeek's Responses endpoint is stateless, so no caching headers

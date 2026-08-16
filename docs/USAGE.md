@@ -26,7 +26,7 @@ PROVIDER=qwen PROVIDER_API_KEY=... PROVIDER_MODEL=qwen3.7-max \
 | --- | --- | --- |
 | `PROVIDER` | Required | `deepseek` or `qwen` |
 | `PROVIDER_API_KEY` | Required | Provider credential |
-| `PROVIDER_MODEL` | Required | `deepseek-v4-pro`, `qwen3.7-max`, `qwen3.7-plus`, or `qwen3.8-max-preview` (preview) |
+| `PROVIDER_MODEL` | Required | `deepseek-v4-pro`, `deepseek-v4-flash`, `qwen3.7-max`, `qwen3.7-plus`, or `qwen3.8-max-preview` (preview) |
 | `PROVIDER_BASE_URL` | Qwen required | DeepSeek defaults to `https://api.deepseek.com` |
 | `PROVIDER_MAX_TOKENS` | Optional | `0` uses the API default |
 
